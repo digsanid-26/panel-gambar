@@ -19,6 +19,7 @@ export interface Story {
   theme: string;
   level: string;
   target_class: string;
+  display_mode?: DisplayMode;
   status: "draft" | "published" | "archived";
   author_id: string;
   author_name?: string;
@@ -29,6 +30,11 @@ export interface Story {
 }
 
 export type PanelType = "simple" | "complete";
+
+// Display modes for story viewer
+export type SimpleDisplayMode = "slide" | "fade" | "continuous";
+export type CompleteDisplayMode = "vertical-scroll" | "flipbook";
+export type DisplayMode = SimpleDisplayMode | CompleteDisplayMode;
 
 export interface Panel {
   id: string;

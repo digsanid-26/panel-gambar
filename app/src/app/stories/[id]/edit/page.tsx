@@ -4,7 +4,7 @@ import { useEffect, useState, useCallback } from "react";
 import { useParams, useRouter } from "next/navigation";
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/client";
-import type { Story, Panel, Dialog, Theme, Level, TargetClass, PanelType } from "@/lib/types";
+import type { Story, Panel, Dialog, Theme, Level, TargetClass, PanelType, DisplayMode } from "@/lib/types";
 import { Navbar } from "@/components/layout/navbar";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -496,6 +496,70 @@ export default function EditStoryPage() {
                     : [{ value: story.target_class, label: story.target_class }]
                 }
               />
+            </div>
+
+            {/* Display Mode Selector */}
+            <div>
+              <label className="block text-sm font-semibold mb-3">Mode Tampilan Cerita</label>
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+                {/* Simple panel modes */}
+                <button
+                  onClick={() => updateStoryField("display_mode", "slide")}
+                  className={`p-3 rounded-xl border-2 text-left transition-all ${story.display_mode === "slide" || !story.display_mode ? "border-primary bg-primary/5" : "border-border hover:border-primary/30"}`}
+                >
+                  <div className="flex items-center gap-2 mb-1">
+                    <span className="text-lg">🖼️</span>
+                    <span className="font-semibold text-sm">Slide</span>
+                    <Badge variant="secondary" className="text-[9px]">Sederhana</Badge>
+                  </div>
+                  <p className="text-xs text-muted">Navigasi panel dengan arrow dan dot indikator</p>
+                </button>
+                <button
+                  onClick={() => updateStoryField("display_mode", "fade")}
+                  className={`p-3 rounded-xl border-2 text-left transition-all ${story.display_mode === "fade" ? "border-primary bg-primary/5" : "border-border hover:border-primary/30"}`}
+                >
+                  <div className="flex items-center gap-2 mb-1">
+                    <span className="text-lg">✨</span>
+                    <span className="font-semibold text-sm">Fade</span>
+                    <Badge variant="secondary" className="text-[9px]">Sederhana</Badge>
+                  </div>
+                  <p className="text-xs text-muted">Transisi smooth fade antar panel</p>
+                </button>
+                <button
+                  onClick={() => updateStoryField("display_mode", "continuous")}
+                  className={`p-3 rounded-xl border-2 text-left transition-all ${story.display_mode === "continuous" ? "border-primary bg-primary/5" : "border-border hover:border-primary/30"}`}
+                >
+                  <div className="flex items-center gap-2 mb-1">
+                    <span className="text-lg">🎞️</span>
+                    <span className="font-semibold text-sm">Continuous</span>
+                    <Badge variant="secondary" className="text-[9px]">Sederhana</Badge>
+                  </div>
+                  <p className="text-xs text-muted">Panel berjalan otomatis kanan ke kiri, berhenti saat hover</p>
+                </button>
+                {/* Complete panel modes */}
+                <button
+                  onClick={() => updateStoryField("display_mode", "vertical-scroll")}
+                  className={`p-3 rounded-xl border-2 text-left transition-all ${story.display_mode === "vertical-scroll" ? "border-primary bg-primary/5" : "border-border hover:border-primary/30"}`}
+                >
+                  <div className="flex items-center gap-2 mb-1">
+                    <span className="text-lg">📜</span>
+                    <span className="font-semibold text-sm">Vertical Scroll</span>
+                    <Badge variant="accent" className="text-[9px]">Lengkap</Badge>
+                  </div>
+                  <p className="text-xs text-muted">Scroll vertikal dengan kontrol flybox dan infinity scroll</p>
+                </button>
+                <button
+                  onClick={() => updateStoryField("display_mode", "flipbook")}
+                  className={`p-3 rounded-xl border-2 text-left transition-all ${story.display_mode === "flipbook" ? "border-primary bg-primary/5" : "border-border hover:border-primary/30"}`}
+                >
+                  <div className="flex items-center gap-2 mb-1">
+                    <span className="text-lg">📖</span>
+                    <span className="font-semibold text-sm">Flip Book</span>
+                    <Badge variant="accent" className="text-[9px]">Lengkap</Badge>
+                  </div>
+                  <p className="text-xs text-muted">Animasi balik halaman seperti buku nyata</p>
+                </button>
+              </div>
             </div>
           </div>
         )}

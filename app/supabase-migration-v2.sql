@@ -181,3 +181,8 @@ CREATE POLICY "Anyone can view videos"
 CREATE POLICY "Users can delete own videos"
   ON storage.objects FOR DELETE
   USING (bucket_id = 'videos' AND auth.uid()::text = (storage.foldername(name))[1]);
+
+-- ============================================
+-- Migration V2.1: Display mode for stories
+-- ============================================
+ALTER TABLE public.stories ADD COLUMN IF NOT EXISTS display_mode text DEFAULT 'slide';
