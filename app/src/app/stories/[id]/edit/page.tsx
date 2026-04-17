@@ -1,0 +1,738 @@
+"use client";
+
+import { useEffect, useState, useCallback } from "react";
+import { useParams, useRouter } from "next/navigation";
+import Link from "next/link";
+import { createClient } from "@/lib/supabase/client";
+import type { Story, Panel, Dialog } from "@/lib/types";
+import { Navbar } from "@/components/layout/navbar";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
+import { Select } from "@/components/ui/select";
+import { Badge } from "@/components/ui/badge";
+import { AudioRecorder } from "@/components/audio/audio-recorder";
+import { AudioPlayer } from "@/components/audio/audio-player";
+import {
+  ArrowLeft,
+  ChevronDown,
+  ChevronUp,
+  Eye,
+  Globe,
+  GripVertical,
+  Image as ImageIcon,
+  Loader2,
+  MessageCircle,
+  Mic,
+  Music,
+  Plus,
+  Save,
+  Trash2,
+  Upload,
+  Volume2,
+} from "lucide-react";
+
+export default function EditStoryPage() {
+  const params = useParams();
+  const router = useRouter();
+  const storyId = params.id as string;
+  const supabase = createClient();
+
+  const [story, setStory] = useState<Story | null>(null);
+  const [panels, setPanels] = useState<Panel[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [expandedPanel, setExpandedPanel] = useState<string | null>(null);
+  const [showDialogForm, setShowDialogForm] = useState<string | null>(null);
+  const [showNarrationRecorder, setShowNarrationRecorder] = useState<string | null>(null);
+  const [showBgAudioRecorder, setShowBgAudioRecorder] = useState<string | null>(null);
+
+  // Dialog form state
+  const [dialogCharName, setDialogCharName] = useState("Karakter");
+  const [dialogCharColor, setDialogCharColor] = useState("#3b82f6");
+  const [dialogText, setDialogText] = useState("");
+  const [dialogBubble, setDialogBubble] = useState("kotak");
+  const [dialogPosX, setDialogPosX] = useState(50);
+  const [dialogPosY, setDialogPosY] = useState(20);
+
+  useEffect(() => {
+    loadData();
+  }, [storyId]);
+
+  async function loadData() {
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) { router.push("/login"); return; }
+
+    const { data: storyData } = await supabase
+      .from("stories")
+      .select("*")
+      .eq("id", storyId)
+      .eq("author_id", user.id)
+      .single();
+
+    if (!storyData) { router.push("/stories"); return; }
+    setStory(storyData as Story);
+
+    const { data: panelsData } = await supabase
+      .from("panels")
+      .select("*, dialogs(*)")
+      .eq("story_id", storyId)
+      .order("order_index", { ascending: true });
+
+    if (panelsData) {
+      setPanels(
+        panelsData.map((p: Record<string, unknown>) => ({
+          ...p,
+          dialogs: ((p.dialogs as Dialog[]) || []).sort(
+            (a: Dialog, b: Dialog) => a.order_index - b.order_index
+          ),
+        })) as Panel[]
+      );
+    }
+
+    setLoading(false);
+  }
+
+  async function addPanel() {
+    setSaving(true);
+    const { data, error } = await supabase
+      .from("panels")
+      .insert({
+        story_id: storyId,
+        order_index: panels.length,
+        background_color: "#f0f9ff",
+      })
+      .select("*, dialogs(*)")
+      .single();
+
+    if (data) {
+      setPanels([...panels, { ...data, dialogs: [] } as Panel]);
+      setExpandedPanel(data.id);
+    }
+    setSaving(false);
+  }
+
+  async function deletePanel(panelId: string) {
+    if (!confirm("Hapus panel ini?")) return;
+    await supabase.from("panels").delete().eq("id", panelId);
+    setPanels(panels.filter((p) => p.id !== panelId));
+  }
+
+  async function updatePanelField(panelId: string, field: string, value: string) {
+    await supabase.from("panels").update({ [field]: value }).eq("id", panelId);
+    setPanels(panels.map((p) => (p.id === panelId ? { ...p, [field]: value } : p)));
+  }
+
+  async function uploadPanelImage(panelId: string, file: File) {
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) return;
+
+    const ext = file.name.split(".").pop();
+    const path = `${user.id}/${storyId}/${panelId}/image.${ext}`;
+
+    setSaving(true);
+    const { error } = await supabase.storage
+      .from("panel-images")
+      .upload(path, file, { upsert: true, contentType: file.type });
+
+    if (!error) {
+      const { data: { publicUrl } } = supabase.storage
+        .from("panel-images")
+        .getPublicUrl(path);
+      await updatePanelField(panelId, "image_url", publicUrl);
+    }
+    setSaving(false);
+  }
+
+  async function uploadAudio(panelId: string, blob: Blob, type: "narration" | "background") {
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) return;
+
+    const path = `${user.id}/${storyId}/${panelId}/${type}_${Date.now()}.webm`;
+    setSaving(true);
+
+    const { error } = await supabase.storage
+      .from("audio")
+      .upload(path, blob, { contentType: "audio/webm" });
+
+    if (!error) {
+      const { data: { publicUrl } } = supabase.storage
+        .from("audio")
+        .getPublicUrl(path);
+
+      const field = type === "narration" ? "narration_audio_url" : "background_audio_url";
+      await updatePanelField(panelId, field, publicUrl);
+    }
+    setSaving(false);
+    setShowNarrationRecorder(null);
+    setShowBgAudioRecorder(null);
+  }
+
+  async function addDialog(panelId: string) {
+    if (!dialogText.trim()) return;
+    setSaving(true);
+
+    const panel = panels.find((p) => p.id === panelId);
+    const { data, error } = await supabase
+      .from("dialogs")
+      .insert({
+        panel_id: panelId,
+        order_index: panel?.dialogs?.length || 0,
+        character_name: dialogCharName,
+        character_color: dialogCharColor,
+        text: dialogText,
+        bubble_style: dialogBubble,
+        position_x: dialogPosX,
+        position_y: dialogPosY,
+      })
+      .select()
+      .single();
+
+    if (data) {
+      setPanels(
+        panels.map((p) =>
+          p.id === panelId
+            ? { ...p, dialogs: [...(p.dialogs || []), data as Dialog] }
+            : p
+        )
+      );
+      setDialogText("");
+      setShowDialogForm(null);
+    }
+    setSaving(false);
+  }
+
+  async function deleteDialog(panelId: string, dialogId: string) {
+    if (!confirm("Hapus dialog ini?")) return;
+    await supabase.from("dialogs").delete().eq("id", dialogId);
+    setPanels(
+      panels.map((p) =>
+        p.id === panelId
+          ? { ...p, dialogs: (p.dialogs || []).filter((d) => d.id !== dialogId) }
+          : p
+      )
+    );
+  }
+
+  async function uploadDialogAudio(dialogId: string, panelId: string, blob: Blob) {
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) return;
+
+    const path = `${user.id}/${storyId}/${panelId}/dialog_${dialogId}_${Date.now()}.webm`;
+    setSaving(true);
+
+    const { error } = await supabase.storage
+      .from("audio")
+      .upload(path, blob, { contentType: "audio/webm" });
+
+    if (!error) {
+      const { data: { publicUrl } } = supabase.storage
+        .from("audio")
+        .getPublicUrl(path);
+      await supabase.from("dialogs").update({ audio_url: publicUrl }).eq("id", dialogId);
+      setPanels(
+        panels.map((p) =>
+          p.id === panelId
+            ? {
+                ...p,
+                dialogs: (p.dialogs || []).map((d) =>
+                  d.id === dialogId ? { ...d, audio_url: publicUrl } : d
+                ),
+              }
+            : p
+        )
+      );
+    }
+    setSaving(false);
+  }
+
+  async function publishStory() {
+    if (!confirm("Terbitkan cerita ini? Siswa akan bisa membacanya.")) return;
+    setSaving(true);
+    await supabase
+      .from("stories")
+      .update({ status: "published", updated_at: new Date().toISOString() })
+      .eq("id", storyId);
+    setStory((s) => (s ? { ...s, status: "published" } : s));
+    setSaving(false);
+  }
+
+  async function unpublishStory() {
+    setSaving(true);
+    await supabase
+      .from("stories")
+      .update({ status: "draft", updated_at: new Date().toISOString() })
+      .eq("id", storyId);
+    setStory((s) => (s ? { ...s, status: "draft" } : s));
+    setSaving(false);
+  }
+
+  async function movePanelUp(index: number) {
+    if (index === 0) return;
+    const updated = [...panels];
+    [updated[index - 1], updated[index]] = [updated[index], updated[index - 1]];
+    updated.forEach((p, i) => (p.order_index = i));
+    setPanels(updated);
+    await Promise.all(
+      updated.map((p, i) =>
+        supabase.from("panels").update({ order_index: i }).eq("id", p.id)
+      )
+    );
+  }
+
+  async function movePanelDown(index: number) {
+    if (index >= panels.length - 1) return;
+    const updated = [...panels];
+    [updated[index], updated[index + 1]] = [updated[index + 1], updated[index]];
+    updated.forEach((p, i) => (p.order_index = i));
+    setPanels(updated);
+    await Promise.all(
+      updated.map((p, i) =>
+        supabase.from("panels").update({ order_index: i }).eq("id", p.id)
+      )
+    );
+  }
+
+  if (loading) {
+    return (
+      <div className="min-h-screen flex flex-col">
+        <Navbar />
+        <div className="flex-1 flex items-center justify-center">
+          <Loader2 className="w-8 h-8 animate-spin text-primary" />
+        </div>
+      </div>
+    );
+  }
+
+  if (!story) return null;
+
+  return (
+    <div className="min-h-screen flex flex-col bg-surface">
+      <Navbar />
+      <main className="flex-1 max-w-4xl mx-auto w-full px-4 sm:px-6 py-8">
+        {/* Header */}
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-6">
+          <div className="flex items-center gap-3">
+            <Link href={`/stories/${storyId}`}>
+              <Button variant="ghost" size="icon">
+                <ArrowLeft className="w-5 h-5" />
+              </Button>
+            </Link>
+            <div>
+              <div className="flex items-center gap-2">
+                <h1 className="text-xl font-bold">Edit: {story.title}</h1>
+                <Badge variant={story.status === "published" ? "accent" : "outline"}>
+                  {story.status === "published" ? "Terbit" : "Draft"}
+                </Badge>
+              </div>
+              <p className="text-sm text-muted">{panels.length} panel</p>
+            </div>
+          </div>
+          <div className="flex items-center gap-2">
+            <Link href={`/stories/${storyId}`}>
+              <Button variant="outline" size="sm">
+                <Eye className="w-4 h-4" />
+                Preview
+              </Button>
+            </Link>
+            {story.status === "draft" ? (
+              <Button variant="accent" size="sm" onClick={publishStory} disabled={saving}>
+                <Globe className="w-4 h-4" />
+                Terbitkan
+              </Button>
+            ) : (
+              <Button variant="outline" size="sm" onClick={unpublishStory} disabled={saving}>
+                Tarik Kembali
+              </Button>
+            )}
+          </div>
+        </div>
+
+        {/* Panels */}
+        <div className="space-y-4">
+          {panels.map((panel, index) => (
+            <div
+              key={panel.id}
+              className="bg-white rounded-xl border border-border overflow-hidden"
+            >
+              {/* Panel header */}
+              <button
+                onClick={() =>
+                  setExpandedPanel(expandedPanel === panel.id ? null : panel.id)
+                }
+                className="w-full flex items-center gap-3 px-5 py-4 hover:bg-surface-alt/50 transition-colors text-left"
+              >
+                <GripVertical className="w-4 h-4 text-muted shrink-0" />
+                <div className="flex items-center gap-2">
+                  <div className="flex gap-1">
+                    <button
+                      onClick={(e) => { e.stopPropagation(); movePanelUp(index); }}
+                      className="p-0.5 hover:bg-surface-alt rounded"
+                      disabled={index === 0}
+                    >
+                      <ChevronUp className="w-3 h-3" />
+                    </button>
+                    <button
+                      onClick={(e) => { e.stopPropagation(); movePanelDown(index); }}
+                      className="p-0.5 hover:bg-surface-alt rounded"
+                      disabled={index === panels.length - 1}
+                    >
+                      <ChevronDown className="w-3 h-3" />
+                    </button>
+                  </div>
+                </div>
+                {panel.image_url ? (
+                  <img
+                    src={panel.image_url}
+                    alt=""
+                    className="w-12 h-12 rounded-lg object-cover shrink-0"
+                  />
+                ) : (
+                  <div className="w-12 h-12 rounded-lg bg-surface-alt flex items-center justify-center shrink-0">
+                    <ImageIcon className="w-5 h-5 text-muted" />
+                  </div>
+                )}
+                <div className="flex-1 min-w-0">
+                  <p className="font-semibold text-sm">Panel {index + 1}</p>
+                  <p className="text-xs text-muted truncate">
+                    {panel.narration_text || "Belum ada narasi"} · {panel.dialogs?.length || 0} dialog
+                  </p>
+                </div>
+                <ChevronDown
+                  className={`w-5 h-5 text-muted transition-transform ${
+                    expandedPanel === panel.id ? "rotate-180" : ""
+                  }`}
+                />
+              </button>
+
+              {/* Expanded panel editor */}
+              {expandedPanel === panel.id && (
+                <div className="border-t border-border px-5 py-5 space-y-5">
+                  {/* Image upload */}
+                  <div>
+                    <label className="block text-sm font-semibold mb-2">
+                      <ImageIcon className="w-4 h-4 inline mr-1" />
+                      Gambar Panel
+                    </label>
+                    {panel.image_url ? (
+                      <div className="relative">
+                        <img
+                          src={panel.image_url}
+                          alt=""
+                          className="w-full max-h-[300px] object-contain rounded-xl border border-border"
+                        />
+                        <label className="absolute bottom-2 right-2 cursor-pointer">
+                          <Button variant="outline" size="sm" className="bg-white" type="button">
+                            <Upload className="w-4 h-4" />
+                            Ganti
+                          </Button>
+                          <input
+                            type="file"
+                            accept="image/*"
+                            className="hidden"
+                            onChange={(e) => {
+                              const f = e.target.files?.[0];
+                              if (f) uploadPanelImage(panel.id, f);
+                            }}
+                          />
+                        </label>
+                      </div>
+                    ) : (
+                      <label className="flex flex-col items-center justify-center w-full h-40 border-2 border-dashed border-border rounded-xl cursor-pointer hover:border-primary/50 hover:bg-primary/5 transition-colors">
+                        <Upload className="w-8 h-8 text-muted mb-2" />
+                        <span className="text-sm text-muted">Klik untuk upload gambar</span>
+                        <span className="text-xs text-muted mt-1">JPG, PNG, WebP · Max 5MB</span>
+                        <input
+                          type="file"
+                          accept="image/*"
+                          className="hidden"
+                          onChange={(e) => {
+                            const f = e.target.files?.[0];
+                            if (f) uploadPanelImage(panel.id, f);
+                          }}
+                        />
+                      </label>
+                    )}
+                  </div>
+
+                  {/* Background color */}
+                  <div>
+                    <label className="block text-sm font-semibold mb-2">Warna Latar Panel</label>
+                    <div className="flex items-center gap-2">
+                      <input
+                        type="color"
+                        value={panel.background_color}
+                        onChange={(e) => updatePanelField(panel.id, "background_color", e.target.value)}
+                        className="w-10 h-10 rounded-lg border border-border cursor-pointer"
+                      />
+                      <span className="text-sm text-muted">{panel.background_color}</span>
+                    </div>
+                  </div>
+
+                  {/* Narration */}
+                  <div>
+                    <label className="block text-sm font-semibold mb-2">
+                      <Volume2 className="w-4 h-4 inline mr-1" />
+                      Narasi
+                    </label>
+                    <Textarea
+                      placeholder="Tuliskan narasi untuk panel ini..."
+                      value={panel.narration_text || ""}
+                      onChange={(e) =>
+                        updatePanelField(panel.id, "narration_text", e.target.value)
+                      }
+                    />
+                    <div className="mt-2">
+                      {panel.narration_audio_url ? (
+                        <div className="flex items-center gap-2">
+                          <AudioPlayer src={panel.narration_audio_url} label="Audio Narasi" className="flex-1" />
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() => setShowNarrationRecorder(panel.id)}
+                          >
+                            <Mic className="w-4 h-4" />
+                            Rekam Ulang
+                          </Button>
+                        </div>
+                      ) : (
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() =>
+                            setShowNarrationRecorder(
+                              showNarrationRecorder === panel.id ? null : panel.id
+                            )
+                          }
+                        >
+                          <Mic className="w-4 h-4" />
+                          Rekam Audio Narasi
+                        </Button>
+                      )}
+                      {showNarrationRecorder === panel.id && (
+                        <div className="mt-2">
+                          <AudioRecorder
+                            onSave={(blob) => uploadAudio(panel.id, blob, "narration")}
+                            onCancel={() => setShowNarrationRecorder(null)}
+                          />
+                        </div>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* Background audio */}
+                  <div>
+                    <label className="block text-sm font-semibold mb-2">
+                      <Music className="w-4 h-4 inline mr-1" />
+                      Suara Latar (Opsional)
+                    </label>
+                    {panel.background_audio_url ? (
+                      <div className="flex items-center gap-2">
+                        <AudioPlayer src={panel.background_audio_url} label="Suara Latar" className="flex-1" />
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => setShowBgAudioRecorder(panel.id)}
+                        >
+                          Ganti
+                        </Button>
+                      </div>
+                    ) : (
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() =>
+                          setShowBgAudioRecorder(
+                            showBgAudioRecorder === panel.id ? null : panel.id
+                          )
+                        }
+                      >
+                        <Music className="w-4 h-4" />
+                        Rekam/Upload Suara Latar
+                      </Button>
+                    )}
+                    {showBgAudioRecorder === panel.id && (
+                      <div className="mt-2">
+                        <AudioRecorder
+                          onSave={(blob) => uploadAudio(panel.id, blob, "background")}
+                          onCancel={() => setShowBgAudioRecorder(null)}
+                        />
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Dialogs */}
+                  <div>
+                    <label className="block text-sm font-semibold mb-2">
+                      <MessageCircle className="w-4 h-4 inline mr-1" />
+                      Dialog ({panel.dialogs?.length || 0})
+                    </label>
+
+                    {/* Existing dialogs */}
+                    <div className="space-y-2 mb-3">
+                      {panel.dialogs?.map((dialog) => (
+                        <div
+                          key={dialog.id}
+                          className="flex items-start gap-3 p-3 bg-surface rounded-xl border border-border"
+                        >
+                          <div
+                            className="w-3 h-3 rounded-full shrink-0 mt-1"
+                            style={{ backgroundColor: dialog.character_color }}
+                          />
+                          <div className="flex-1 min-w-0">
+                            <p className="text-xs font-bold" style={{ color: dialog.character_color }}>
+                              {dialog.character_name}
+                            </p>
+                            <p className="text-sm mt-0.5">{dialog.text}</p>
+                            <div className="flex items-center gap-2 mt-2">
+                              <Badge variant="outline" className="text-[10px]">
+                                {dialog.bubble_style}
+                              </Badge>
+                              <span className="text-[10px] text-muted">
+                                Posisi: {dialog.position_x}%, {dialog.position_y}%
+                              </span>
+                              {dialog.audio_url ? (
+                                <AudioPlayer src={dialog.audio_url} compact label="🔊" />
+                              ) : (
+                                <AudioRecorder
+                                  onSave={(blob) => uploadDialogAudio(dialog.id, panel.id, blob)}
+                                  className="!p-1.5"
+                                />
+                              )}
+                            </div>
+                          </div>
+                          <button
+                            onClick={() => deleteDialog(panel.id, dialog.id)}
+                            className="text-muted hover:text-danger p-1 shrink-0"
+                          >
+                            <Trash2 className="w-4 h-4" />
+                          </button>
+                        </div>
+                      ))}
+                    </div>
+
+                    {/* Add dialog form */}
+                    {showDialogForm === panel.id ? (
+                      <div className="p-4 bg-surface-alt rounded-xl border border-border space-y-3">
+                        <h4 className="text-sm font-semibold">Tambah Dialog Baru</h4>
+                        <div className="grid grid-cols-2 gap-3">
+                          <Input
+                            placeholder="Nama karakter"
+                            value={dialogCharName}
+                            onChange={(e) => setDialogCharName(e.target.value)}
+                          />
+                          <div className="flex items-center gap-2">
+                            <input
+                              type="color"
+                              value={dialogCharColor}
+                              onChange={(e) => setDialogCharColor(e.target.value)}
+                              className="w-10 h-10 rounded-lg border border-border cursor-pointer"
+                            />
+                            <Select
+                              value={dialogBubble}
+                              onChange={(e) => setDialogBubble(e.target.value)}
+                              options={[
+                                { value: "kotak", label: "Kotak" },
+                                { value: "oval", label: "Oval" },
+                                { value: "awan", label: "Awan" },
+                                { value: "ledakan", label: "Ledakan" },
+                              ]}
+                            />
+                          </div>
+                        </div>
+                        <Textarea
+                          placeholder="Tuliskan teks dialog..."
+                          value={dialogText}
+                          onChange={(e) => setDialogText(e.target.value)}
+                        />
+                        <div className="grid grid-cols-2 gap-3">
+                          <Input
+                            label="Posisi X (%)"
+                            type="number"
+                            min={0}
+                            max={100}
+                            value={dialogPosX}
+                            onChange={(e) => setDialogPosX(Number(e.target.value))}
+                          />
+                          <Input
+                            label="Posisi Y (%)"
+                            type="number"
+                            min={0}
+                            max={100}
+                            value={dialogPosY}
+                            onChange={(e) => setDialogPosY(Number(e.target.value))}
+                          />
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <Button
+                            variant="primary"
+                            size="sm"
+                            onClick={() => addDialog(panel.id)}
+                            disabled={saving || !dialogText.trim()}
+                          >
+                            {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
+                            Tambah
+                          </Button>
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => setShowDialogForm(null)}
+                          >
+                            Batal
+                          </Button>
+                        </div>
+                      </div>
+                    ) : (
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => {
+                          setShowDialogForm(panel.id);
+                          setDialogText("");
+                          setDialogCharName("Karakter");
+                          setDialogCharColor("#3b82f6");
+                          setDialogBubble("kotak");
+                          setDialogPosX(50);
+                          setDialogPosY(20);
+                        }}
+                      >
+                        <Plus className="w-4 h-4" />
+                        Tambah Dialog
+                      </Button>
+                    )}
+                  </div>
+
+                  {/* Delete panel */}
+                  <div className="pt-3 border-t border-border">
+                    <Button
+                      variant="danger"
+                      size="sm"
+                      onClick={() => deletePanel(panel.id)}
+                    >
+                      <Trash2 className="w-4 h-4" />
+                      Hapus Panel
+                    </Button>
+                  </div>
+                </div>
+              )}
+            </div>
+          ))}
+
+          {/* Add panel button */}
+          <button
+            onClick={addPanel}
+            disabled={saving}
+            className="w-full py-8 border-2 border-dashed border-border rounded-xl text-muted hover:border-primary/50 hover:text-primary hover:bg-primary/5 transition-all flex flex-col items-center gap-2"
+          >
+            {saving ? (
+              <Loader2 className="w-6 h-6 animate-spin" />
+            ) : (
+              <Plus className="w-6 h-6" />
+            )}
+            <span className="text-sm font-semibold">Tambah Panel Baru</span>
+          </button>
+        </div>
+      </main>
+    </div>
+  );
+}
