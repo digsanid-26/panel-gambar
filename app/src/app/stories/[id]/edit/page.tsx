@@ -4,13 +4,15 @@ import { useEffect, useState, useCallback } from "react";
 import { useParams, useRouter } from "next/navigation";
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/client";
-import type { Story, Panel, Dialog } from "@/lib/types";
+import type { Story, Panel, Dialog, Theme, Level, TargetClass, PanelType } from "@/lib/types";
 import { Navbar } from "@/components/layout/navbar";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Select } from "@/components/ui/select";
 import { Badge } from "@/components/ui/badge";
+import { CoverImageUploader } from "@/components/ui/cover-image-uploader";
+import { VideoTrailerUploader } from "@/components/ui/video-trailer-uploader";
 import { AudioRecorder } from "@/components/audio/audio-recorder";
 import { AudioPlayer } from "@/components/audio/audio-player";
 import {
@@ -18,19 +20,29 @@ import {
   ChevronDown,
   ChevronUp,
   Eye,
+  Film,
   Globe,
   GripVertical,
   Image as ImageIcon,
+  Layers,
   Loader2,
   MessageCircle,
   Mic,
   Music,
+  Pencil,
   Plus,
   Save,
+  Settings,
   Trash2,
   Upload,
   Volume2,
 } from "lucide-react";
+import dynamic from "next/dynamic";
+
+const CanvasEditor = dynamic(
+  () => import("@/components/panel-editor/canvas-editor").then((m) => m.CanvasEditor),
+  { ssr: false, loading: () => <div className="flex items-center justify-center py-12"><Loader2 className="w-6 h-6 animate-spin text-primary" /></div> }
+);
 
 export default function EditStoryPage() {
   const params = useParams();
@@ -46,6 +58,15 @@ export default function EditStoryPage() {
   const [showDialogForm, setShowDialogForm] = useState<string | null>(null);
   const [showNarrationRecorder, setShowNarrationRecorder] = useState<string | null>(null);
   const [showBgAudioRecorder, setShowBgAudioRecorder] = useState<string | null>(null);
+  const [showMetadata, setShowMetadata] = useState(false);
+  const [showPanelTypeMenu, setShowPanelTypeMenu] = useState(false);
+  const [uploadingCover, setUploadingCover] = useState(false);
+  const [uploadingVideo, setUploadingVideo] = useState(false);
+
+  // Dynamic options from DB
+  const [themes, setThemes] = useState<Theme[]>([]);
+  const [levels, setLevels] = useState<Level[]>([]);
+  const [targetClasses, setTargetClasses] = useState<TargetClass[]>([]);
 
   // Dialog form state
   const [dialogCharName, setDialogCharName] = useState("Karakter");
@@ -63,26 +84,23 @@ export default function EditStoryPage() {
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) { router.push("/login"); return; }
 
-    const { data: storyData } = await supabase
-      .from("stories")
-      .select("*")
-      .eq("id", storyId)
-      .eq("author_id", user.id)
-      .single();
+    // Load story, panels, and dynamic options in parallel
+    const [storyRes, panelsRes, themeRes, levelRes, classRes] = await Promise.all([
+      supabase.from("stories").select("*").eq("id", storyId).eq("author_id", user.id).single(),
+      supabase.from("panels").select("*, dialogs(*)").eq("story_id", storyId).order("order_index", { ascending: true }),
+      supabase.from("themes").select("*").eq("is_active", true).order("sort_order"),
+      supabase.from("levels").select("*").eq("is_active", true).order("sort_order"),
+      supabase.from("target_classes").select("*").eq("is_active", true).order("sort_order"),
+    ]);
 
-    if (!storyData) { router.push("/stories"); return; }
-    setStory(storyData as Story);
+    if (!storyRes.data) { router.push("/stories"); return; }
+    setStory(storyRes.data as Story);
 
-    const { data: panelsData } = await supabase
-      .from("panels")
-      .select("*, dialogs(*)")
-      .eq("story_id", storyId)
-      .order("order_index", { ascending: true });
-
-    if (panelsData) {
+    if (panelsRes.data) {
       setPanels(
-        panelsData.map((p: Record<string, unknown>) => ({
+        panelsRes.data.map((p: Record<string, unknown>) => ({
           ...p,
+          panel_type: (p.panel_type as string) || "simple",
           dialogs: ((p.dialogs as Dialog[]) || []).sort(
             (a: Dialog, b: Dialog) => a.order_index - b.order_index
           ),
@@ -90,26 +108,91 @@ export default function EditStoryPage() {
       );
     }
 
+    setThemes((themeRes.data || []) as Theme[]);
+    setLevels((levelRes.data || []) as Level[]);
+    setTargetClasses((classRes.data || []) as TargetClass[]);
+
     setLoading(false);
   }
 
-  async function addPanel() {
+  async function addPanel(panelType: PanelType = "simple") {
     setSaving(true);
+    setShowPanelTypeMenu(false);
     const { data, error } = await supabase
       .from("panels")
       .insert({
         story_id: storyId,
         order_index: panels.length,
-        background_color: "#f0f9ff",
+        background_color: panelType === "simple" ? "#f0f9ff" : "#1a1a2e",
+        panel_type: panelType,
       })
       .select("*, dialogs(*)")
       .single();
 
     if (data) {
-      setPanels([...panels, { ...data, dialogs: [] } as Panel]);
+      setPanels([...panels, { ...data, panel_type: panelType, dialogs: [] } as Panel]);
       setExpandedPanel(data.id);
     }
     setSaving(false);
+  }
+
+  async function uploadCoverImage(file: File) {
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user || !story) return;
+    setUploadingCover(true);
+    const ext = file.name.split(".").pop();
+    const path = `${user.id}/cover_${storyId}.${ext}`;
+    const { error } = await supabase.storage
+      .from("cover-images")
+      .upload(path, file, { upsert: true, contentType: file.type });
+    if (!error) {
+      const { data: { publicUrl } } = supabase.storage.from("cover-images").getPublicUrl(path);
+      await supabase.from("stories").update({ cover_image_url: publicUrl }).eq("id", storyId);
+      setStory((s) => s ? { ...s, cover_image_url: publicUrl } : s);
+    }
+    setUploadingCover(false);
+  }
+
+  async function uploadVideoTrailer(file: File) {
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user || !story) return;
+    setUploadingVideo(true);
+    const ext = file.name.split(".").pop();
+    const path = `${user.id}/trailer_${storyId}.${ext}`;
+    const { error } = await supabase.storage
+      .from("videos")
+      .upload(path, file, { upsert: true, contentType: file.type });
+    if (!error) {
+      const { data: { publicUrl } } = supabase.storage.from("videos").getPublicUrl(path);
+      await supabase.from("stories").update({ video_trailer_url: publicUrl }).eq("id", storyId);
+      setStory((s) => s ? { ...s, video_trailer_url: publicUrl } : s);
+    }
+    setUploadingVideo(false);
+  }
+
+  async function updateStoryField(field: string, value: string) {
+    await supabase.from("stories").update({ [field]: value, updated_at: new Date().toISOString() }).eq("id", storyId);
+    setStory((s) => s ? { ...s, [field]: value } : s);
+  }
+
+  async function saveCanvasData(panelId: string, canvasData: import("@/lib/types").CanvasData) {
+    setSaving(true);
+    await supabase.from("panels").update({ canvas_data: canvasData as unknown as Record<string, unknown> }).eq("id", panelId);
+    setPanels(panels.map((p) => (p.id === panelId ? { ...p, canvas_data: canvasData } : p)));
+    setSaving(false);
+  }
+
+  async function uploadCanvasImage(panelId: string, file: File): Promise<string | null> {
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) return null;
+    const ext = file.name.split(".").pop();
+    const path = `${user.id}/${storyId}/${panelId}/asset_${Date.now()}.${ext}`;
+    const { error } = await supabase.storage
+      .from("panel-images")
+      .upload(path, file, { upsert: true, contentType: file.type });
+    if (error) return null;
+    const { data: { publicUrl } } = supabase.storage.from("panel-images").getPublicUrl(path);
+    return publicUrl;
   }
 
   async function deletePanel(panelId: string) {
@@ -307,7 +390,7 @@ export default function EditStoryPage() {
   if (!story) return null;
 
   return (
-    <div className="min-h-screen flex flex-col bg-surface">
+    <div className="min-h-screen flex flex-col bg-background">
       <Navbar />
       <main className="flex-1 max-w-4xl mx-auto w-full px-4 sm:px-6 py-8">
         {/* Header */}
@@ -329,6 +412,14 @@ export default function EditStoryPage() {
             </div>
           </div>
           <div className="flex items-center gap-2">
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setShowMetadata(!showMetadata)}
+            >
+              <Settings className="w-4 h-4" />
+              Detail
+            </Button>
             <Link href={`/stories/${storyId}`}>
               <Button variant="outline" size="sm">
                 <Eye className="w-4 h-4" />
@@ -348,12 +439,73 @@ export default function EditStoryPage() {
           </div>
         </div>
 
+        {/* Story Metadata Section */}
+        {showMetadata && (
+          <div className="bg-surface-card rounded-xl border border-border p-5 mb-6 space-y-5">
+            <div className="grid md:grid-cols-2 gap-5">
+              <CoverImageUploader
+                currentUrl={story.cover_image_url}
+                onUpload={uploadCoverImage}
+                onRemove={async () => {
+                  await supabase.from("stories").update({ cover_image_url: null }).eq("id", storyId);
+                  setStory((s) => s ? { ...s, cover_image_url: undefined } : s);
+                }}
+                uploading={uploadingCover}
+              />
+              <VideoTrailerUploader
+                currentUrl={story.video_trailer_url}
+                onUpload={uploadVideoTrailer}
+                onRemove={async () => {
+                  await supabase.from("stories").update({ video_trailer_url: null }).eq("id", storyId);
+                  setStory((s) => s ? { ...s, video_trailer_url: undefined } : s);
+                }}
+                uploading={uploadingVideo}
+              />
+            </div>
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+              <Select
+                id="edit-theme"
+                label="Tema"
+                value={story.theme}
+                onChange={(e) => updateStoryField("theme", e.target.value)}
+                options={
+                  themes.length > 0
+                    ? themes.map((t) => ({ value: t.name, label: t.label }))
+                    : [{ value: story.theme, label: story.theme }]
+                }
+              />
+              <Select
+                id="edit-level"
+                label="Level"
+                value={story.level}
+                onChange={(e) => updateStoryField("level", e.target.value)}
+                options={
+                  levels.length > 0
+                    ? levels.map((l) => ({ value: l.name, label: l.description ? `${l.label} (${l.description})` : l.label }))
+                    : [{ value: story.level, label: story.level }]
+                }
+              />
+              <Select
+                id="edit-target-class"
+                label="Target Kelas"
+                value={story.target_class}
+                onChange={(e) => updateStoryField("target_class", e.target.value)}
+                options={
+                  targetClasses.length > 0
+                    ? targetClasses.map((c) => ({ value: c.name, label: c.description ? `${c.label} (${c.description})` : c.label }))
+                    : [{ value: story.target_class, label: story.target_class }]
+                }
+              />
+            </div>
+          </div>
+        )}
+
         {/* Panels */}
         <div className="space-y-4">
           {panels.map((panel, index) => (
             <div
               key={panel.id}
-              className="bg-white rounded-xl border border-border overflow-hidden"
+              className="bg-surface-card rounded-xl border border-border overflow-hidden"
             >
               {/* Panel header */}
               <button
@@ -393,7 +545,12 @@ export default function EditStoryPage() {
                   </div>
                 )}
                 <div className="flex-1 min-w-0">
-                  <p className="font-semibold text-sm">Panel {index + 1}</p>
+                  <div className="flex items-center gap-2">
+                    <p className="font-semibold text-sm">Panel {index + 1}</p>
+                    <Badge variant={panel.panel_type === "complete" ? "secondary" : "outline"} className="text-[10px]">
+                      {panel.panel_type === "complete" ? "Lengkap" : "Sederhana"}
+                    </Badge>
+                  </div>
                   <p className="text-xs text-muted truncate">
                     {panel.narration_text || "Belum ada narasi"} · {panel.dialogs?.length || 0} dialog
                   </p>
@@ -408,7 +565,17 @@ export default function EditStoryPage() {
               {/* Expanded panel editor */}
               {expandedPanel === panel.id && (
                 <div className="border-t border-border px-5 py-5 space-y-5">
-                  {/* Image upload */}
+                  {/* Canvas Editor for complete panels */}
+                  {panel.panel_type === "complete" && (
+                    <CanvasEditor
+                      canvasData={panel.canvas_data || null}
+                      onSave={(cd) => saveCanvasData(panel.id, cd)}
+                      onUploadImage={(file) => uploadCanvasImage(panel.id, file)}
+                    />
+                  )}
+
+                  {/* Image upload — only for simple panels */}
+                  {panel.panel_type !== "complete" && (
                   <div>
                     <label className="block text-sm font-semibold mb-2">
                       <ImageIcon className="w-4 h-4 inline mr-1" />
@@ -422,7 +589,7 @@ export default function EditStoryPage() {
                           className="w-full max-h-[300px] object-contain rounded-xl border border-border"
                         />
                         <label className="absolute bottom-2 right-2 cursor-pointer">
-                          <Button variant="outline" size="sm" className="bg-white" type="button">
+                          <Button variant="outline" size="sm" className="bg-surface-card" type="button">
                             <Upload className="w-4 h-4" />
                             Ganti
                           </Button>
@@ -454,6 +621,7 @@ export default function EditStoryPage() {
                       </label>
                     )}
                   </div>
+                  )}
 
                   {/* Background color */}
                   <div>
@@ -719,18 +887,52 @@ export default function EditStoryPage() {
           ))}
 
           {/* Add panel button */}
-          <button
-            onClick={addPanel}
-            disabled={saving}
-            className="w-full py-8 border-2 border-dashed border-border rounded-xl text-muted hover:border-primary/50 hover:text-primary hover:bg-primary/5 transition-all flex flex-col items-center gap-2"
-          >
-            {saving ? (
-              <Loader2 className="w-6 h-6 animate-spin" />
+          <div className="relative">
+            {showPanelTypeMenu ? (
+              <div className="w-full border-2 border-primary/30 rounded-xl bg-surface-card p-4">
+                <p className="text-sm font-semibold text-foreground mb-3 text-center">Pilih Tipe Panel</p>
+                <div className="grid grid-cols-2 gap-3">
+                  <button
+                    onClick={() => addPanel("simple")}
+                    disabled={saving}
+                    className="flex flex-col items-center gap-2 p-4 rounded-xl border-2 border-border hover:border-primary/50 hover:bg-primary/5 transition-all"
+                  >
+                    <ImageIcon className="w-8 h-8 text-primary" />
+                    <span className="text-sm font-semibold text-foreground">Panel Sederhana</span>
+                    <span className="text-xs text-muted text-center">Satu gambar per panel</span>
+                  </button>
+                  <button
+                    onClick={() => addPanel("complete")}
+                    disabled={saving}
+                    className="flex flex-col items-center gap-2 p-4 rounded-xl border-2 border-border hover:border-secondary/50 hover:bg-secondary/5 transition-all"
+                  >
+                    <Layers className="w-8 h-8 text-secondary" />
+                    <span className="text-sm font-semibold text-foreground">Panel Lengkap</span>
+                    <span className="text-xs text-muted text-center">Canvas editor dengan layer</span>
+                  </button>
+                </div>
+                <button
+                  onClick={() => setShowPanelTypeMenu(false)}
+                  className="w-full mt-3 text-xs text-muted hover:text-foreground transition-colors"
+                >
+                  Batal
+                </button>
+              </div>
             ) : (
-              <Plus className="w-6 h-6" />
+              <button
+                onClick={() => setShowPanelTypeMenu(true)}
+                disabled={saving}
+                className="w-full py-8 border-2 border-dashed border-border rounded-xl text-muted hover:border-primary/50 hover:text-primary hover:bg-primary/5 transition-all flex flex-col items-center gap-2"
+              >
+                {saving ? (
+                  <Loader2 className="w-6 h-6 animate-spin" />
+                ) : (
+                  <Plus className="w-6 h-6" />
+                )}
+                <span className="text-sm font-semibold">Tambah Panel Baru</span>
+              </button>
             )}
-            <span className="text-sm font-semibold">Tambah Panel Baru</span>
-          </button>
+          </div>
         </div>
       </main>
     </div>

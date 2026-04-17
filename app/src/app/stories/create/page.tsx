@@ -1,39 +1,116 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
+import type { Theme, Level, TargetClass } from "@/lib/types";
 import { Navbar } from "@/components/layout/navbar";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Select } from "@/components/ui/select";
+import { CoverImageUploader } from "@/components/ui/cover-image-uploader";
+import { VideoTrailerUploader } from "@/components/ui/video-trailer-uploader";
 import { ArrowLeft, Loader2, Save } from "lucide-react";
 import Link from "next/link";
 
 export default function CreateStoryPage() {
   const router = useRouter();
+  const supabase = createClient();
+
   const [title, setTitle] = useState("");
   const [description, setDescription] = useState("");
-  const [theme, setTheme] = useState("umum");
-  const [level, setLevel] = useState("dasar");
-  const [targetClass, setTargetClass] = useState("Kelas 1-2");
+  const [theme, setTheme] = useState("");
+  const [level, setLevel] = useState("");
+  const [targetClass, setTargetClass] = useState("");
+  const [coverFile, setCoverFile] = useState<File | null>(null);
+  const [coverPreview, setCoverPreview] = useState<string | null>(null);
+  const [videoFile, setVideoFile] = useState<File | null>(null);
+  const [uploadingCover, setUploadingCover] = useState(false);
+  const [uploadingVideo, setUploadingVideo] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
 
-  const supabase = createClient();
+  // Dynamic options from DB
+  const [themes, setThemes] = useState<Theme[]>([]);
+  const [levels, setLevels] = useState<Level[]>([]);
+  const [targetClasses, setTargetClasses] = useState<TargetClass[]>([]);
+  const [optionsLoading, setOptionsLoading] = useState(true);
+
+  useEffect(() => {
+    async function loadOptions() {
+      const [themeRes, levelRes, classRes] = await Promise.all([
+        supabase.from("themes").select("*").eq("is_active", true).order("sort_order"),
+        supabase.from("levels").select("*").eq("is_active", true).order("sort_order"),
+        supabase.from("target_classes").select("*").eq("is_active", true).order("sort_order"),
+      ]);
+
+      const t = (themeRes.data || []) as Theme[];
+      const l = (levelRes.data || []) as Level[];
+      const c = (classRes.data || []) as TargetClass[];
+
+      setThemes(t);
+      setLevels(l);
+      setTargetClasses(c);
+
+      if (t.length > 0) setTheme(t[0].name);
+      if (l.length > 0) setLevel(l[0].name);
+      if (c.length > 0) setTargetClass(c[0].name);
+
+      setOptionsLoading(false);
+    }
+    loadOptions();
+  }, []);
+
+  async function handleCoverUpload(file: File) {
+    setCoverFile(file);
+    const reader = new FileReader();
+    reader.onload = () => setCoverPreview(reader.result as string);
+    reader.readAsDataURL(file);
+  }
+
+  async function handleVideoUpload(file: File) {
+    setVideoFile(file);
+  }
 
   async function handleCreate(e: React.FormEvent) {
     e.preventDefault();
     setError("");
     setLoading(true);
 
-    const {
-      data: { user },
-    } = await supabase.auth.getUser();
-    if (!user) {
-      router.push("/login");
-      return;
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) { router.push("/login"); return; }
+
+    // Upload cover image if selected
+    let coverImageUrl: string | undefined;
+    if (coverFile) {
+      setUploadingCover(true);
+      const ext = coverFile.name.split(".").pop();
+      const path = `${user.id}/cover_${Date.now()}.${ext}`;
+      const { error: uploadErr } = await supabase.storage
+        .from("cover-images")
+        .upload(path, coverFile, { upsert: true, contentType: coverFile.type });
+      if (!uploadErr) {
+        const { data: { publicUrl } } = supabase.storage.from("cover-images").getPublicUrl(path);
+        coverImageUrl = publicUrl;
+      }
+      setUploadingCover(false);
+    }
+
+    // Upload video trailer if selected
+    let videoTrailerUrl: string | undefined;
+    if (videoFile) {
+      setUploadingVideo(true);
+      const ext = videoFile.name.split(".").pop();
+      const path = `${user.id}/trailer_${Date.now()}.${ext}`;
+      const { error: uploadErr } = await supabase.storage
+        .from("videos")
+        .upload(path, videoFile, { contentType: videoFile.type });
+      if (!uploadErr) {
+        const { data: { publicUrl } } = supabase.storage.from("videos").getPublicUrl(path);
+        videoTrailerUrl = publicUrl;
+      }
+      setUploadingVideo(false);
     }
 
     const { data, error: insertError } = await supabase
@@ -44,6 +121,8 @@ export default function CreateStoryPage() {
         theme,
         level,
         target_class: targetClass,
+        cover_image_url: coverImageUrl,
+        video_trailer_url: videoTrailerUrl,
         author_id: user.id,
         status: "draft",
       })
@@ -58,6 +137,19 @@ export default function CreateStoryPage() {
 
     router.push(`/stories/${data.id}/edit`);
   }
+
+  // Fallback options if DB tables don't exist yet
+  const themeOptions = themes.length > 0
+    ? themes.map((t) => ({ value: t.name, label: t.label }))
+    : [{ value: "umum", label: "Umum" }];
+
+  const levelOptions = levels.length > 0
+    ? levels.map((l) => ({ value: l.name, label: l.description ? `${l.label} (${l.description})` : l.label }))
+    : [{ value: "dasar", label: "Dasar" }];
+
+  const classOptions = targetClasses.length > 0
+    ? targetClasses.map((c) => ({ value: c.name, label: c.description ? `${c.label} (${c.description})` : c.label }))
+    : [{ value: "kelas-1-2", label: "Kelas 1-2" }];
 
   return (
     <div className="min-h-screen flex flex-col bg-background">
@@ -74,6 +166,13 @@ export default function CreateStoryPage() {
 
         <div className="bg-surface-card rounded-2xl border border-border p-6 sm:p-8">
           <form onSubmit={handleCreate} className="space-y-5">
+            <CoverImageUploader
+              currentUrl={coverPreview || undefined}
+              onUpload={handleCoverUpload}
+              onRemove={() => { setCoverFile(null); setCoverPreview(null); }}
+              uploading={uploadingCover}
+            />
+
             <Input
               id="title"
               label="Judul Cerita"
@@ -92,25 +191,20 @@ export default function CreateStoryPage() {
               required
             />
 
+            <VideoTrailerUploader
+              currentUrl={videoFile ? URL.createObjectURL(videoFile) : undefined}
+              onUpload={handleVideoUpload}
+              onRemove={() => setVideoFile(null)}
+              uploading={uploadingVideo}
+            />
+
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
               <Select
                 id="theme"
                 label="Tema"
                 value={theme}
                 onChange={(e) => setTheme(e.target.value)}
-                options={[
-                  { value: "umum", label: "Umum" },
-                  { value: "kehidupan-sehari-hari", label: "Kehidupan Sehari-hari" },
-                  { value: "keluarga", label: "Keluarga & Persahabatan" },
-                  { value: "sekolah", label: "Lingkungan Sekolah" },
-                  { value: "hewan-alam", label: "Hewan & Alam" },
-                  { value: "cerita-rakyat", label: "Cerita Rakyat & Fabel" },
-                  { value: "petualangan", label: "Petualangan" },
-                  { value: "sains", label: "Sains Sederhana" },
-                  { value: "profesi", label: "Profesi & Cita-cita" },
-                  { value: "budaya", label: "Budaya Indonesia" },
-                  { value: "moral", label: "Nilai Moral & Karakter" },
-                ]}
+                options={themeOptions}
               />
 
               <Select
@@ -118,12 +212,7 @@ export default function CreateStoryPage() {
                 label="Level"
                 value={level}
                 onChange={(e) => setLevel(e.target.value)}
-                options={[
-                  { value: "pemula", label: "Pemula (Kelas 1)" },
-                  { value: "dasar", label: "Dasar (Kelas 2)" },
-                  { value: "menengah", label: "Menengah (Kelas 3)" },
-                  { value: "mahir", label: "Mahir (Kelas 4)" },
-                ]}
+                options={levelOptions}
               />
 
               <Select
@@ -131,11 +220,7 @@ export default function CreateStoryPage() {
                 label="Target Kelas"
                 value={targetClass}
                 onChange={(e) => setTargetClass(e.target.value)}
-                options={[
-                  { value: "Kelas 1-2", label: "Kelas 1-2 (Fase A)" },
-                  { value: "Kelas 3-4", label: "Kelas 3-4 (Fase B)" },
-                  { value: "Semua", label: "Semua Kelas" },
-                ]}
+                options={classOptions}
               />
             </div>
 
@@ -151,7 +236,7 @@ export default function CreateStoryPage() {
                   Batal
                 </Button>
               </Link>
-              <Button type="submit" variant="primary" disabled={loading}>
+              <Button type="submit" variant="primary" disabled={loading || optionsLoading}>
                 {loading ? (
                   <Loader2 className="w-4 h-4 animate-spin" />
                 ) : (

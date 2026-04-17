@@ -13,6 +13,7 @@ import {
   Menu,
   PlusCircle,
   Radio,
+  Settings,
   User,
   X,
 } from "lucide-react";
@@ -54,8 +55,11 @@ export function Navbar() {
         { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
         { href: "/stories", label: "Cerita", icon: BookOpen },
         { href: "/live", label: "Sesi Live", icon: Radio },
-        ...(user.role === "guru"
-          ? [{ href: "/stories/create", label: "Buat Cerita", icon: PlusCircle }]
+        ...(user.role === "guru" || user.role === "admin"
+          ? [
+              { href: "/stories/create", label: "Buat Cerita", icon: PlusCircle },
+              { href: "/settings", label: "Pengaturan", icon: Settings },
+            ]
           : []),
       ]
     : [];

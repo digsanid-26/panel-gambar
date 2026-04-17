@@ -15,8 +15,9 @@ export interface Story {
   title: string;
   description: string;
   cover_image_url?: string;
+  video_trailer_url?: string;
   theme: string;
-  level: "pemula" | "dasar" | "menengah" | "mahir";
+  level: string;
   target_class: string;
   status: "draft" | "published" | "archived";
   author_id: string;
@@ -27,17 +28,58 @@ export interface Story {
   panel_count?: number;
 }
 
+export type PanelType = "simple" | "complete";
+
 export interface Panel {
   id: string;
   story_id: string;
   order_index: number;
+  panel_type: PanelType;
   image_url?: string;
   background_color: string;
   narration_text?: string;
   narration_audio_url?: string;
   background_audio_url?: string;
+  canvas_data?: CanvasData;
   created_at: string;
   dialogs?: Dialog[];
+}
+
+// Canvas data for "complete" panel type
+export interface CanvasData {
+  width: number;
+  height: number;
+  layers: CanvasLayer[];
+}
+
+export interface CanvasLayer {
+  id: string;
+  type: "image" | "text" | "shape" | "speech-bubble";
+  name: string;
+  visible: boolean;
+  locked: boolean;
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+  rotation: number;
+  opacity: number;
+  zIndex: number;
+  // Image-specific
+  src?: string;
+  // Text/speech-bubble specific
+  text?: string;
+  fontSize?: number;
+  fontFamily?: string;
+  fill?: string;
+  // Speech bubble specific
+  bubbleStyle?: "oval" | "cloud" | "jagged" | "rectangle";
+  tailX?: number;
+  tailY?: number;
+  // Shape specific
+  shapeType?: "rect" | "circle" | "polygon";
+  stroke?: string;
+  strokeWidth?: number;
 }
 
 export interface Dialog {
@@ -119,6 +161,40 @@ export interface SessionParticipant {
   joined_at: string;
   user_name?: string;
   user_role?: UserRole;
+}
+
+// ============================================
+// Dynamic options (themes, levels, target classes)
+// ============================================
+
+export interface Theme {
+  id: string;
+  name: string;
+  label: string;
+  description?: string;
+  is_active: boolean;
+  sort_order: number;
+  created_at: string;
+}
+
+export interface Level {
+  id: string;
+  name: string;
+  label: string;
+  description?: string;
+  is_active: boolean;
+  sort_order: number;
+  created_at: string;
+}
+
+export interface TargetClass {
+  id: string;
+  name: string;
+  label: string;
+  description?: string;
+  is_active: boolean;
+  sort_order: number;
+  created_at: string;
 }
 
 // WebRTC signaling message types

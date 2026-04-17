@@ -15,11 +15,13 @@ import {
   ArrowRight,
   ChevronLeft,
   Edit,
+  Film,
   Loader2,
   Maximize,
   Mic,
   Minimize,
   Volume2,
+  X,
   Image as ImageIcon,
 } from "lucide-react";
 
@@ -35,6 +37,7 @@ export default function StoryViewerPage() {
   const [user, setUser] = useState<UserProfile | null>(null);
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [showRecorder, setShowRecorder] = useState<string | null>(null);
+  const [showTrailer, setShowTrailer] = useState(false);
 
   const supabase = createClient();
   const currentPanel = panels[currentIndex];
@@ -163,12 +166,32 @@ export default function StoryViewerPage() {
   const isAuthor = user?.id === story.author_id;
 
   return (
-    <div className={`min-h-screen flex flex-col ${isFullscreen ? "fixed inset-0 z-50 bg-white" : "bg-surface"}`}>
+    <div className={`min-h-screen flex flex-col ${isFullscreen ? "fixed inset-0 z-50 bg-background" : "bg-background"}`}>
       {!isFullscreen && <Navbar />}
+
+      {/* Video Trailer Modal */}
+      {showTrailer && story.video_trailer_url && (
+        <div className="fixed inset-0 z-[60] bg-black/80 flex items-center justify-center p-4" onClick={() => setShowTrailer(false)}>
+          <div className="relative w-full max-w-3xl" onClick={(e) => e.stopPropagation()}>
+            <button
+              onClick={() => setShowTrailer(false)}
+              className="absolute -top-10 right-0 text-white hover:text-primary transition-colors"
+            >
+              <X className="w-6 h-6" />
+            </button>
+            <video
+              src={story.video_trailer_url}
+              controls
+              autoPlay
+              className="w-full rounded-xl shadow-2xl"
+            />
+          </div>
+        </div>
+      )}
 
       <main className="flex-1 flex flex-col">
         {/* Header bar */}
-        <div className="bg-white border-b border-border px-4 sm:px-6 py-3">
+        <div className="bg-surface-card border-b border-border px-4 sm:px-6 py-3">
           <div className="max-w-7xl mx-auto flex items-center justify-between">
             <div className="flex items-center gap-3">
               {!isFullscreen && (
@@ -189,6 +212,12 @@ export default function StoryViewerPage() {
               </div>
             </div>
             <div className="flex items-center gap-2">
+              {story.video_trailer_url && (
+                <Button variant="outline" size="sm" onClick={() => setShowTrailer(true)}>
+                  <Film className="w-4 h-4" />
+                  <span className="hidden sm:inline">Trailer</span>
+                </Button>
+              )}
               {isAuthor && (
                 <Link href={`/stories/${story.id}/edit`}>
                   <Button variant="outline" size="sm">
@@ -293,7 +322,7 @@ export default function StoryViewerPage() {
 
                 {/* Narration area */}
                 {currentPanel?.narration_text && (
-                  <div className="mt-4 bg-white rounded-xl border border-border p-4">
+                  <div className="mt-4 bg-surface-card rounded-xl border border-border p-4">
                     <div className="flex items-start gap-3">
                       <div className="flex-1">
                         <p className="text-sm leading-relaxed">
@@ -347,7 +376,7 @@ export default function StoryViewerPage() {
             </div>
 
             {/* Navigation bar */}
-            <div className="bg-white border-t border-border px-4 sm:px-6 py-3">
+            <div className="bg-surface-card border-t border-border px-4 sm:px-6 py-3">
               <div className="max-w-4xl mx-auto flex items-center justify-between">
                 <Button
                   variant="outline"
