@@ -20,11 +20,12 @@ const COMPRESSOR_RATIO = 4;
 const COMPRESSOR_ATTACK = 0.003;
 const COMPRESSOR_RELEASE = 0.15;
 const TARGET_BITRATE = 128000; // 128kbps for clear voice
+const WARMUP_DELAY_MS = 300;   // Delay before recording to skip click/buzz transient
 const WAVEFORM_BARS = 16;
 const WAVEFORM_FFT_SIZE = 256;
 
 export function AudioRecorder({ onSave, onCancel, className }: AudioRecorderProps) {
-  const [state, setState] = useState<"idle" | "recording" | "recorded" | "playing">("idle");
+  const [state, setState] = useState<"idle" | "preparing" | "recording" | "recorded" | "playing">("idle");
   const [duration, setDuration] = useState(0);
   const [waveform, setWaveform] = useState<number[]>(new Array(WAVEFORM_BARS).fill(0));
 
@@ -135,9 +136,9 @@ export function AudioRecorder({ onSave, onCancel, className }: AudioRecorderProp
       compressor.attack.value = COMPRESSOR_ATTACK;
       compressor.release.value = COMPRESSOR_RELEASE;
 
-      // Slight gain boost after compression
+      // Start gain at ZERO to mute the click/buzz transient, will ramp up after delay
       const gainNode = audioCtx.createGain();
-      gainNode.gain.value = 1.4;
+      gainNode.gain.value = 0;
 
       // Analyser for real-time waveform
       const analyser = audioCtx.createAnalyser();
@@ -183,15 +184,24 @@ export function AudioRecorder({ onSave, onCancel, className }: AudioRecorderProp
       };
 
       mediaRecorder.current = recorder;
-      recorder.start(100);
-      setState("recording");
+      setState("preparing");
 
-      // Start real-time waveform
-      startWaveformAnimation();
+      // Wait for click/buzz transient to dissipate, then start recording with gain ramp
+      setTimeout(() => {
+        if (mediaRecorder.current !== recorder) return; // cancelled during warmup
+        recorder.start(100);
+        // Ramp gain from 0 → 1.4 over 50ms for a clean fade-in
+        gainNode.gain.setValueAtTime(0, audioCtx.currentTime);
+        gainNode.gain.linearRampToValueAtTime(1.4, audioCtx.currentTime + 0.05);
+        setState("recording");
 
-      timerRef.current = setInterval(() => {
-        setDuration((d) => d + 1);
-      }, 1000);
+        // Start real-time waveform
+        startWaveformAnimation();
+
+        timerRef.current = setInterval(() => {
+          setDuration((d) => d + 1);
+        }, 1000);
+      }, WARMUP_DELAY_MS);
     } catch (err) {
       console.error("Error accessing microphone:", err);
       cleanupAudioPipeline();
@@ -248,6 +258,14 @@ export function AudioRecorder({ onSave, onCancel, className }: AudioRecorderProp
 
   return (
     <div className={cn("flex items-center gap-2 p-3 bg-surface rounded-xl border border-border", className)}>
+      {/* Preparing indicator */}
+      {state === "preparing" && (
+        <div className="flex items-center gap-2">
+          <div className="w-3 h-3 rounded-full bg-danger animate-pulse" />
+          <span className="text-xs text-muted">Mempersiapkan...</span>
+        </div>
+      )}
+
       {/* Real-time waveform visualization */}
       {state === "recording" && (
         <div className="flex items-end gap-[2px] h-7">
@@ -271,6 +289,12 @@ export function AudioRecorder({ onSave, onCancel, className }: AudioRecorderProp
         {state === "idle" && (
           <Button variant="danger" size="icon" onClick={startRecording} title="Mulai Rekam">
             <Mic className="w-4 h-4" />
+          </Button>
+        )}
+
+        {state === "preparing" && (
+          <Button variant="outline" size="icon" disabled title="Mempersiapkan...">
+            <Mic className="w-4 h-4 animate-pulse" />
           </Button>
         )}
 
