@@ -33,8 +33,13 @@ export async function updateSession(request: NextRequest) {
     data: { user },
   } = await supabase.auth.getUser();
 
+  // Allow auth callback and role-select routes to pass through
+  if (request.nextUrl.pathname.startsWith("/auth/")) {
+    return supabaseResponse;
+  }
+
   // Protected routes
-  const protectedPaths = ["/dashboard", "/stories/create", "/stories/edit"];
+  const protectedPaths = ["/dashboard", "/stories/create", "/stories/edit", "/live/create", "/settings"];
   const isProtected = protectedPaths.some((path) =>
     request.nextUrl.pathname.startsWith(path)
   );
@@ -44,6 +49,22 @@ export async function updateSession(request: NextRequest) {
     url.pathname = "/login";
     url.searchParams.set("redirect", request.nextUrl.pathname);
     return NextResponse.redirect(url);
+  }
+
+  // For logged-in users on protected routes, check if they have a profile with role
+  // (OAuth users may not have a profile yet)
+  if (isProtected && user) {
+    const { data: profile } = await supabase
+      .from("profiles")
+      .select("role")
+      .eq("id", user.id)
+      .single();
+
+    if (!profile || !profile.role) {
+      const url = request.nextUrl.clone();
+      url.pathname = "/auth/role-select";
+      return NextResponse.redirect(url);
+    }
   }
 
   // Redirect logged in users away from login/register
