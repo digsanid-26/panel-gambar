@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useRef, useEffect, useCallback } from "react";
-import type { Panel, UserProfile } from "@/lib/types";
+import type { Panel, UserProfile, StoryCharacter } from "@/lib/types";
 import { PanelCard } from "./panel-card";
 import { StoryProgressBar } from "./story-progress-bar";
 
@@ -9,11 +9,13 @@ interface ContinuousViewerProps {
   panels: Panel[];
   user: UserProfile | null;
   onSaveRecording?: (panelId: string, blob: Blob, dialogId?: string) => void;
+  storyCharacters?: StoryCharacter[];
+  managedStudentId?: string;
 }
 
 const SCROLL_SPEED = 1; // px per frame (~60px/sec at 60fps)
 
-export function ContinuousViewer({ panels, user, onSaveRecording }: ContinuousViewerProps) {
+export function ContinuousViewer({ panels, user, onSaveRecording, storyCharacters, managedStudentId }: ContinuousViewerProps) {
   const [currentIndex, setCurrentIndex] = useState(0);
   const [isPlaying, setIsPlaying] = useState(true);
   const [hovered, setHovered] = useState(false);
@@ -125,6 +127,8 @@ export function ContinuousViewer({ panels, user, onSaveRecording }: ContinuousVi
                   user={user}
                   onSaveRecording={onSaveRecording ? (blob, dialogId) => onSaveRecording(panel.id, blob, dialogId) : undefined}
                   compact
+                  storyCharacters={storyCharacters}
+                  managedStudentId={managedStudentId}
                 />
               </div>
             ))}

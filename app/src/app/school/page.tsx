@@ -191,6 +191,7 @@ export default function SchoolPage() {
     setSaving(true);
 
     if (editingStudentId) {
+      // Update existing student (name/username/email only, no auth change)
       await supabase.from("managed_students").update({
         name: studentForm.name,
         username: studentForm.username,
@@ -205,26 +206,41 @@ export default function SchoolPage() {
         ),
       }));
     } else {
-      const { data, error } = await supabase.from("managed_students").insert({
-        name: studentForm.name,
-        username: studentForm.username,
-        email: studentForm.email || null,
-        class_id: classId,
-        teacher_id: user.id,
-      }).select().single();
-
-      if (error) {
-        alert(error.message.includes("unique") ? "Username sudah digunakan!" : error.message);
+      // Create new student via API (creates auth account + profile + managed_student)
+      if (!studentForm.password || studentForm.password.length < 6) {
+        alert("Password minimal 6 karakter");
         setSaving(false);
         return;
       }
 
-      if (data) {
-        setStudents((prev) => ({
-          ...prev,
-          [classId]: [...(prev[classId] || []), data as ManagedStudent],
-        }));
+      const res = await fetch("/api/students/create", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          name: studentForm.name,
+          username: studentForm.username,
+          email: studentForm.email || undefined,
+          password: studentForm.password,
+          class_id: classId,
+        }),
+      });
+
+      const result = await res.json();
+
+      if (!res.ok) {
+        alert(result.error || "Gagal membuat akun siswa");
+        setSaving(false);
+        return;
       }
+
+      // Reload students for this class to get the full record
+      const { data: updated } = await supabase
+        .from("managed_students")
+        .select("*")
+        .eq("class_id", classId)
+        .eq("teacher_id", user.id)
+        .order("name");
+      setStudents((prev) => ({ ...prev, [classId]: (updated || []) as ManagedStudent[] }));
     }
 
     setShowStudentForm(null);
@@ -430,7 +446,13 @@ export default function SchoolPage() {
                               </div>
                               <div className="flex-1 min-w-0">
                                 <p className="text-sm font-medium truncate">{s.name}</p>
-                                <p className="text-[10px] text-muted">@{s.username}{s.email ? ` · ${s.email}` : ""}</p>
+                                <p className="text-[10px] text-muted">
+                                  @{s.username}{s.email ? ` · ${s.email}` : ""}
+                                  {s.user_id
+                                    ? <span className="ml-1.5 text-green-600 bg-green-50 px-1.5 py-0.5 rounded-full">✓ Bisa login</span>
+                                    : <span className="ml-1.5 text-yellow-600 bg-yellow-50 px-1.5 py-0.5 rounded-full">Belum ada akun</span>
+                                  }
+                                </p>
                               </div>
                               <Button variant="ghost" size="sm" onClick={() => {
                                 setShowStudentForm(cls.id);

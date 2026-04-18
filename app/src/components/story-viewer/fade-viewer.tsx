@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useCallback } from "react";
-import type { Panel, UserProfile } from "@/lib/types";
+import type { Panel, UserProfile, StoryCharacter } from "@/lib/types";
 import { PanelCard } from "./panel-card";
 import { StoryProgressBar } from "./story-progress-bar";
 
@@ -9,9 +9,11 @@ interface FadeViewerProps {
   panels: Panel[];
   user: UserProfile | null;
   onSaveRecording?: (panelId: string, blob: Blob, dialogId?: string) => void;
+  storyCharacters?: StoryCharacter[];
+  managedStudentId?: string;
 }
 
-export function FadeViewer({ panels, user, onSaveRecording }: FadeViewerProps) {
+export function FadeViewer({ panels, user, onSaveRecording, storyCharacters, managedStudentId }: FadeViewerProps) {
   const [currentIndex, setCurrentIndex] = useState(0);
   const [isPlaying, setIsPlaying] = useState(false);
   const [fadingOut, setFadingOut] = useState(false);
@@ -57,6 +59,8 @@ export function FadeViewer({ panels, user, onSaveRecording }: FadeViewerProps) {
             onSaveRecording={onSaveRecording ? (blob, dialogId) => onSaveRecording(currentPanel.id, blob, dialogId) : undefined}
             currentTime={isPlaying ? panelTime : undefined}
             isPlaying={isPlaying}
+            storyCharacters={storyCharacters}
+            managedStudentId={managedStudentId}
           />
         </div>
       </div>

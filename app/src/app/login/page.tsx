@@ -11,7 +11,7 @@ import { BookOpen, Loader2 } from "lucide-react";
 
 export default function LoginPage() {
   const router = useRouter();
-  const [email, setEmail] = useState("");
+  const [emailOrUsername, setEmailOrUsername] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
@@ -52,13 +52,46 @@ export default function LoginPage() {
     setLoading(true);
 
     const supabase = createClient();
+    let loginEmail = emailOrUsername.trim();
+
+    // If input doesn't look like an email, treat as username
+    if (!loginEmail.includes("@")) {
+      // Look up managed_student by username to get user_id, then get auth email
+      const { data: ms } = await supabase
+        .from("managed_students")
+        .select("user_id")
+        .eq("username", loginEmail)
+        .not("user_id", "is", null)
+        .limit(1)
+        .single();
+
+      if (!ms?.user_id) {
+        setError("Username tidak ditemukan atau belum memiliki akun login.");
+        setLoading(false);
+        return;
+      }
+
+      // Fetch the auth email from profiles (we stored it there) or use admin lookup
+      // Since we can't access auth.users from client, use the synthetic email pattern
+      // The API creates emails as: username+timestamp@student.local
+      // We need a server-side lookup. Use a simple API call.
+      const res = await fetch(`/api/students/lookup?user_id=${ms.user_id}`);
+      const result = await res.json();
+      if (!res.ok || !result.email) {
+        setError("Gagal mencari akun. Silakan hubungi guru.");
+        setLoading(false);
+        return;
+      }
+      loginEmail = result.email;
+    }
+
     const { error: authError } = await supabase.auth.signInWithPassword({
-      email,
+      email: loginEmail,
       password,
     });
 
     if (authError) {
-      setError("Email atau password salah. Silakan coba lagi.");
+      setError("Email/username atau password salah. Silakan coba lagi.");
       setLoading(false);
       return;
     }
@@ -110,18 +143,18 @@ export default function LoginPage() {
                 <div className="w-full border-t border-border" />
               </div>
               <div className="relative flex justify-center text-xs">
-                <span className="bg-surface-card px-3 text-muted">atau masuk dengan email</span>
+                <span className="bg-surface-card px-3 text-muted">atau masuk dengan email/username</span>
               </div>
             </div>}
 
             <form onSubmit={handleLogin} className="space-y-4">
               <Input
                 id="email"
-                label="Email"
-                type="email"
-                placeholder="guru@sekolah.id"
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
+                label="Email atau Username"
+                type="text"
+                placeholder="guru@sekolah.id atau username siswa"
+                value={emailOrUsername}
+                onChange={(e) => setEmailOrUsername(e.target.value)}
                 required
               />
               <Input

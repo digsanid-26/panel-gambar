@@ -4,7 +4,7 @@ import { useEffect, useState, useCallback } from "react";
 import { useParams, useRouter } from "next/navigation";
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/client";
-import type { Story, Panel, Dialog, UserProfile, DisplayMode } from "@/lib/types";
+import type { Story, Panel, Dialog, UserProfile, DisplayMode, StoryCharacter } from "@/lib/types";
 import { Navbar } from "@/components/layout/navbar";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -37,6 +37,7 @@ export default function StoryViewerPage() {
   const [user, setUser] = useState<UserProfile | null>(null);
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [showTrailer, setShowTrailer] = useState(false);
+  const [managedStudentId, setManagedStudentId] = useState<string | undefined>(undefined);
 
   const supabase = createClient();
 
@@ -49,7 +50,18 @@ export default function StoryViewerPage() {
           .select("*")
           .eq("id", authUser.id)
           .single();
-        if (profile) setUser(profile as UserProfile);
+        if (profile) {
+          setUser(profile as UserProfile);
+          // If student, resolve their managed_student id for performer checks
+          if (profile.role === "siswa") {
+            const { data: ms } = await supabase
+              .from("managed_students")
+              .select("id")
+              .eq("user_id", authUser.id)
+              .single();
+            if (ms) setManagedStudentId(ms.id);
+          }
+        }
       }
 
       const { data: storyData } = await supabase
@@ -153,19 +165,20 @@ export default function StoryViewerPage() {
     }
 
     const recHandler = user ? handleSaveRecording : undefined;
+    const chars = (story?.characters || []) as StoryCharacter[];
 
     switch (displayMode) {
       case "fade":
-        return <FadeViewer panels={panels} user={user} onSaveRecording={recHandler} />;
+        return <FadeViewer panels={panels} user={user} onSaveRecording={recHandler} storyCharacters={chars} managedStudentId={managedStudentId} />;
       case "continuous":
-        return <ContinuousViewer panels={panels} user={user} onSaveRecording={recHandler} />;
+        return <ContinuousViewer panels={panels} user={user} onSaveRecording={recHandler} storyCharacters={chars} managedStudentId={managedStudentId} />;
       case "vertical-scroll":
-        return <VerticalScrollViewer panels={panels} user={user} onSaveRecording={recHandler} />;
+        return <VerticalScrollViewer panels={panels} user={user} onSaveRecording={recHandler} storyCharacters={chars} managedStudentId={managedStudentId} />;
       case "flipbook":
-        return <FlipBookViewer panels={panels} user={user} onSaveRecording={recHandler} />;
+        return <FlipBookViewer panels={panels} user={user} onSaveRecording={recHandler} storyCharacters={chars} managedStudentId={managedStudentId} />;
       case "slide":
       default:
-        return <SlideViewer panels={panels} user={user} onSaveRecording={recHandler} />;
+        return <SlideViewer panels={panels} user={user} onSaveRecording={recHandler} storyCharacters={chars} managedStudentId={managedStudentId} />;
     }
   }
 

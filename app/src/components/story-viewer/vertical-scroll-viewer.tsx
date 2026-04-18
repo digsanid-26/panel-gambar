@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useRef, useEffect, useCallback } from "react";
-import type { Panel, UserProfile } from "@/lib/types";
+import type { Panel, UserProfile, StoryCharacter } from "@/lib/types";
 import { PanelCard } from "./panel-card";
 import { StoryProgressBar } from "./story-progress-bar";
 import { ArrowDown, Infinity } from "lucide-react";
@@ -10,12 +10,14 @@ interface VerticalScrollViewerProps {
   panels: Panel[];
   user: UserProfile | null;
   onSaveRecording?: (panelId: string, blob: Blob, dialogId?: string) => void;
+  storyCharacters?: StoryCharacter[];
+  managedStudentId?: string;
 }
 
 const AUTO_SCROLL_SPEED = 1.5; // px per frame
 const FLYBOX_HIDE_DELAY = 3000; // ms
 
-export function VerticalScrollViewer({ panels, user, onSaveRecording }: VerticalScrollViewerProps) {
+export function VerticalScrollViewer({ panels, user, onSaveRecording, storyCharacters, managedStudentId }: VerticalScrollViewerProps) {
   const [currentIndex, setCurrentIndex] = useState(0);
   const [isPlaying, setIsPlaying] = useState(false);
   const [flyboxVisible, setFlyboxVisible] = useState(true);
@@ -152,6 +154,8 @@ export function VerticalScrollViewer({ panels, user, onSaveRecording }: Vertical
                 index={i}
                 user={user}
                 onSaveRecording={onSaveRecording ? (blob, dialogId) => onSaveRecording(panel.id, blob, dialogId) : undefined}
+                storyCharacters={storyCharacters}
+                managedStudentId={managedStudentId}
               />
             </div>
           ))}

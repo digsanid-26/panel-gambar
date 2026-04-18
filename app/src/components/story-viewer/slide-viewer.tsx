@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useCallback } from "react";
-import type { Panel, UserProfile } from "@/lib/types";
+import type { Panel, UserProfile, StoryCharacter } from "@/lib/types";
 import { PanelCard } from "./panel-card";
 import { StoryProgressBar } from "./story-progress-bar";
 
@@ -9,9 +9,11 @@ interface SlideViewerProps {
   panels: Panel[];
   user: UserProfile | null;
   onSaveRecording?: (panelId: string, blob: Blob, dialogId?: string) => void;
+  storyCharacters?: StoryCharacter[];
+  managedStudentId?: string;
 }
 
-export function SlideViewer({ panels, user, onSaveRecording }: SlideViewerProps) {
+export function SlideViewer({ panels, user, onSaveRecording, storyCharacters, managedStudentId }: SlideViewerProps) {
   const [currentIndex, setCurrentIndex] = useState(0);
   const [isPlaying, setIsPlaying] = useState(false);
   const [panelTime, setPanelTime] = useState(0);
@@ -38,6 +40,8 @@ export function SlideViewer({ panels, user, onSaveRecording }: SlideViewerProps)
             onSaveRecording={onSaveRecording ? (blob, dialogId) => onSaveRecording(currentPanel.id, blob, dialogId) : undefined}
             currentTime={isPlaying ? panelTime : undefined}
             isPlaying={isPlaying}
+            storyCharacters={storyCharacters}
+            managedStudentId={managedStudentId}
           />
         </div>
       </div>
