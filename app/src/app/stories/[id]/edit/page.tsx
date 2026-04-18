@@ -4,7 +4,7 @@ import { useEffect, useState, useCallback } from "react";
 import { useParams, useRouter } from "next/navigation";
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/client";
-import type { Story, Panel, Dialog, Theme, Level, TargetClass, PanelType, DisplayMode } from "@/lib/types";
+import type { Story, Panel, Dialog, Theme, Level, TargetClass, PanelType, DisplayMode, StoryCharacter, PanelTimelineItem } from "@/lib/types";
 import { Navbar } from "@/components/layout/navbar";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -15,6 +15,8 @@ import { CoverImageUploader } from "@/components/ui/cover-image-uploader";
 import { VideoTrailerUploader } from "@/components/ui/video-trailer-uploader";
 import { AudioRecorder } from "@/components/audio/audio-recorder";
 import { AudioPlayer } from "@/components/audio/audio-player";
+import { CharacterManager } from "@/components/story-editor/character-manager";
+import { PanelTimelineEditor } from "@/components/story-editor/panel-timeline-editor";
 import {
   ArrowLeft,
   ChevronDown,
@@ -173,6 +175,34 @@ export default function EditStoryPage() {
   async function updateStoryField(field: string, value: string) {
     await supabase.from("stories").update({ [field]: value, updated_at: new Date().toISOString() }).eq("id", storyId);
     setStory((s) => s ? { ...s, [field]: value } : s);
+  }
+
+  async function saveCharacters(chars: StoryCharacter[]) {
+    await supabase.from("stories").update({
+      characters: chars as unknown as Record<string, unknown>[],
+      updated_at: new Date().toISOString(),
+    }).eq("id", storyId);
+    setStory((s) => s ? { ...s, characters: chars } : s);
+  }
+
+  async function uploadCharacterAvatar(file: File): Promise<string | null> {
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) return null;
+    const ext = file.name.split(".").pop();
+    const path = `${user.id}/${storyId}/characters/avatar_${Date.now()}.${ext}`;
+    const { error } = await supabase.storage
+      .from("panel-images")
+      .upload(path, file, { upsert: true, contentType: file.type });
+    if (error) return null;
+    const { data: { publicUrl } } = supabase.storage.from("panel-images").getPublicUrl(path);
+    return publicUrl;
+  }
+
+  async function saveTimelineData(panelId: string, timeline: PanelTimelineItem[]) {
+    await supabase.from("panels").update({
+      timeline_data: timeline as unknown as Record<string, unknown>[],
+    }).eq("id", panelId);
+    setPanels(panels.map((p) => (p.id === panelId ? { ...p, timeline_data: timeline } : p)));
   }
 
   async function saveCanvasData(panelId: string, canvasData: import("@/lib/types").CanvasData) {
@@ -561,6 +591,13 @@ export default function EditStoryPage() {
                 </button>
               </div>
             </div>
+
+            {/* Character Manager (Penokohan) */}
+            <CharacterManager
+              characters={story.characters || []}
+              onChange={saveCharacters}
+              onUploadAvatar={uploadCharacterAvatar}
+            />
           </div>
         )}
 
@@ -847,8 +884,57 @@ export default function EditStoryPage() {
                     {showDialogForm === panel.id ? (
                       <div className="p-4 bg-surface-alt rounded-xl border border-border space-y-3">
                         <h4 className="text-sm font-semibold">Tambah Dialog Baru</h4>
+
+                        {/* Character selector */}
+                        {(story.characters?.length || 0) > 0 ? (
+                          <div>
+                            <label className="block text-xs font-medium mb-1">Pilih Karakter</label>
+                            <div className="flex flex-wrap gap-2">
+                              {story.characters!.map((char) => (
+                                <button
+                                  key={char.id}
+                                  type="button"
+                                  onClick={() => {
+                                    setDialogCharName(char.name);
+                                    setDialogCharColor(char.color);
+                                  }}
+                                  className={`flex items-center gap-2 px-3 py-1.5 rounded-full border-2 text-xs font-medium transition-all ${
+                                    dialogCharName === char.name && dialogCharColor === char.color
+                                      ? "border-primary bg-primary/10"
+                                      : "border-border hover:border-primary/30"
+                                  }`}
+                                >
+                                  {char.avatar_url ? (
+                                    <img src={char.avatar_url} alt="" className="w-5 h-5 rounded-full object-cover" />
+                                  ) : (
+                                    <div
+                                      className="w-5 h-5 rounded-full flex items-center justify-center text-white text-[10px] font-bold"
+                                      style={{ backgroundColor: char.color }}
+                                    >
+                                      {char.name.charAt(0)}
+                                    </div>
+                                  )}
+                                  {char.name}
+                                </button>
+                              ))}
+                              <button
+                                type="button"
+                                onClick={() => { setDialogCharName("Karakter"); setDialogCharColor("#3b82f6"); }}
+                                className={`px-3 py-1.5 rounded-full border-2 text-xs font-medium transition-all ${
+                                  !story.characters!.some((c) => c.name === dialogCharName && c.color === dialogCharColor)
+                                    ? "border-primary bg-primary/10"
+                                    : "border-border hover:border-primary/30"
+                                }`}
+                              >
+                                + Kustom
+                              </button>
+                            </div>
+                          </div>
+                        ) : null}
+
                         <div className="grid grid-cols-2 gap-3">
                           <Input
+                            label="Nama Karakter"
                             placeholder="Nama karakter"
                             value={dialogCharName}
                             onChange={(e) => setDialogCharName(e.target.value)}
@@ -933,6 +1019,13 @@ export default function EditStoryPage() {
                       </Button>
                     )}
                   </div>
+
+                  {/* Panel Timeline Editor */}
+                  <PanelTimelineEditor
+                    panel={panel}
+                    timelineData={(panel.timeline_data as PanelTimelineItem[]) || []}
+                    onChange={(tl) => saveTimelineData(panel.id, tl)}
+                  />
 
                   {/* Delete panel */}
                   <div className="pt-3 border-t border-border">

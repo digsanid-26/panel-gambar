@@ -186,3 +186,9 @@ CREATE POLICY "Users can delete own videos"
 -- Migration V2.1: Display mode for stories
 -- ============================================
 ALTER TABLE public.stories ADD COLUMN IF NOT EXISTS display_mode text DEFAULT 'slide';
+
+-- ============================================
+-- Migration V2.2: Characters + Panel timeline
+-- ============================================
+ALTER TABLE public.stories ADD COLUMN IF NOT EXISTS characters jsonb DEFAULT '[]'::jsonb;
+ALTER TABLE public.panels ADD COLUMN IF NOT EXISTS timeline_data jsonb DEFAULT '[]'::jsonb;

@@ -20,6 +20,7 @@ export interface Story {
   level: string;
   target_class: string;
   display_mode?: DisplayMode;
+  characters?: StoryCharacter[];
   status: "draft" | "published" | "archived";
   author_id: string;
   author_name?: string;
@@ -27,6 +28,18 @@ export interface Story {
   updated_at: string;
   panels?: Panel[];
   panel_count?: number;
+}
+
+// Story character (penokohan)
+export type CharacterGender = "male" | "female" | "other";
+
+export interface StoryCharacter {
+  id: string;
+  name: string;
+  avatar_url?: string;
+  gender: CharacterGender;
+  color: string;
+  description?: string;
 }
 
 export type PanelType = "simple" | "complete";
@@ -47,8 +60,25 @@ export interface Panel {
   narration_audio_url?: string;
   background_audio_url?: string;
   canvas_data?: CanvasData;
+  timeline_data?: PanelTimelineItem[];
   created_at: string;
   dialogs?: Dialog[];
+}
+
+// Panel timeline item for sequencing element durations
+export interface PanelTimelineItem {
+  id: string;
+  /** element type: panel-default is the base duration, others are overlays */
+  type: "panel" | "narration-audio" | "background-audio" | "dialog" | "image" | "bubble";
+  label: string;
+  /** Reference id (dialog id, etc.) */
+  ref_id?: string;
+  /** Start time in seconds relative to panel start */
+  start: number;
+  /** Duration in seconds */
+  duration: number;
+  /** Color for the timeline bar */
+  color: string;
 }
 
 // Canvas data for "complete" panel type
