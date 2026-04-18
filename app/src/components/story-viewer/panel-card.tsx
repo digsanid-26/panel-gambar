@@ -50,10 +50,10 @@ export function PanelCard({
           <img
             src={panel.image_url}
             alt={`Panel ${index + 1}`}
-            className="w-full h-auto max-h-[500px] object-contain"
+            className="w-full aspect-[3/2] object-cover"
           />
         ) : (
-          <div className={`w-full ${compact ? "h-[200px]" : "h-[300px]"} flex items-center justify-center`}>
+          <div className="w-full aspect-[3/2] flex items-center justify-center">
             <ImageIcon className="w-20 h-20 text-black/10" />
           </div>
         )}

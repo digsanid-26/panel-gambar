@@ -144,7 +144,7 @@ export default function StoriesPage() {
               <Link key={story.id} href={`/stories/${story.id}`}>
                 <div className="bg-surface-card rounded-xl border border-border overflow-hidden hover:shadow-lg hover:border-primary/30 transition-all h-full flex flex-col">
                   {story.cover_image_url ? (
-                    <div className="w-full h-40 bg-surface-alt overflow-hidden">
+                    <div className="w-full aspect-[3/2] bg-surface-alt overflow-hidden">
                       <img
                         src={story.cover_image_url}
                         alt={story.title}
@@ -152,7 +152,7 @@ export default function StoriesPage() {
                       />
                     </div>
                   ) : (
-                    <div className="w-full h-40 bg-gradient-to-br from-primary/10 via-secondary/5 to-accent/10 flex items-center justify-center">
+                    <div className="w-full aspect-[3/2] bg-gradient-to-br from-primary/10 via-secondary/5 to-accent/10 flex items-center justify-center">
                       <BookOpen className="w-12 h-12 text-primary/30" />
                     </div>
                   )}

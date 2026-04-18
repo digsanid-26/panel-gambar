@@ -294,11 +294,11 @@ export default function DashboardPage() {
                     <Link key={story.id} href={`/stories/${story.id}`}>
                       <div className="bg-surface-card rounded-xl border border-border p-5 hover:shadow-lg hover:border-primary/30 transition-all h-full">
                         {story.cover_image_url ? (
-                          <div className="w-full h-32 rounded-lg bg-surface-alt mb-3 overflow-hidden">
+                          <div className="w-full aspect-[3/2] rounded-lg bg-surface-alt mb-3 overflow-hidden">
                             <img src={story.cover_image_url} alt={story.title} className="w-full h-full object-cover" />
                           </div>
                         ) : (
-                          <div className="w-full h-32 rounded-lg bg-gradient-to-br from-primary/10 to-secondary/10 mb-3 flex items-center justify-center">
+                          <div className="w-full aspect-[3/2] rounded-lg bg-gradient-to-br from-primary/10 to-secondary/10 mb-3 flex items-center justify-center">
                             <BookOpen className="w-10 h-10 text-primary/40" />
                           </div>
                         )}

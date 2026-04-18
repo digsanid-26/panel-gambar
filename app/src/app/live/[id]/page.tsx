@@ -514,10 +514,10 @@ export default function LiveSessionRoomPage() {
                       <img
                         src={currentPanel.image_url}
                         alt={`Panel ${currentPanelIndex + 1}`}
-                        className="w-full h-auto max-h-[450px] object-contain"
+                        className="w-full aspect-[3/2] object-cover"
                       />
                     ) : (
-                      <div className="w-full h-[250px] flex items-center justify-center">
+                      <div className="w-full aspect-[3/2] flex items-center justify-center">
                         <ImageIcon className="w-16 h-16 text-black/10" />
                       </div>
                     )}

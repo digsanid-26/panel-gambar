@@ -70,7 +70,7 @@ export function CoverImageUploader({
           <img
             src={displayUrl}
             alt="Cover"
-            className="w-full h-48 object-cover rounded-xl border border-border"
+            className="w-full aspect-[3/2] object-cover rounded-xl border border-border"
           />
           <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity rounded-xl flex items-center justify-center gap-3">
             <label className="cursor-pointer">
@@ -111,7 +111,7 @@ export function CoverImageUploader({
           onDragOver={handleDragOver}
           onDragLeave={handleDragLeave}
           onClick={() => inputRef.current?.click()}
-          className={`flex flex-col items-center justify-center w-full h-48 border-2 border-dashed rounded-xl cursor-pointer transition-colors ${
+          className={`flex flex-col items-center justify-center w-full aspect-[3/2] border-2 border-dashed rounded-xl cursor-pointer transition-colors ${
             dragOver
               ? "border-primary bg-primary/10"
               : "border-border hover:border-primary/50 hover:bg-primary/5"

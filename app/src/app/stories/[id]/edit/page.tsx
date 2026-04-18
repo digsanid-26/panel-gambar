@@ -638,10 +638,10 @@ export default function EditStoryPage() {
                   <img
                     src={panel.image_url}
                     alt=""
-                    className="w-12 h-12 rounded-lg object-cover shrink-0"
+                    className="w-[54px] h-9 rounded-lg object-cover shrink-0"
                   />
                 ) : (
-                  <div className="w-12 h-12 rounded-lg bg-surface-alt flex items-center justify-center shrink-0">
+                  <div className="w-[54px] h-9 rounded-lg bg-surface-alt flex items-center justify-center shrink-0">
                     <ImageIcon className="w-5 h-5 text-muted" />
                   </div>
                 )}
@@ -687,7 +687,7 @@ export default function EditStoryPage() {
                         <img
                           src={panel.image_url}
                           alt=""
-                          className="w-full max-h-[300px] object-contain rounded-xl border border-border"
+                          className="w-full aspect-[3/2] object-cover rounded-xl border border-border"
                         />
                         <label className="absolute bottom-2 right-2 cursor-pointer">
                           <Button variant="outline" size="sm" className="bg-surface-card" type="button">
@@ -706,7 +706,7 @@ export default function EditStoryPage() {
                         </label>
                       </div>
                     ) : (
-                      <label className="flex flex-col items-center justify-center w-full h-40 border-2 border-dashed border-border rounded-xl cursor-pointer hover:border-primary/50 hover:bg-primary/5 transition-colors">
+                      <label className="flex flex-col items-center justify-center w-full aspect-[3/2] border-2 border-dashed border-border rounded-xl cursor-pointer hover:border-primary/50 hover:bg-primary/5 transition-colors">
                         <Upload className="w-8 h-8 text-muted mb-2" />
                         <span className="text-sm text-muted">Klik untuk upload gambar</span>
                         <span className="text-xs text-muted mt-1">JPG, PNG, WebP · Max 5MB</span>

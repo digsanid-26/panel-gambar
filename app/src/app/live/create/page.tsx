@@ -138,10 +138,10 @@ export default function CreateLiveSessionPage() {
                     <img
                       src={story.cover_image_url}
                       alt=""
-                      className="w-16 h-16 rounded-lg object-cover shrink-0"
+                      className="w-20 h-[54px] rounded-lg object-cover shrink-0"
                     />
                   ) : (
-                    <div className="w-16 h-16 rounded-lg bg-gradient-to-br from-primary/10 to-secondary/10 flex items-center justify-center shrink-0">
+                    <div className="w-20 h-[54px] rounded-lg bg-gradient-to-br from-primary/10 to-secondary/10 flex items-center justify-center shrink-0">
                       <BookOpen className="w-6 h-6 text-primary/40" />
                     </div>
                   )}
