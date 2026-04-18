@@ -215,3 +215,125 @@ CREATE POLICY "Only admins and teachers can update app_settings"
 -- Seed default
 INSERT INTO public.app_settings (key, value) VALUES ('google_auth_enabled', 'true')
 ON CONFLICT (key) DO NOTHING;
+
+-- ============================================
+-- Migration V2.4: Narration overlay on panels
+-- ============================================
+ALTER TABLE public.panels ADD COLUMN IF NOT EXISTS narration_overlay jsonb DEFAULT NULL;
+
+-- ============================================
+-- Migration V2.5: Schools (teacher school profile)
+-- ============================================
+CREATE TABLE IF NOT EXISTS public.schools (
+  id uuid PRIMARY KEY DEFAULT uuid_generate_v4(),
+  name text NOT NULL,
+  address text NOT NULL DEFAULT '',
+  city text,
+  province text,
+  postal_code text,
+  phone text,
+  logo_url text,
+  teacher_id uuid REFERENCES public.profiles(id) ON DELETE CASCADE NOT NULL,
+  created_at timestamptz NOT NULL DEFAULT now()
+);
+
+ALTER TABLE public.schools ENABLE ROW LEVEL SECURITY;
+
+CREATE POLICY "Schools viewable by authenticated users"
+  ON public.schools FOR SELECT USING (auth.role() = 'authenticated');
+
+CREATE POLICY "Teachers can create own school"
+  ON public.schools FOR INSERT WITH CHECK (auth.uid() = teacher_id);
+
+CREATE POLICY "Teachers can update own school"
+  ON public.schools FOR UPDATE USING (auth.uid() = teacher_id);
+
+CREATE POLICY "Teachers can delete own school"
+  ON public.schools FOR DELETE USING (auth.uid() = teacher_id);
+
+-- Link profile to school
+ALTER TABLE public.profiles ADD COLUMN IF NOT EXISTS school_id uuid REFERENCES public.schools(id) ON DELETE SET NULL;
+
+-- Link classrooms to school
+ALTER TABLE public.classrooms ADD COLUMN IF NOT EXISTS school_id uuid REFERENCES public.schools(id) ON DELETE SET NULL;
+
+-- ============================================
+-- Migration V2.6: Managed students (teacher-created)
+-- ============================================
+CREATE TABLE IF NOT EXISTS public.managed_students (
+  id uuid PRIMARY KEY DEFAULT uuid_generate_v4(),
+  name text NOT NULL,
+  username text NOT NULL,
+  email text,
+  class_id uuid REFERENCES public.classrooms(id) ON DELETE CASCADE NOT NULL,
+  teacher_id uuid REFERENCES public.profiles(id) ON DELETE CASCADE NOT NULL,
+  user_id uuid REFERENCES public.profiles(id) ON DELETE SET NULL,
+  avatar_url text,
+  created_at timestamptz NOT NULL DEFAULT now(),
+  UNIQUE(teacher_id, username)
+);
+
+ALTER TABLE public.managed_students ENABLE ROW LEVEL SECURITY;
+
+CREATE POLICY "Managed students viewable by teacher and linked user"
+  ON public.managed_students FOR SELECT USING (
+    auth.uid() = teacher_id OR auth.uid() = user_id
+  );
+
+CREATE POLICY "Teachers can create managed students"
+  ON public.managed_students FOR INSERT WITH CHECK (auth.uid() = teacher_id);
+
+CREATE POLICY "Teachers can update managed students"
+  ON public.managed_students FOR UPDATE USING (auth.uid() = teacher_id);
+
+CREATE POLICY "Teachers can delete managed students"
+  ON public.managed_students FOR DELETE USING (auth.uid() = teacher_id);
+
+-- ============================================
+-- Migration V2.7: Story recording mode + recording status
+-- ============================================
+ALTER TABLE public.stories ADD COLUMN IF NOT EXISTS recording_mode text DEFAULT 'manual';
+ALTER TABLE public.recordings ADD COLUMN IF NOT EXISTS auto_active boolean DEFAULT false;
+ALTER TABLE public.recordings ADD COLUMN IF NOT EXISTS status text DEFAULT 'pending';
+
+-- ============================================
+-- Migration V2.8: Element assets (element manager)
+-- ============================================
+CREATE TABLE IF NOT EXISTS public.element_assets (
+  id uuid PRIMARY KEY DEFAULT uuid_generate_v4(),
+  story_id uuid REFERENCES public.stories(id) ON DELETE CASCADE NOT NULL,
+  panel_id uuid REFERENCES public.panels(id) ON DELETE SET NULL,
+  dialog_id uuid REFERENCES public.dialogs(id) ON DELETE SET NULL,
+  type text NOT NULL DEFAULT 'file' CHECK (type IN ('image', 'audio', 'recording', 'file')),
+  label text NOT NULL DEFAULT '',
+  url text NOT NULL,
+  source text NOT NULL DEFAULT 'upload',
+  created_by uuid REFERENCES public.profiles(id) ON DELETE SET NULL,
+  metadata jsonb DEFAULT '{}'::jsonb,
+  created_at timestamptz NOT NULL DEFAULT now()
+);
+
+ALTER TABLE public.element_assets ENABLE ROW LEVEL SECURITY;
+
+CREATE POLICY "Element assets viewable by story author and performers"
+  ON public.element_assets FOR SELECT USING (
+    EXISTS (
+      SELECT 1 FROM public.stories WHERE id = story_id AND (author_id = auth.uid() OR status = 'published')
+    )
+  );
+
+CREATE POLICY "Authors can manage element assets"
+  ON public.element_assets FOR INSERT WITH CHECK (
+    EXISTS (SELECT 1 FROM public.stories WHERE id = story_id AND author_id = auth.uid())
+    OR auth.uid() = created_by
+  );
+
+CREATE POLICY "Authors can update element assets"
+  ON public.element_assets FOR UPDATE USING (
+    EXISTS (SELECT 1 FROM public.stories WHERE id = story_id AND author_id = auth.uid())
+  );
+
+CREATE POLICY "Authors can delete element assets"
+  ON public.element_assets FOR DELETE USING (
+    EXISTS (SELECT 1 FROM public.stories WHERE id = story_id AND author_id = auth.uid())
+  );

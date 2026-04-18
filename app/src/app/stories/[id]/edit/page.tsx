@@ -4,7 +4,7 @@ import { useEffect, useState, useCallback } from "react";
 import { useParams, useRouter } from "next/navigation";
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/client";
-import type { Story, Panel, Dialog, Theme, Level, TargetClass, PanelType, DisplayMode, StoryCharacter, PanelTimelineItem } from "@/lib/types";
+import type { Story, Panel, Dialog, Theme, Level, TargetClass, PanelType, DisplayMode, StoryCharacter, PanelTimelineItem, NarrationOverlay, ManagedStudent } from "@/lib/types";
 import { Navbar } from "@/components/layout/navbar";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -70,6 +70,7 @@ export default function EditStoryPage() {
   const [themes, setThemes] = useState<Theme[]>([]);
   const [levels, setLevels] = useState<Level[]>([]);
   const [targetClasses, setTargetClasses] = useState<TargetClass[]>([]);
+  const [managedStudents, setManagedStudents] = useState<ManagedStudent[]>([]);
 
   // Dialog form state
   const [dialogCharName, setDialogCharName] = useState("Karakter");
@@ -114,6 +115,14 @@ export default function EditStoryPage() {
     setThemes((themeRes.data || []) as Theme[]);
     setLevels((levelRes.data || []) as Level[]);
     setTargetClasses((classRes.data || []) as TargetClass[]);
+
+    // Load managed students for character assignment
+    const { data: studentsData } = await supabase
+      .from("managed_students")
+      .select("*")
+      .eq("teacher_id", user.id)
+      .order("name");
+    setManagedStudents((studentsData || []) as ManagedStudent[]);
 
     setLoading(false);
   }
@@ -204,6 +213,13 @@ export default function EditStoryPage() {
       timeline_data: timeline as unknown as Record<string, unknown>[],
     }).eq("id", panelId);
     setPanels(panels.map((p) => (p.id === panelId ? { ...p, timeline_data: timeline } : p)));
+  }
+
+  async function saveNarrationOverlay(panelId: string, overlay: NarrationOverlay) {
+    await supabase.from("panels").update({
+      narration_overlay: overlay as unknown as Record<string, unknown>,
+    }).eq("id", panelId);
+    setPanels(panels.map((p) => (p.id === panelId ? { ...p, narration_overlay: overlay } : p)));
   }
 
   async function saveCanvasData(panelId: string, canvasData: import("@/lib/types").CanvasData) {
@@ -610,6 +626,7 @@ export default function EditStoryPage() {
               characters={story.characters || []}
               onChange={saveCharacters}
               onUploadAvatar={uploadCharacterAvatar}
+              availableStudents={managedStudents}
             />
           </div>
         )}
@@ -694,6 +711,7 @@ export default function EditStoryPage() {
                       panel={panel}
                       onUploadImage={(file) => uploadPanelImage(panel.id, file)}
                       onDialogPositionChange={updateDialogPosition}
+                      onNarrationOverlayChange={(overlay) => saveNarrationOverlay(panel.id, overlay)}
                     />
                   )}
 

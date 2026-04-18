@@ -8,6 +8,7 @@ import type { UserProfile } from "@/lib/types";
 import { cn } from "@/lib/utils";
 import {
   BookOpen,
+  Building2,
   LayoutDashboard,
   LogOut,
   Menu,
@@ -58,6 +59,7 @@ export function Navbar() {
         ...(user.role === "guru" || user.role === "admin"
           ? [
               { href: "/stories/create", label: "Buat Cerita", icon: PlusCircle },
+              { href: "/school", label: "Sekolah", icon: Building2 },
               { href: "/settings", label: "Pengaturan", icon: Settings },
             ]
           : []),

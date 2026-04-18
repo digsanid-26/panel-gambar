@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useRef } from "react";
-import type { StoryCharacter, CharacterGender } from "@/lib/types";
+import type { StoryCharacter, CharacterGender, ManagedStudent } from "@/lib/types";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Select } from "@/components/ui/select";
@@ -11,6 +11,8 @@ interface CharacterManagerProps {
   characters: StoryCharacter[];
   onChange: (characters: StoryCharacter[]) => void;
   onUploadAvatar?: (file: File) => Promise<string | null>;
+  /** Available students that can be assigned to perform characters */
+  availableStudents?: ManagedStudent[];
 }
 
 const GENDER_OPTIONS = [
@@ -28,7 +30,7 @@ function generateId() {
   return `char_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`;
 }
 
-export function CharacterManager({ characters, onChange, onUploadAvatar }: CharacterManagerProps) {
+export function CharacterManager({ characters, onChange, onUploadAvatar, availableStudents = [] }: CharacterManagerProps) {
   const [editingId, setEditingId] = useState<string | null>(null);
   const [showAddForm, setShowAddForm] = useState(false);
 
@@ -38,6 +40,8 @@ export function CharacterManager({ characters, onChange, onUploadAvatar }: Chara
   const [color, setColor] = useState(DEFAULT_COLORS[0]);
   const [description, setDescription] = useState("");
   const [avatarUrl, setAvatarUrl] = useState<string | undefined>();
+  const [performedBy, setPerformedBy] = useState<string | undefined>();
+  const [performedByName, setPerformedByName] = useState<string | undefined>();
   const [uploading, setUploading] = useState(false);
 
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -48,6 +52,8 @@ export function CharacterManager({ characters, onChange, onUploadAvatar }: Chara
     setColor(DEFAULT_COLORS[characters.length % DEFAULT_COLORS.length]);
     setDescription("");
     setAvatarUrl(undefined);
+    setPerformedBy(undefined);
+    setPerformedByName(undefined);
     setEditingId(null);
     setShowAddForm(false);
   }
@@ -59,6 +65,8 @@ export function CharacterManager({ characters, onChange, onUploadAvatar }: Chara
     setColor(char.color);
     setDescription(char.description || "");
     setAvatarUrl(char.avatar_url);
+    setPerformedBy(char.performed_by);
+    setPerformedByName(char.performed_by_name);
     setShowAddForm(true);
   }
 
@@ -72,6 +80,8 @@ export function CharacterManager({ characters, onChange, onUploadAvatar }: Chara
       gender,
       color,
       description: description.trim() || undefined,
+      performed_by: performedBy || undefined,
+      performed_by_name: performedByName || undefined,
     };
 
     if (editingId) {
@@ -146,6 +156,9 @@ export function CharacterManager({ characters, onChange, onUploadAvatar }: Chara
                 </div>
                 {char.description && (
                   <p className="text-xs text-muted truncate">{char.description}</p>
+                )}
+                {char.performed_by_name && (
+                  <p className="text-[10px] text-accent truncate">🎭 {char.performed_by_name}</p>
                 )}
               </div>
 
@@ -267,6 +280,34 @@ export function CharacterManager({ characters, onChange, onUploadAvatar }: Chara
               onChange={(e) => setDescription(e.target.value)}
             />
           </div>
+
+          {/* Performed by selector */}
+          {availableStudents.length > 0 && (
+            <div>
+              <label className="block text-xs font-medium mb-1">Diperankan Oleh</label>
+              <select
+                value={performedBy || ""}
+                onChange={(e) => {
+                  const sid = e.target.value;
+                  if (!sid) {
+                    setPerformedBy(undefined);
+                    setPerformedByName(undefined);
+                  } else {
+                    const student = availableStudents.find((s) => s.id === sid);
+                    setPerformedBy(sid);
+                    setPerformedByName(student?.name);
+                  }
+                }}
+                className="w-full h-9 rounded-lg border border-border bg-surface px-3 text-sm"
+              >
+                <option value="">-- Belum ditentukan --</option>
+                {availableStudents.map((s) => (
+                  <option key={s.id} value={s.id}>{s.name} (@{s.username})</option>
+                ))}
+              </select>
+              <p className="text-[10px] text-muted mt-0.5">Siswa ini akan bisa merekam dialog karakter ini</p>
+            </div>
+          )}
 
           <div className="flex items-center gap-2 pt-1">
             <Button

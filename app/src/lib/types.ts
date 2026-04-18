@@ -6,9 +6,12 @@ export interface UserProfile {
   name: string;
   role: UserRole;
   avatar_url?: string;
+  school_id?: string;
   school?: string;
   created_at: string;
 }
+
+export type RecordingMode = "auto" | "manual";
 
 export interface Story {
   id: string;
@@ -21,6 +24,8 @@ export interface Story {
   target_class: string;
   display_mode?: DisplayMode;
   characters?: StoryCharacter[];
+  /** How student recordings are handled */
+  recording_mode?: RecordingMode;
   status: "draft" | "published" | "archived";
   author_id: string;
   author_name?: string;
@@ -40,6 +45,10 @@ export interface StoryCharacter {
   gender: CharacterGender;
   color: string;
   description?: string;
+  /** Student ID assigned to perform this character */
+  performed_by?: string;
+  /** Student name (denormalized for display) */
+  performed_by_name?: string;
 }
 
 export type PanelType = "simple" | "complete";
@@ -48,6 +57,16 @@ export type PanelType = "simple" | "complete";
 export type SimpleDisplayMode = "slide" | "fade" | "continuous";
 export type CompleteDisplayMode = "vertical-scroll" | "flipbook";
 export type DisplayMode = SimpleDisplayMode | CompleteDisplayMode;
+
+export interface NarrationOverlay {
+  position_x: number;
+  position_y: number;
+  font_color: string;
+  bg_color: string;
+  opacity: number;
+  font_size?: number;
+  max_width?: number;
+}
 
 export interface Panel {
   id: string;
@@ -58,6 +77,7 @@ export interface Panel {
   background_color: string;
   narration_text?: string;
   narration_audio_url?: string;
+  narration_overlay?: NarrationOverlay;
   background_audio_url?: string;
   canvas_data?: CanvasData;
   timeline_data?: PanelTimelineItem[];
@@ -143,6 +163,26 @@ export interface Recording {
   audio_url: string;
   feedback_score?: number;
   feedback_text?: string;
+  /** Whether this recording auto-replaces the original audio */
+  auto_active?: boolean;
+  /** Status: pending review, approved, rejected */
+  status?: "pending" | "approved" | "rejected";
+  created_at: string;
+}
+
+// ============================================
+// School profile
+// ============================================
+export interface School {
+  id: string;
+  name: string;
+  address: string;
+  city?: string;
+  province?: string;
+  postal_code?: string;
+  phone?: string;
+  logo_url?: string;
+  teacher_id: string;
   created_at: string;
 }
 
@@ -152,8 +192,46 @@ export interface ClassRoom {
   code: string;
   teacher_id: string;
   teacher_name?: string;
+  school_id?: string;
   created_at: string;
   student_count?: number;
+  students?: ManagedStudent[];
+}
+
+/** Student created/managed by teacher (not self-registered) */
+export interface ManagedStudent {
+  id: string;
+  name: string;
+  username: string;
+  email?: string;
+  class_id: string;
+  teacher_id: string;
+  /** Auth user ID if linked */
+  user_id?: string;
+  avatar_url?: string;
+  created_at: string;
+}
+
+// ============================================
+// Element Manager (assets per story)
+// ============================================
+export type ElementAssetType = "image" | "audio" | "recording" | "file";
+
+export interface ElementAsset {
+  id: string;
+  story_id: string;
+  panel_id?: string;
+  dialog_id?: string;
+  type: ElementAssetType;
+  label: string;
+  url: string;
+  /** Source: 'upload' | 'recording' | 'generated' */
+  source: string;
+  /** Who uploaded/recorded */
+  created_by: string;
+  created_by_name?: string;
+  metadata?: Record<string, unknown>;
+  created_at: string;
 }
 
 export interface Assignment {

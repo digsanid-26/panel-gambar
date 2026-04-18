@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useMemo } from "react";
-import type { Panel, Dialog, UserProfile, PanelTimelineItem } from "@/lib/types";
+import type { Panel, Dialog, UserProfile, PanelTimelineItem, NarrationOverlay } from "@/lib/types";
 import { AudioPlayer } from "@/components/audio/audio-player";
 import { AudioRecorder } from "@/components/audio/audio-recorder";
 import { Mic, Image as ImageIcon } from "lucide-react";
@@ -117,6 +117,31 @@ export function PanelCard({
           </div>
         )}
 
+        {/* Narration overlay (inside panel) — timeline-aware */}
+        {panel.narration_text && visibility.narration && (() => {
+          const no: NarrationOverlay = panel.narration_overlay || {
+            position_x: 50, position_y: 85, font_color: "#ffffff",
+            bg_color: "#000000", opacity: 0.75, font_size: 14, max_width: 80,
+          };
+          return (
+            <div
+              className="absolute z-10 rounded-lg px-3 py-2 transition-all duration-300"
+              style={{
+                left: `${no.position_x}%`,
+                top: `${no.position_y}%`,
+                transform: "translate(-50%, -50%)",
+                color: no.font_color,
+                backgroundColor: no.bg_color,
+                opacity: no.opacity,
+                fontSize: `${no.font_size || 14}px`,
+                maxWidth: `${no.max_width || 80}%`,
+              }}
+            >
+              <p className="leading-relaxed">{panel.narration_text}</p>
+            </div>
+          );
+        })()}
+
         {/* Dialog bubbles overlay — timeline-aware */}
         {panel.dialogs?.map((dialog) => {
           const visible = isDialogVisible(dialog);
@@ -164,32 +189,23 @@ export function PanelCard({
         })}
       </div>
 
-      {/* Narration — timeline-aware */}
-      {!compact && panel.narration_text && visibility.narration && (
-        <div className={`mt-4 bg-surface-card rounded-xl border border-border p-4 transition-all duration-300 ${
-          visibility.narration ? "opacity-100" : "opacity-0"
-        }`}>
-          <div className="flex items-start gap-3">
-            <div className="flex-1">
-              <p className="text-sm leading-relaxed">{panel.narration_text}</p>
-            </div>
-            <div className="flex items-center gap-1 shrink-0">
-              {panel.narration_audio_url && (
-                <AudioPlayer src={panel.narration_audio_url} compact label="Dengar" />
-              )}
-              {user && user.role === "siswa" && onSaveRecording && (
-                <button
-                  onClick={() => setShowRecorder(showRecorder === "narration" ? null : "narration")}
-                  className="inline-flex items-center gap-1 px-3 py-1.5 rounded-full text-xs font-semibold bg-danger/10 text-danger hover:bg-danger/20 transition-colors"
-                >
-                  <Mic className="w-3 h-3" />
-                  Rekam
-                </button>
-              )}
-            </div>
-          </div>
+      {/* Narration audio controls (text is now in-panel overlay) */}
+      {!compact && (panel.narration_audio_url || (user && user.role === "siswa" && onSaveRecording && panel.narration_text)) && visibility.narration && (
+        <div className="mt-3 flex items-center gap-2 flex-wrap">
+          {panel.narration_audio_url && (
+            <AudioPlayer src={panel.narration_audio_url} compact label="Narasi" />
+          )}
+          {user && user.role === "siswa" && onSaveRecording && panel.narration_text && (
+            <button
+              onClick={() => setShowRecorder(showRecorder === "narration" ? null : "narration")}
+              className="inline-flex items-center gap-1 px-3 py-1.5 rounded-full text-xs font-semibold bg-danger/10 text-danger hover:bg-danger/20 transition-colors"
+            >
+              <Mic className="w-3 h-3" />
+              Rekam Narasi
+            </button>
+          )}
           {showRecorder === "narration" && onSaveRecording && (
-            <div className="mt-3">
+            <div className="w-full mt-1">
               <AudioRecorder
                 onSave={(blob) => { onSaveRecording(blob); setShowRecorder(null); }}
                 onCancel={() => setShowRecorder(null)}
