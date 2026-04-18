@@ -16,10 +16,12 @@ export function FadeViewer({ panels, user, onSaveRecording }: FadeViewerProps) {
   const [isPlaying, setIsPlaying] = useState(false);
   const [fadingOut, setFadingOut] = useState(false);
   const [displayIndex, setDisplayIndex] = useState(0);
+  const [panelTime, setPanelTime] = useState(0);
 
   const handleIndexChange = useCallback((newIndex: number) => {
     if (newIndex === displayIndex) return;
     setFadingOut(true);
+    setPanelTime(0);
     setTimeout(() => {
       setDisplayIndex(newIndex);
       setCurrentIndex(newIndex);
@@ -29,10 +31,10 @@ export function FadeViewer({ panels, user, onSaveRecording }: FadeViewerProps) {
 
   const handleStop = useCallback(() => {
     setIsPlaying(false);
+    setPanelTime(0);
     handleIndexChange(0);
   }, [handleIndexChange]);
 
-  // When auto-play changes index
   const handleAutoIndex = useCallback((newIndex: number) => {
     handleIndexChange(newIndex);
   }, [handleIndexChange]);
@@ -53,6 +55,8 @@ export function FadeViewer({ panels, user, onSaveRecording }: FadeViewerProps) {
             index={displayIndex}
             user={user}
             onSaveRecording={onSaveRecording ? (blob, dialogId) => onSaveRecording(currentPanel.id, blob, dialogId) : undefined}
+            currentTime={isPlaying ? panelTime : undefined}
+            isPlaying={isPlaying}
           />
         </div>
       </div>
@@ -65,7 +69,7 @@ export function FadeViewer({ panels, user, onSaveRecording }: FadeViewerProps) {
         isPlaying={isPlaying}
         onPlayPause={() => setIsPlaying(!isPlaying)}
         onStop={handleStop}
-        panelDuration={6}
+        onPanelTimeUpdate={setPanelTime}
       />
     </div>
   );

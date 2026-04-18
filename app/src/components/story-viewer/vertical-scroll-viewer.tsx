@@ -174,7 +174,6 @@ export function VerticalScrollViewer({ panels, user, onSaveRecording }: Vertical
         onStop={handleStop}
         flybox
         visible={flyboxVisible}
-        panelDuration={6}
       />
 
       {/* Infinity scroll toggle button */}

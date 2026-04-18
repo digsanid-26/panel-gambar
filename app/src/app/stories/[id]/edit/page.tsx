@@ -17,6 +17,7 @@ import { AudioRecorder } from "@/components/audio/audio-recorder";
 import { AudioPlayer } from "@/components/audio/audio-player";
 import { CharacterManager } from "@/components/story-editor/character-manager";
 import { PanelTimelineEditor } from "@/components/story-editor/panel-timeline-editor";
+import { SimplePanelEditor } from "@/components/story-editor/simple-panel-editor";
 import {
   ArrowLeft,
   ChevronDown,
@@ -313,6 +314,18 @@ export default function EditStoryPage() {
       setShowDialogForm(null);
     }
     setSaving(false);
+  }
+
+  async function updateDialogPosition(dialogId: string, posX: number, posY: number) {
+    await supabase.from("dialogs").update({ position_x: posX, position_y: posY }).eq("id", dialogId);
+    setPanels((prev) =>
+      prev.map((p) => ({
+        ...p,
+        dialogs: (p.dialogs || []).map((d) =>
+          d.id === dialogId ? { ...d, position_x: posX, position_y: posY } : d
+        ),
+      }))
+    );
   }
 
   async function deleteDialog(panelId: string, dialogId: string) {
@@ -675,53 +688,13 @@ export default function EditStoryPage() {
                     />
                   )}
 
-                  {/* Image upload — only for simple panels */}
+                  {/* Live editor for simple panels — image + draggable bubbles */}
                   {panel.panel_type !== "complete" && (
-                  <div>
-                    <label className="block text-sm font-semibold mb-2">
-                      <ImageIcon className="w-4 h-4 inline mr-1" />
-                      Gambar Panel
-                    </label>
-                    {panel.image_url ? (
-                      <div className="relative">
-                        <img
-                          src={panel.image_url}
-                          alt=""
-                          className="w-full aspect-[3/2] object-cover rounded-xl border border-border"
-                        />
-                        <label className="absolute bottom-2 right-2 cursor-pointer">
-                          <Button variant="outline" size="sm" className="bg-surface-card" type="button">
-                            <Upload className="w-4 h-4" />
-                            Ganti
-                          </Button>
-                          <input
-                            type="file"
-                            accept="image/*"
-                            className="hidden"
-                            onChange={(e) => {
-                              const f = e.target.files?.[0];
-                              if (f) uploadPanelImage(panel.id, f);
-                            }}
-                          />
-                        </label>
-                      </div>
-                    ) : (
-                      <label className="flex flex-col items-center justify-center w-full aspect-[3/2] border-2 border-dashed border-border rounded-xl cursor-pointer hover:border-primary/50 hover:bg-primary/5 transition-colors">
-                        <Upload className="w-8 h-8 text-muted mb-2" />
-                        <span className="text-sm text-muted">Klik untuk upload gambar</span>
-                        <span className="text-xs text-muted mt-1">JPG, PNG, WebP · Max 5MB</span>
-                        <input
-                          type="file"
-                          accept="image/*"
-                          className="hidden"
-                          onChange={(e) => {
-                            const f = e.target.files?.[0];
-                            if (f) uploadPanelImage(panel.id, f);
-                          }}
-                        />
-                      </label>
-                    )}
-                  </div>
+                    <SimplePanelEditor
+                      panel={panel}
+                      onUploadImage={(file) => uploadPanelImage(panel.id, file)}
+                      onDialogPositionChange={updateDialogPosition}
+                    />
                   )}
 
                   {/* Background color */}

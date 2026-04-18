@@ -14,12 +14,14 @@ interface SlideViewerProps {
 export function SlideViewer({ panels, user, onSaveRecording }: SlideViewerProps) {
   const [currentIndex, setCurrentIndex] = useState(0);
   const [isPlaying, setIsPlaying] = useState(false);
+  const [panelTime, setPanelTime] = useState(0);
 
   const currentPanel = panels[currentIndex];
 
   const handleStop = useCallback(() => {
     setIsPlaying(false);
     setCurrentIndex(0);
+    setPanelTime(0);
   }, []);
 
   if (!currentPanel) return null;
@@ -34,6 +36,8 @@ export function SlideViewer({ panels, user, onSaveRecording }: SlideViewerProps)
             index={currentIndex}
             user={user}
             onSaveRecording={onSaveRecording ? (blob, dialogId) => onSaveRecording(currentPanel.id, blob, dialogId) : undefined}
+            currentTime={isPlaying ? panelTime : undefined}
+            isPlaying={isPlaying}
           />
         </div>
       </div>
@@ -42,10 +46,11 @@ export function SlideViewer({ panels, user, onSaveRecording }: SlideViewerProps)
       <StoryProgressBar
         panels={panels}
         currentIndex={currentIndex}
-        onIndexChange={setCurrentIndex}
+        onIndexChange={(idx) => { setCurrentIndex(idx); setPanelTime(0); }}
         isPlaying={isPlaying}
         onPlayPause={() => setIsPlaying(!isPlaying)}
         onStop={handleStop}
+        onPanelTimeUpdate={setPanelTime}
       />
     </div>
   );

@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/client";
@@ -17,6 +17,20 @@ export default function RegisterPage() {
   const [role, setRole] = useState<"guru" | "siswa">("guru");
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
+  const [googleEnabled, setGoogleEnabled] = useState(false);
+
+  useEffect(() => {
+    async function checkGoogleAuth() {
+      const supabase = createClient();
+      const { data } = await supabase
+        .from("app_settings")
+        .select("value")
+        .eq("key", "google_auth_enabled")
+        .single();
+      if (data?.value === "true") setGoogleEnabled(true);
+    }
+    checkGoogleAuth();
+  }, []);
 
   async function handleGoogleRegister() {
     setError("");
@@ -87,7 +101,7 @@ export default function RegisterPage() {
             </div>
 
             {/* Google Register */}
-            <button
+            {googleEnabled && <button
               type="button"
               onClick={handleGoogleRegister}
               disabled={loading}
@@ -100,16 +114,16 @@ export default function RegisterPage() {
                 <path d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z" fill="#EA4335" />
               </svg>
               Daftar dengan Google
-            </button>
+            </button>}
 
-            <div className="relative my-2">
+            {googleEnabled && <div className="relative my-2">
               <div className="absolute inset-0 flex items-center">
                 <div className="w-full border-t border-border" />
               </div>
               <div className="relative flex justify-center text-xs">
                 <span className="bg-surface-card px-3 text-muted">atau daftar dengan email</span>
               </div>
-            </div>
+            </div>}
 
             <form onSubmit={handleRegister} className="space-y-4">
               {/* Role selector */}

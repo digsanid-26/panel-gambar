@@ -1,9 +1,10 @@
 "use client";
 
-import { useState, useRef, useEffect, useCallback } from "react";
+import { useState, useRef, useEffect, useCallback, useMemo } from "react";
 import { Play, Pause, Square, Volume2, VolumeX, SkipBack, SkipForward } from "lucide-react";
 import { cn } from "@/lib/utils";
 import type { Panel } from "@/lib/types";
+import { getPanelDuration } from "./panel-card";
 
 interface StoryProgressBarProps {
   panels: Panel[];
@@ -12,12 +13,14 @@ interface StoryProgressBarProps {
   isPlaying: boolean;
   onPlayPause: () => void;
   onStop: () => void;
-  /** Duration per panel in seconds (for auto-play modes) */
+  /** Override duration per panel in seconds — if not set, uses timeline_data */
   panelDuration?: number;
   /** Whether this is a flybox (auto-hides) */
   flybox?: boolean;
   visible?: boolean;
   className?: string;
+  /** Callback with current time within the active panel (seconds) */
+  onPanelTimeUpdate?: (time: number) => void;
 }
 
 export function StoryProgressBar({
@@ -27,10 +30,11 @@ export function StoryProgressBar({
   isPlaying,
   onPlayPause,
   onStop,
-  panelDuration = 5,
+  panelDuration: panelDurationOverride,
   flybox = false,
   visible = true,
   className,
+  onPanelTimeUpdate,
 }: StoryProgressBarProps) {
   const [panelProgress, setPanelProgress] = useState(0);
   const [activeAudioIdx, setActiveAudioIdx] = useState<number | null>(null);
@@ -38,8 +42,26 @@ export function StoryProgressBar({
   const timerRef = useRef<number | null>(null);
   const progressRef = useRef(0);
 
-  const totalDuration = panels.length * panelDuration;
-  const globalProgress = ((currentIndex + panelProgress / 100) / panels.length) * 100;
+  // Per-panel durations from timeline data
+  const panelDurations = useMemo(
+    () => panels.map((p) => panelDurationOverride ?? getPanelDuration(p)),
+    [panels, panelDurationOverride]
+  );
+  const currentPanelDur = panelDurations[currentIndex] || 5;
+  const totalDuration = panelDurations.reduce((sum, d) => sum + d, 0);
+
+  // Cumulative start time for each panel (for global progress bar)
+  const cumulativeStarts = useMemo(() => {
+    const starts: number[] = [0];
+    for (let i = 1; i < panelDurations.length; i++) {
+      starts.push(starts[i - 1] + panelDurations[i - 1]);
+    }
+    return starts;
+  }, [panelDurations]);
+
+  const globalProgress = totalDuration > 0
+    ? ((cumulativeStarts[currentIndex] + (panelProgress / 100) * currentPanelDur) / totalDuration) * 100
+    : 0;
 
   // Auto-advance timer when playing
   useEffect(() => {
@@ -53,12 +75,13 @@ export function StoryProgressBar({
 
     function tick(now: number) {
       const elapsed = (now - startTime) / 1000;
-      const newProgress = startProgress + (elapsed / panelDuration) * 100;
+      const newProgress = startProgress + (elapsed / currentPanelDur) * 100;
 
       if (newProgress >= 100) {
         // Move to next panel
         progressRef.current = 0;
         setPanelProgress(0);
+        onPanelTimeUpdate?.(0);
         if (currentIndex < panels.length - 1) {
           onIndexChange(currentIndex + 1);
         } else {
@@ -69,6 +92,7 @@ export function StoryProgressBar({
 
       progressRef.current = newProgress;
       setPanelProgress(newProgress);
+      onPanelTimeUpdate?.((newProgress / 100) * currentPanelDur);
       timerRef.current = requestAnimationFrame(tick);
     }
 
@@ -77,12 +101,13 @@ export function StoryProgressBar({
     return () => {
       if (timerRef.current) cancelAnimationFrame(timerRef.current);
     };
-  }, [isPlaying, currentIndex, panelDuration, panels.length, onIndexChange, onStop]);
+  }, [isPlaying, currentIndex, currentPanelDur, panels.length, onIndexChange, onStop, onPanelTimeUpdate]);
 
   // Reset panel progress on index change
   useEffect(() => {
     progressRef.current = 0;
     setPanelProgress(0);
+    onPanelTimeUpdate?.(0);
   }, [currentIndex]);
 
   // Play narration audio for current panel
@@ -117,10 +142,16 @@ export function StoryProgressBar({
     const rect = e.currentTarget.getBoundingClientRect();
     const x = e.clientX - rect.left;
     const pct = x / rect.width;
-    const targetPanel = Math.floor(pct * panels.length);
-    const clampedIdx = Math.max(0, Math.min(panels.length - 1, targetPanel));
+    const targetTime = pct * totalDuration;
+    // Find which panel this time falls into
+    let targetIdx = 0;
+    for (let i = 0; i < cumulativeStarts.length; i++) {
+      if (targetTime >= cumulativeStarts[i]) targetIdx = i;
+    }
+    const clampedIdx = Math.max(0, Math.min(panels.length - 1, targetIdx));
     progressRef.current = 0;
     setPanelProgress(0);
+    onPanelTimeUpdate?.(0);
     onIndexChange(clampedIdx);
   }
 
@@ -142,7 +173,7 @@ export function StoryProgressBar({
     return `${m}:${s.toString().padStart(2, "0")}`;
   };
 
-  const currentTime = (currentIndex * panelDuration) + (panelProgress / 100 * panelDuration);
+  const currentTime = cumulativeStarts[currentIndex] + (panelProgress / 100 * currentPanelDur);
 
   if (!visible && flybox) return null;
 
@@ -160,13 +191,13 @@ export function StoryProgressBar({
         className="relative h-2 bg-border rounded-full cursor-pointer mb-2.5 group"
         onClick={handleSeek}
       >
-        {/* Panel segment markers */}
+        {/* Panel segment markers (variable width per panel) */}
         {panels.map((_, i) => (
           i > 0 && (
             <div
               key={i}
               className="absolute top-0 bottom-0 w-px bg-surface-card/60 z-10"
-              style={{ left: `${(i / panels.length) * 100}%` }}
+              style={{ left: `${(cumulativeStarts[i] / totalDuration) * 100}%` }}
             />
           )
         ))}
@@ -178,8 +209,8 @@ export function StoryProgressBar({
               key={`audio-${i}`}
               className="absolute top-0 bottom-0 bg-accent/30 rounded-full"
               style={{
-                left: `${(i / panels.length) * 100}%`,
-                width: `${(1 / panels.length) * 100}%`,
+                left: `${(cumulativeStarts[i] / totalDuration) * 100}%`,
+                width: `${(panelDurations[i] / totalDuration) * 100}%`,
               }}
             />
           )
@@ -190,8 +221,8 @@ export function StoryProgressBar({
           <div
             className="absolute top-0 bottom-0 bg-accent/60 rounded-full animate-pulse"
             style={{
-              left: `${(activeAudioIdx / panels.length) * 100}%`,
-              width: `${(1 / panels.length) * 100}%`,
+              left: `${(cumulativeStarts[activeAudioIdx] / totalDuration) * 100}%`,
+              width: `${(panelDurations[activeAudioIdx] / totalDuration) * 100}%`,
             }}
           />
         )}

@@ -140,7 +140,6 @@ export function ContinuousViewer({ panels, user, onSaveRecording }: ContinuousVi
         isPlaying={isPlaying && !hovered}
         onPlayPause={() => setIsPlaying(!isPlaying)}
         onStop={handleStop}
-        panelDuration={8}
       />
     </div>
   );

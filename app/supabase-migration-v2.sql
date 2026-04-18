@@ -192,3 +192,26 @@ ALTER TABLE public.stories ADD COLUMN IF NOT EXISTS display_mode text DEFAULT 's
 -- ============================================
 ALTER TABLE public.stories ADD COLUMN IF NOT EXISTS characters jsonb DEFAULT '[]'::jsonb;
 ALTER TABLE public.panels ADD COLUMN IF NOT EXISTS timeline_data jsonb DEFAULT '[]'::jsonb;
+
+-- ============================================
+-- Migration V2.3: App settings (key-value store)
+-- ============================================
+CREATE TABLE IF NOT EXISTS public.app_settings (
+  key text PRIMARY KEY,
+  value text NOT NULL DEFAULT '',
+  updated_at timestamptz DEFAULT now()
+);
+
+ALTER TABLE public.app_settings ENABLE ROW LEVEL SECURITY;
+
+CREATE POLICY "Anyone can read app_settings"
+  ON public.app_settings FOR SELECT USING (true);
+
+CREATE POLICY "Only admins and teachers can update app_settings"
+  ON public.app_settings FOR ALL USING (
+    EXISTS (SELECT 1 FROM public.profiles WHERE id = auth.uid() AND role IN ('admin', 'guru'))
+  );
+
+-- Seed default
+INSERT INTO public.app_settings (key, value) VALUES ('google_auth_enabled', 'true')
+ON CONFLICT (key) DO NOTHING;
