@@ -15,6 +15,7 @@ import { CoverImageUploader } from "@/components/ui/cover-image-uploader";
 import { VideoTrailerUploader } from "@/components/ui/video-trailer-uploader";
 import { AudioRecorder } from "@/components/audio/audio-recorder";
 import { AudioPlayer } from "@/components/audio/audio-player";
+import { AudioFileUploader } from "@/components/audio/audio-file-uploader";
 import { CharacterManager } from "@/components/story-editor/character-manager";
 import { PanelTimelineEditor } from "@/components/story-editor/panel-timeline-editor";
 import { SimplePanelEditor } from "@/components/story-editor/simple-panel-editor";
@@ -367,6 +368,63 @@ export default function EditStoryPage() {
     const { error } = await supabase.storage
       .from("audio")
       .upload(path, blob, { contentType: "audio/webm" });
+
+    if (!error) {
+      const { data: { publicUrl } } = supabase.storage
+        .from("audio")
+        .getPublicUrl(path);
+      await supabase.from("dialogs").update({ audio_url: publicUrl }).eq("id", dialogId);
+      setPanels(
+        panels.map((p) =>
+          p.id === panelId
+            ? {
+                ...p,
+                dialogs: (p.dialogs || []).map((d) =>
+                  d.id === dialogId ? { ...d, audio_url: publicUrl } : d
+                ),
+              }
+            : p
+        )
+      );
+    }
+    setSaving(false);
+  }
+
+  async function uploadAudioFile(panelId: string, file: File, type: "narration" | "background") {
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) return;
+
+    const ext = file.name.split(".").pop() || "mp3";
+    const path = `${user.id}/${storyId}/${panelId}/${type}_${Date.now()}.${ext}`;
+    setSaving(true);
+
+    const { error } = await supabase.storage
+      .from("audio")
+      .upload(path, file, { contentType: file.type });
+
+    if (!error) {
+      const { data: { publicUrl } } = supabase.storage
+        .from("audio")
+        .getPublicUrl(path);
+      const field = type === "narration" ? "narration_audio_url" : "background_audio_url";
+      await updatePanelField(panelId, field, publicUrl);
+    }
+    setSaving(false);
+    setShowNarrationRecorder(null);
+    setShowBgAudioRecorder(null);
+  }
+
+  async function uploadDialogAudioFile(dialogId: string, panelId: string, file: File) {
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) return;
+
+    const ext = file.name.split(".").pop() || "mp3";
+    const path = `${user.id}/${storyId}/${panelId}/dialog_${dialogId}_${Date.now()}.${ext}`;
+    setSaving(true);
+
+    const { error } = await supabase.storage
+      .from("audio")
+      .upload(path, file, { contentType: file.type });
 
     if (!error) {
       const { data: { publicUrl } } = supabase.storage
@@ -758,20 +816,30 @@ export default function EditStoryPage() {
                             <Mic className="w-4 h-4" />
                             Rekam Ulang
                           </Button>
+                          <AudioFileUploader
+                            label="Ganti File"
+                            onUpload={(file) => uploadAudioFile(panel.id, file, "narration")}
+                          />
                         </div>
                       ) : (
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          onClick={() =>
-                            setShowNarrationRecorder(
-                              showNarrationRecorder === panel.id ? null : panel.id
-                            )
-                          }
-                        >
-                          <Mic className="w-4 h-4" />
-                          Rekam Audio Narasi
-                        </Button>
+                        <div className="flex items-center gap-2">
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() =>
+                              setShowNarrationRecorder(
+                                showNarrationRecorder === panel.id ? null : panel.id
+                              )
+                            }
+                          >
+                            <Mic className="w-4 h-4" />
+                            Rekam
+                          </Button>
+                          <AudioFileUploader
+                            label="Upload File"
+                            onUpload={(file) => uploadAudioFile(panel.id, file, "narration")}
+                          />
+                        </div>
                       )}
                       {showNarrationRecorder === panel.id && (
                         <div className="mt-2">
@@ -798,22 +866,33 @@ export default function EditStoryPage() {
                           size="sm"
                           onClick={() => setShowBgAudioRecorder(panel.id)}
                         >
-                          Ganti
+                          <Mic className="w-4 h-4" />
+                          Rekam Ulang
                         </Button>
+                        <AudioFileUploader
+                          label="Ganti File"
+                          onUpload={(file) => uploadAudioFile(panel.id, file, "background")}
+                        />
                       </div>
                     ) : (
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        onClick={() =>
-                          setShowBgAudioRecorder(
-                            showBgAudioRecorder === panel.id ? null : panel.id
-                          )
-                        }
-                      >
-                        <Music className="w-4 h-4" />
-                        Rekam/Upload Suara Latar
-                      </Button>
+                      <div className="flex items-center gap-2">
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() =>
+                            setShowBgAudioRecorder(
+                              showBgAudioRecorder === panel.id ? null : panel.id
+                            )
+                          }
+                        >
+                          <Mic className="w-4 h-4" />
+                          Rekam
+                        </Button>
+                        <AudioFileUploader
+                          label="Upload File"
+                          onUpload={(file) => uploadAudioFile(panel.id, file, "background")}
+                        />
+                      </div>
                     )}
                     {showBgAudioRecorder === panel.id && (
                       <div className="mt-2">
@@ -856,12 +935,26 @@ export default function EditStoryPage() {
                                 Posisi: {dialog.position_x}%, {dialog.position_y}%
                               </span>
                               {dialog.audio_url ? (
-                                <AudioPlayer src={dialog.audio_url} compact label="🔊" />
+                                <div className="flex items-center gap-1">
+                                  <AudioPlayer src={dialog.audio_url} compact label="🔊" />
+                                  <AudioFileUploader
+                                    compact
+                                    label="Ganti"
+                                    onUpload={(file) => uploadDialogAudioFile(dialog.id, panel.id, file)}
+                                  />
+                                </div>
                               ) : (
-                                <AudioRecorder
-                                  onSave={(blob) => uploadDialogAudio(dialog.id, panel.id, blob)}
-                                  className="!p-1.5"
-                                />
+                                <div className="flex items-center gap-1">
+                                  <AudioRecorder
+                                    onSave={(blob) => uploadDialogAudio(dialog.id, panel.id, blob)}
+                                    className="!p-1.5"
+                                  />
+                                  <AudioFileUploader
+                                    compact
+                                    label="Upload"
+                                    onUpload={(file) => uploadDialogAudioFile(dialog.id, panel.id, file)}
+                                  />
+                                </div>
                               )}
                             </div>
                           </div>

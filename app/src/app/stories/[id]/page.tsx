@@ -17,6 +17,7 @@ import {
 } from "@/components/story-viewer";
 import {
   ChevronLeft,
+  Copy,
   Edit,
   Film,
   Loader2,
@@ -38,6 +39,7 @@ export default function StoryViewerPage() {
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [showTrailer, setShowTrailer] = useState(false);
   const [managedStudentId, setManagedStudentId] = useState<string | undefined>(undefined);
+  const [duplicating, setDuplicating] = useState(false);
 
   const supabase = createClient();
 
@@ -146,7 +148,31 @@ export default function StoryViewerPage() {
   if (!story) return null;
 
   const isAuthor = user?.id === story.author_id;
+  const isGuru = user?.role === "guru" || user?.role === "admin";
   const displayMode: DisplayMode = (story.display_mode as DisplayMode) || "slide";
+
+  async function handleDuplicate() {
+    if (!story) return;
+    if (!confirm("Duplikasi cerita ini ke akun Anda? Salinan akan menjadi draft yang bisa Anda edit dan personalisasi.")) return;
+    setDuplicating(true);
+    try {
+      const res = await fetch("/api/stories/duplicate", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ story_id: story.id }),
+      });
+      const result = await res.json();
+      if (!res.ok) {
+        alert(result.error || "Gagal menduplikasi cerita");
+        return;
+      }
+      router.push(`/stories/${result.new_story_id}/edit`);
+    } catch {
+      alert("Gagal menduplikasi cerita");
+    } finally {
+      setDuplicating(false);
+    }
+  }
 
   function renderViewer() {
     if (panels.length === 0) {
@@ -243,6 +269,12 @@ export default function StoryViewerPage() {
                     <span className="hidden sm:inline">Edit</span>
                   </Button>
                 </Link>
+              )}
+              {isGuru && !isAuthor && (
+                <Button variant="outline" size="sm" onClick={handleDuplicate} disabled={duplicating}>
+                  {duplicating ? <Loader2 className="w-4 h-4 animate-spin" /> : <Copy className="w-4 h-4" />}
+                  <span className="hidden sm:inline">Duplikasi</span>
+                </Button>
               )}
               <Button
                 variant="ghost"
