@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useMemo } from "react";
-import type { Panel, Dialog, UserProfile, PanelTimelineItem, NarrationOverlay } from "@/lib/types";
+import type { Panel, Dialog, UserProfile, PanelTimelineItem, NarrationOverlay, StoryCharacter } from "@/lib/types";
 import { AudioPlayer } from "@/components/audio/audio-player";
 import { AudioRecorder } from "@/components/audio/audio-recorder";
 import { Mic, Image as ImageIcon } from "lucide-react";
@@ -19,6 +19,10 @@ interface PanelCardProps {
   currentTime?: number;
   /** Whether the story is currently playing */
   isPlaying?: boolean;
+  /** Story characters with performer assignments */
+  storyCharacters?: StoryCharacter[];
+  /** Current user's managed_student ID (if they are a managed student) */
+  managedStudentId?: string;
 }
 
 function getBubbleClass(style: string) {
@@ -54,6 +58,8 @@ export function PanelCard({
   className = "",
   currentTime,
   isPlaying = false,
+  storyCharacters = [],
+  managedStudentId,
 }: PanelCardProps) {
   const [showRecorder, setShowRecorder] = useState<string | null>(null);
 
@@ -166,15 +172,21 @@ export function PanelCard({
                 {dialog.audio_url && (
                   <AudioPlayer src={dialog.audio_url} compact label="🔊" />
                 )}
-                {user && user.role === "siswa" && onSaveRecording && (
-                  <button
-                    onClick={() => setShowRecorder(showRecorder === dialog.id ? null : dialog.id)}
-                    className="inline-flex items-center gap-1 px-2 py-1 rounded-full text-[10px] font-semibold bg-danger/10 text-danger hover:bg-danger/20 transition-colors"
-                  >
-                    <Mic className="w-3 h-3" />
-                    Rekam
-                  </button>
-                )}
+                {user && user.role === "siswa" && onSaveRecording && (() => {
+                  // Check if this student is the assigned performer for this character
+                  const char = storyCharacters.find((c) => c.name === dialog.character_name);
+                  const isPerformer = !char?.performed_by || char.performed_by === managedStudentId;
+                  if (!isPerformer) return null;
+                  return (
+                    <button
+                      onClick={() => setShowRecorder(showRecorder === dialog.id ? null : dialog.id)}
+                      className="inline-flex items-center gap-1 px-2 py-1 rounded-full text-[10px] font-semibold bg-danger/10 text-danger hover:bg-danger/20 transition-colors"
+                    >
+                      <Mic className="w-3 h-3" />
+                      Rekam
+                    </button>
+                  );
+                })()}
               </div>
               {showRecorder === dialog.id && onSaveRecording && (
                 <div className="mt-2">

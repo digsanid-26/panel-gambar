@@ -18,6 +18,7 @@ import { AudioPlayer } from "@/components/audio/audio-player";
 import { CharacterManager } from "@/components/story-editor/character-manager";
 import { PanelTimelineEditor } from "@/components/story-editor/panel-timeline-editor";
 import { SimplePanelEditor } from "@/components/story-editor/simple-panel-editor";
+import { ElementManager } from "@/components/story-editor/element-manager";
 import {
   ArrowLeft,
   ChevronDown,
@@ -628,6 +629,9 @@ export default function EditStoryPage() {
               onUploadAvatar={uploadCharacterAvatar}
               availableStudents={managedStudents}
             />
+
+            {/* Element Manager */}
+            <ElementManager storyId={storyId} />
           </div>
         )}
 
