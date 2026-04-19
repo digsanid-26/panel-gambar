@@ -3,7 +3,7 @@
 import { useState, useRef, useCallback, useEffect } from "react";
 import type { PanelTimelineItem, Panel, Dialog } from "@/lib/types";
 import { Button } from "@/components/ui/button";
-import { Clock, Plus, Trash2, GripHorizontal, RotateCcw, ZoomIn, ZoomOut, Maximize2 } from "lucide-react";
+import { Clock, Plus, Trash2, GripHorizontal, RotateCcw, ZoomIn, ZoomOut, Maximize2, Play, Square } from "lucide-react";
 
 interface PanelTimelineEditorProps {
   panel: Panel;
@@ -118,18 +118,30 @@ export function PanelTimelineEditor({ panel, timelineData, onChange }: PanelTime
   const [items, setItems] = useState<PanelTimelineItem[]>(
     timelineData.length > 0 ? timelineData : buildDefaultTimeline(panel)
   );
-  const [dragging, setDragging] = useState<{
+  const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [pps, setPps] = useState(DEFAULT_PPS); // pixels per second (zoom level)
+  const [isDragging, setIsDragging] = useState(false);
+  const [dragMode, setDragMode] = useState<"move" | "resize-left" | "resize-right">("move");
+
+  // Preview playback state
+  const [previewTime, setPreviewTime] = useState<number | null>(null);
+  const previewRafRef = useRef<number>(0);
+  const previewAudiosRef = useRef<HTMLAudioElement[]>([]);
+  const previewStartRef = useRef<number>(0);
+
+  const containerRef = useRef<HTMLDivElement>(null);
+  const trackAreaRef = useRef<HTMLDivElement>(null);
+  const ppsRef = useRef(pps);
+  ppsRef.current = pps;
+
+  // Stable drag ref — never triggers re-renders during drag
+  const dragRef = useRef<{
     id: string;
     mode: "move" | "resize-left" | "resize-right";
     startX: number;
     origStart: number;
     origDuration: number;
   } | null>(null);
-  const [selectedId, setSelectedId] = useState<string | null>(null);
-  const [pps, setPps] = useState(DEFAULT_PPS); // pixels per second (zoom level)
-
-  const containerRef = useRef<HTMLDivElement>(null);
-  const trackAreaRef = useRef<HTMLDivElement>(null);
 
   // Sync with external timelineData changes (e.g. audio upload adds entry)
   useEffect(() => {
@@ -175,45 +187,48 @@ export function PanelTimelineEditor({ panel, timelineData, onChange }: PanelTime
     }))
     .filter((t) => t.items.length > 0);
 
-  // Drag handlers
-  const handleMouseDown = useCallback(
-    (e: React.MouseEvent, itemId: string, mode: "move" | "resize-left" | "resize-right") => {
-      e.preventDefault();
-      e.stopPropagation();
-      const item = items.find((it) => it.id === itemId);
-      if (!item) return;
-      setSelectedId(itemId);
-      setDragging({
-        id: itemId,
-        mode,
-        startX: e.clientX,
-        origStart: item.start,
-        origDuration: item.duration,
-      });
-    },
-    [items]
-  );
+  // --- Drag handlers using ref (no re-render jitter) ---
+  function handleMouseDown(e: React.MouseEvent, itemId: string, mode: "move" | "resize-left" | "resize-right") {
+    e.preventDefault();
+    e.stopPropagation();
+    // Read directly from current items state
+    setItems((prev) => {
+      const item = prev.find((it) => it.id === itemId);
+      if (item) {
+        dragRef.current = {
+          id: itemId,
+          mode,
+          startX: e.clientX,
+          origStart: item.start,
+          origDuration: item.duration,
+        };
+      }
+      return prev; // no change
+    });
+    setSelectedId(itemId);
+    setIsDragging(true);
+    setDragMode(mode);
+  }
 
   useEffect(() => {
-    if (!dragging) return;
-
     function handleMouseMove(e: MouseEvent) {
-      if (!dragging) return;
-      const dx = e.clientX - dragging.startX;
-      const dt = dx / pps;
+      const drag = dragRef.current;
+      if (!drag) return;
+      const dx = e.clientX - drag.startX;
+      const dt = dx / ppsRef.current;
 
       setItems((prev) =>
         prev.map((item) => {
-          if (item.id !== dragging.id) return item;
+          if (item.id !== drag.id) return item;
 
-          if (dragging.mode === "move") {
-            const newStart = Math.max(0, dragging.origStart + dt);
-            return { ...item, start: Math.round(newStart * 4) / 4 }; // snap to 0.25s
+          if (drag.mode === "move") {
+            const newStart = Math.max(0, drag.origStart + dt);
+            return { ...item, start: Math.round(newStart * 4) / 4 };
           }
 
-          if (dragging.mode === "resize-left") {
-            const newStart = Math.max(0, dragging.origStart + dt);
-            const endTime = dragging.origStart + dragging.origDuration;
+          if (drag.mode === "resize-left") {
+            const newStart = Math.max(0, drag.origStart + dt);
+            const endTime = drag.origStart + drag.origDuration;
             const newDuration = Math.max(MIN_DURATION, endTime - newStart);
             return {
               ...item,
@@ -222,8 +237,8 @@ export function PanelTimelineEditor({ panel, timelineData, onChange }: PanelTime
             };
           }
 
-          if (dragging.mode === "resize-right") {
-            const newDuration = Math.max(MIN_DURATION, dragging.origDuration + dt);
+          if (drag.mode === "resize-right") {
+            const newDuration = Math.max(MIN_DURATION, drag.origDuration + dt);
             return { ...item, duration: Math.round(newDuration * 4) / 4 };
           }
 
@@ -233,7 +248,8 @@ export function PanelTimelineEditor({ panel, timelineData, onChange }: PanelTime
     }
 
     function handleMouseUp() {
-      setDragging(null);
+      dragRef.current = null;
+      setIsDragging(false);
     }
 
     window.addEventListener("mousemove", handleMouseMove);
@@ -242,7 +258,81 @@ export function PanelTimelineEditor({ panel, timelineData, onChange }: PanelTime
       window.removeEventListener("mousemove", handleMouseMove);
       window.removeEventListener("mouseup", handleMouseUp);
     };
-  }, [dragging]);
+  }, []); // runs once, reads from refs
+
+  // --- Preview playback ---
+  function stopPreview() {
+    cancelAnimationFrame(previewRafRef.current);
+    previewAudiosRef.current.forEach((a) => { a.pause(); a.src = ""; });
+    previewAudiosRef.current = [];
+    setPreviewTime(null);
+  }
+
+  function startPreview() {
+    stopPreview();
+
+    const panelItem = items.find((it) => it.type === "panel");
+    const duration = panelItem ? panelItem.duration : totalDuration;
+
+    // Collect audio items with their source URLs
+    const audioSchedule: { start: number; end: number; src: string }[] = [];
+
+    items.forEach((it) => {
+      if (it.type === "narration-audio" && panel.narration_audio_url) {
+        audioSchedule.push({ start: it.start, end: it.start + it.duration, src: panel.narration_audio_url });
+      }
+      if (it.type === "background-audio" && panel.background_audio_url) {
+        audioSchedule.push({ start: it.start, end: it.start + it.duration, src: panel.background_audio_url });
+      }
+      if (it.type === "dialog" && it.ref_id) {
+        const dialog = panel.dialogs?.find((d) => d.id === it.ref_id);
+        if (dialog?.audio_url) {
+          audioSchedule.push({ start: it.start, end: it.start + it.duration, src: dialog.audio_url });
+        }
+      }
+    });
+
+    // Pre-create Audio elements
+    const audioEntries = audioSchedule.map((s) => {
+      const audio = new Audio(s.src);
+      audio.preload = "auto";
+      return { ...s, audio, started: false };
+    });
+    previewAudiosRef.current = audioEntries.map((e) => e.audio);
+
+    const t0 = performance.now();
+    previewStartRef.current = t0;
+
+    function tick() {
+      const elapsed = (performance.now() - t0) / 1000;
+      if (elapsed >= duration) {
+        stopPreview();
+        return;
+      }
+      setPreviewTime(elapsed);
+
+      // Start/stop audio elements based on elapsed time
+      audioEntries.forEach((entry) => {
+        if (elapsed >= entry.start && elapsed < entry.end && !entry.started) {
+          entry.audio.currentTime = 0;
+          entry.audio.play().catch(() => {});
+          entry.started = true;
+        }
+        if (elapsed >= entry.end && entry.started) {
+          entry.audio.pause();
+        }
+      });
+
+      previewRafRef.current = requestAnimationFrame(tick);
+    }
+
+    previewRafRef.current = requestAnimationFrame(tick);
+  }
+
+  // Cleanup on unmount
+  useEffect(() => {
+    return () => stopPreview();
+  }, []);
 
   function deleteItem(id: string) {
     setItems((prev) => prev.filter((it) => it.id !== id));
@@ -313,6 +403,28 @@ export function PanelTimelineEditor({ panel, timelineData, onChange }: PanelTime
           </button>
           <span className="text-[9px] text-muted w-8 text-center">{pps}px/s</span>
           <div className="w-px h-4 bg-border mx-0.5" />
+          {/* Preview play/stop */}
+          {previewTime !== null ? (
+            <button
+              onClick={stopPreview}
+              className="p-1 text-danger hover:text-danger/80 rounded transition-colors"
+              title="Stop Preview"
+            >
+              <Square className="w-3.5 h-3.5" />
+            </button>
+          ) : (
+            <button
+              onClick={startPreview}
+              className="p-1 text-primary hover:text-primary/80 rounded transition-colors"
+              title="Play Preview"
+            >
+              <Play className="w-3.5 h-3.5" />
+            </button>
+          )}
+          {previewTime !== null && (
+            <span className="text-[9px] text-primary font-mono w-10 text-center">{formatTime(previewTime)}</span>
+          )}
+          <div className="w-px h-4 bg-border mx-0.5" />
           <Button variant="ghost" size="sm" onClick={addBubbleTrack} title="Tambah track bubble">
             <Plus className="w-3.5 h-3.5" />
             Bubble
@@ -344,7 +456,7 @@ export function PanelTimelineEditor({ panel, timelineData, onChange }: PanelTime
         <div
           ref={(el) => { containerRef.current = el; trackAreaRef.current = el; }}
           className="overflow-x-auto"
-          style={{ cursor: dragging ? (dragging.mode === "move" ? "grabbing" : "col-resize") : "default" }}
+          style={{ cursor: isDragging ? (dragMode === "move" ? "grabbing" : "col-resize") : "default" }}
         >
           <div style={{ width: `${timelineWidth}px`, minWidth: "100%" }}>
             {tracks.map((track) => (
@@ -357,6 +469,14 @@ export function PanelTimelineEditor({ panel, timelineData, onChange }: PanelTime
                 </div>
 
                 {/* Items in this track */}
+                {/* Playhead indicator */}
+                {previewTime !== null && (
+                  <div
+                    className="absolute top-0 bottom-0 w-0.5 bg-primary z-40 pointer-events-none"
+                    style={{ left: `${previewTime * pps}px` }}
+                  />
+                )}
+
                 {track.items.map((item) => {
                   const left = item.start * pps;
                   const width = Math.max(item.duration * pps, 20);
