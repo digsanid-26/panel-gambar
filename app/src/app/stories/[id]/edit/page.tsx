@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, useCallback } from "react";
+import { useEffect, useState, useCallback, useRef } from "react";
 import { useParams, useRouter } from "next/navigation";
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/client";
@@ -144,7 +144,7 @@ export default function EditStoryPage() {
       .single();
 
     if (data) {
-      setPanels([...panels, { ...data, panel_type: panelType, dialogs: [] } as Panel]);
+      setPanels(prev => [...prev, { ...data, panel_type: panelType, dialogs: [] } as Panel]);
       setExpandedPanel(data.id);
     }
     setSaving(false);
@@ -214,7 +214,7 @@ export default function EditStoryPage() {
     await supabase.from("panels").update({
       timeline_data: timeline as unknown as Record<string, unknown>[],
     }).eq("id", panelId);
-    setPanels(panels.map((p) => (p.id === panelId ? { ...p, timeline_data: timeline } : p)));
+    setPanels(prev => prev.map((p) => (p.id === panelId ? { ...p, timeline_data: timeline } : p)));
   }
 
   /** Probe a Blob/File and return its audio duration in seconds */
@@ -235,13 +235,17 @@ export default function EditStoryPage() {
     });
   }
 
+  // Keep a ref to always-latest panels so async helpers never use stale closure
+  const panelsRef = useRef(panels);
+  panelsRef.current = panels;
+
   /** Ensure a timeline entry exists for an audio type; if not, add one and persist. */
   async function ensureTimelineAudioEntry(
     panelId: string,
     audioType: "narration" | "background",
     audioDuration?: number,
   ) {
-    const panel = panels.find((p) => p.id === panelId);
+    const panel = panelsRef.current.find((p) => p.id === panelId);
     if (!panel) return;
 
     const tlType = audioType === "narration" ? "narration-audio" : "background-audio";
@@ -286,7 +290,7 @@ export default function EditStoryPage() {
     dialogId: string,
     audioDuration?: number,
   ) {
-    const panel = panels.find((p) => p.id === panelId);
+    const panel = panelsRef.current.find((p) => p.id === panelId);
     if (!panel) return;
 
     const existing = (panel.timeline_data as PanelTimelineItem[] | undefined) || [];
@@ -333,13 +337,13 @@ export default function EditStoryPage() {
     await supabase.from("panels").update({
       narration_overlay: overlay as unknown as Record<string, unknown>,
     }).eq("id", panelId);
-    setPanels(panels.map((p) => (p.id === panelId ? { ...p, narration_overlay: overlay } : p)));
+    setPanels(prev => prev.map((p) => (p.id === panelId ? { ...p, narration_overlay: overlay } : p)));
   }
 
   async function saveCanvasData(panelId: string, canvasData: import("@/lib/types").CanvasData) {
     setSaving(true);
     await supabase.from("panels").update({ canvas_data: canvasData as unknown as Record<string, unknown> }).eq("id", panelId);
-    setPanels(panels.map((p) => (p.id === panelId ? { ...p, canvas_data: canvasData } : p)));
+    setPanels(prev => prev.map((p) => (p.id === panelId ? { ...p, canvas_data: canvasData } : p)));
     setSaving(false);
   }
 
@@ -359,12 +363,12 @@ export default function EditStoryPage() {
   async function deletePanel(panelId: string) {
     if (!confirm("Hapus panel ini?")) return;
     await supabase.from("panels").delete().eq("id", panelId);
-    setPanels(panels.filter((p) => p.id !== panelId));
+    setPanels(prev => prev.filter((p) => p.id !== panelId));
   }
 
   async function updatePanelField(panelId: string, field: string, value: string) {
     await supabase.from("panels").update({ [field]: value }).eq("id", panelId);
-    setPanels(panels.map((p) => (p.id === panelId ? { ...p, [field]: value } : p)));
+    setPanels(prev => prev.map((p) => (p.id === panelId ? { ...p, [field]: value } : p)));
   }
 
   async function uploadPanelImage(panelId: string, file: File) {
@@ -435,8 +439,8 @@ export default function EditStoryPage() {
       .single();
 
     if (data) {
-      setPanels(
-        panels.map((p) =>
+      setPanels(prev =>
+        prev.map((p) =>
           p.id === panelId
             ? { ...p, dialogs: [...(p.dialogs || []), data as Dialog] }
             : p
@@ -460,11 +464,36 @@ export default function EditStoryPage() {
     );
   }
 
+  async function moveDialog(panelId: string, dialogId: string, direction: "up" | "down") {
+    // Compute reordered list from current state
+    const panel = panelsRef.current.find((p) => p.id === panelId);
+    if (!panel?.dialogs) return;
+    const dialogs = [...panel.dialogs];
+    const idx = dialogs.findIndex((d) => d.id === dialogId);
+    if (idx < 0) return;
+    const swapIdx = direction === "up" ? idx - 1 : idx + 1;
+    if (swapIdx < 0 || swapIdx >= dialogs.length) return;
+    [dialogs[idx], dialogs[swapIdx]] = [dialogs[swapIdx], dialogs[idx]];
+    const reordered = dialogs.map((d, i) => ({ ...d, order_index: i }));
+
+    // Update state
+    setPanels(prev => prev.map((p) =>
+      p.id === panelId ? { ...p, dialogs: reordered } : p
+    ));
+
+    // Persist to DB
+    await Promise.all(
+      reordered.map((d, i) =>
+        supabase.from("dialogs").update({ order_index: i }).eq("id", d.id)
+      )
+    );
+  }
+
   async function deleteDialog(panelId: string, dialogId: string) {
     if (!confirm("Hapus dialog ini?")) return;
     await supabase.from("dialogs").delete().eq("id", dialogId);
-    setPanels(
-      panels.map((p) =>
+    setPanels(prev =>
+      prev.map((p) =>
         p.id === panelId
           ? { ...p, dialogs: (p.dialogs || []).filter((d) => d.id !== dialogId) }
           : p
@@ -488,8 +517,8 @@ export default function EditStoryPage() {
         .from("audio")
         .getPublicUrl(path);
       await supabase.from("dialogs").update({ audio_url: publicUrl }).eq("id", dialogId);
-      setPanels(
-        panels.map((p) =>
+      setPanels(prev =>
+        prev.map((p) =>
           p.id === panelId
             ? {
                 ...p,
@@ -549,8 +578,8 @@ export default function EditStoryPage() {
         .from("audio")
         .getPublicUrl(path);
       await supabase.from("dialogs").update({ audio_url: publicUrl }).eq("id", dialogId);
-      setPanels(
-        panels.map((p) =>
+      setPanels(prev =>
+        prev.map((p) =>
           p.id === panelId
             ? {
                 ...p,
@@ -590,25 +619,25 @@ export default function EditStoryPage() {
 
   async function movePanelUp(index: number) {
     if (index === 0) return;
-    const updated = [...panels];
+    const updated = [...panelsRef.current];
     [updated[index - 1], updated[index]] = [updated[index], updated[index - 1]];
-    updated.forEach((p, i) => (p.order_index = i));
-    setPanels(updated);
+    const reordered = updated.map((p, i) => ({ ...p, order_index: i }));
+    setPanels(reordered);
     await Promise.all(
-      updated.map((p, i) =>
+      reordered.map((p, i) =>
         supabase.from("panels").update({ order_index: i }).eq("id", p.id)
       )
     );
   }
 
   async function movePanelDown(index: number) {
-    if (index >= panels.length - 1) return;
-    const updated = [...panels];
+    if (index >= panelsRef.current.length - 1) return;
+    const updated = [...panelsRef.current];
     [updated[index], updated[index + 1]] = [updated[index + 1], updated[index]];
-    updated.forEach((p, i) => (p.order_index = i));
-    setPanels(updated);
+    const reordered = updated.map((p, i) => ({ ...p, order_index: i }));
+    setPanels(reordered);
     await Promise.all(
-      updated.map((p, i) =>
+      reordered.map((p, i) =>
         supabase.from("panels").update({ order_index: i }).eq("id", p.id)
       )
     );
@@ -1078,12 +1107,31 @@ export default function EditStoryPage() {
                               )}
                             </div>
                           </div>
-                          <button
-                            onClick={() => deleteDialog(panel.id, dialog.id)}
-                            className="text-muted hover:text-danger p-1 shrink-0"
-                          >
-                            <Trash2 className="w-4 h-4" />
-                          </button>
+                          <div className="flex flex-col items-center gap-0.5 shrink-0">
+                            <button
+                              onClick={() => moveDialog(panel.id, dialog.id, "up")}
+                              className="text-muted hover:text-foreground p-0.5 rounded transition-colors disabled:opacity-30"
+                              title="Pindah ke atas"
+                              disabled={panel.dialogs?.indexOf(dialog) === 0}
+                            >
+                              <ChevronUp className="w-3.5 h-3.5" />
+                            </button>
+                            <button
+                              onClick={() => moveDialog(panel.id, dialog.id, "down")}
+                              className="text-muted hover:text-foreground p-0.5 rounded transition-colors disabled:opacity-30"
+                              title="Pindah ke bawah"
+                              disabled={panel.dialogs?.indexOf(dialog) === (panel.dialogs?.length || 0) - 1}
+                            >
+                              <ChevronDown className="w-3.5 h-3.5" />
+                            </button>
+                            <button
+                              onClick={() => deleteDialog(panel.id, dialog.id)}
+                              className="text-muted hover:text-danger p-0.5 rounded transition-colors"
+                              title="Hapus dialog"
+                            >
+                              <Trash2 className="w-3.5 h-3.5" />
+                            </button>
+                          </div>
                         </div>
                       ))}
                     </div>
