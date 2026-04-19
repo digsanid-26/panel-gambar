@@ -217,6 +217,24 @@ export default function EditStoryPage() {
     setPanels(panels.map((p) => (p.id === panelId ? { ...p, timeline_data: timeline } : p)));
   }
 
+  /** Probe a Blob/File and return its audio duration in seconds */
+  function getAudioDurationFromBlob(blob: Blob): Promise<number> {
+    return new Promise((resolve) => {
+      const url = URL.createObjectURL(blob);
+      const audio = new Audio();
+      audio.preload = "metadata";
+      const cleanup = () => { audio.src = ""; audio.remove(); URL.revokeObjectURL(url); };
+      audio.addEventListener("loadedmetadata", () => {
+        const dur = audio.duration;
+        cleanup();
+        resolve(Number.isFinite(dur) ? dur : 0);
+      });
+      audio.addEventListener("error", () => { cleanup(); resolve(0); });
+      setTimeout(() => { cleanup(); resolve(0); }, 8000);
+      audio.src = url;
+    });
+  }
+
   /** Ensure a timeline entry exists for an audio type; if not, add one and persist. */
   async function ensureTimelineAudioEntry(
     panelId: string,
@@ -228,29 +246,87 @@ export default function EditStoryPage() {
 
     const tlType = audioType === "narration" ? "narration-audio" : "background-audio";
     const existing = (panel.timeline_data as PanelTimelineItem[] | undefined) || [];
-    const alreadyExists = existing.some((it) => it.type === tlType);
-    if (alreadyExists) return;
+    const existingItem = existing.find((it) => it.type === tlType);
 
     const dur = audioDuration || (audioType === "narration" ? 3 : 5);
-    const newItem: PanelTimelineItem = {
-      id: `tl_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`,
-      type: tlType,
-      label: audioType === "narration" ? "Audio Narasi" : "Suara Latar",
-      start: audioType === "narration" ? 0.5 : 0,
-      duration: dur,
-      color: audioType === "narration" ? "#22c55e" : "#14b8a6",
-    };
+    let updated: PanelTimelineItem[];
 
-    const updated = [...existing, newItem];
+    if (existingItem) {
+      // Update duration of existing entry
+      updated = existing.map((it) =>
+        it.id === existingItem.id ? { ...it, duration: Math.round(dur * 4) / 4 } : it
+      );
+    } else {
+      // Add new entry
+      const newItem: PanelTimelineItem = {
+        id: `tl_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`,
+        type: tlType,
+        label: audioType === "narration" ? "Audio Narasi" : "Suara Latar",
+        start: audioType === "narration" ? 0.5 : 0,
+        duration: Math.round(dur * 4) / 4,
+        color: audioType === "narration" ? "#22c55e" : "#14b8a6",
+      };
+      updated = [...existing, newItem];
+    }
 
     // Expand panel duration if needed
     const panelItem = updated.find((it) => it.type === "panel");
     const maxEnd = Math.max(...updated.map((it) => it.start + it.duration));
     if (panelItem && panelItem.duration < maxEnd) {
-      panelItem.duration = Math.ceil(maxEnd);
+      const idx = updated.indexOf(panelItem);
+      updated[idx] = { ...panelItem, duration: Math.ceil(maxEnd) };
     }
 
     await saveTimelineData(panelId, updated);
+  }
+
+  /** Ensure a dialog timeline entry exists and has correct duration */
+  async function ensureTimelineDialogEntry(
+    panelId: string,
+    dialogId: string,
+    audioDuration?: number,
+  ) {
+    const panel = panels.find((p) => p.id === panelId);
+    if (!panel) return;
+
+    const existing = (panel.timeline_data as PanelTimelineItem[] | undefined) || [];
+    const existingItem = existing.find((it) => it.type === "dialog" && it.ref_id === dialogId);
+
+    if (existingItem && audioDuration && audioDuration > 0) {
+      // Update duration of existing entry
+      const updated = existing.map((it) =>
+        it.id === existingItem.id ? { ...it, duration: Math.round(audioDuration * 4) / 4 } : it
+      );
+      const panelItem = updated.find((it) => it.type === "panel");
+      const maxEnd = Math.max(...updated.map((it) => it.start + it.duration));
+      if (panelItem && panelItem.duration < maxEnd) {
+        const idx = updated.indexOf(panelItem);
+        updated[idx] = { ...panelItem, duration: Math.ceil(maxEnd) };
+      }
+      await saveTimelineData(panelId, updated);
+    } else if (!existingItem) {
+      // Add new dialog entry
+      const dialog = panel.dialogs?.find((d) => d.id === dialogId);
+      const dur = audioDuration && audioDuration > 0 ? audioDuration : 2;
+      const lastEnd = Math.max(1, ...existing.filter((it) => it.type === "dialog").map((it) => it.start + it.duration));
+      const newItem: PanelTimelineItem = {
+        id: `tl_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`,
+        type: "dialog",
+        label: dialog ? `${dialog.character_name}: "${dialog.text.slice(0, 20)}..."` : "Dialog",
+        ref_id: dialogId,
+        start: lastEnd + 0.25,
+        duration: Math.round(dur * 4) / 4,
+        color: dialog?.character_color || "#f59e0b",
+      };
+      const updated = [...existing, newItem];
+      const panelItem = updated.find((it) => it.type === "panel");
+      const maxEnd = Math.max(...updated.map((it) => it.start + it.duration));
+      if (panelItem && panelItem.duration < maxEnd) {
+        const idx = updated.indexOf(panelItem);
+        updated[idx] = { ...panelItem, duration: Math.ceil(maxEnd) };
+      }
+      await saveTimelineData(panelId, updated);
+    }
   }
 
   async function saveNarrationOverlay(panelId: string, overlay: NarrationOverlay) {
@@ -330,7 +406,8 @@ export default function EditStoryPage() {
 
       const field = type === "narration" ? "narration_audio_url" : "background_audio_url";
       await updatePanelField(panelId, field, publicUrl);
-      await ensureTimelineAudioEntry(panelId, type);
+      const dur = await getAudioDurationFromBlob(blob);
+      await ensureTimelineAudioEntry(panelId, type, dur > 0 ? dur : undefined);
     }
     setSaving(false);
     setShowNarrationRecorder(null);
@@ -423,6 +500,8 @@ export default function EditStoryPage() {
             : p
         )
       );
+      const dur = await getAudioDurationFromBlob(blob);
+      await ensureTimelineDialogEntry(panelId, dialogId, dur > 0 ? dur : undefined);
     }
     setSaving(false);
   }
@@ -445,7 +524,8 @@ export default function EditStoryPage() {
         .getPublicUrl(path);
       const field = type === "narration" ? "narration_audio_url" : "background_audio_url";
       await updatePanelField(panelId, field, publicUrl);
-      await ensureTimelineAudioEntry(panelId, type);
+      const dur = await getAudioDurationFromBlob(file);
+      await ensureTimelineAudioEntry(panelId, type, dur > 0 ? dur : undefined);
     }
     setSaving(false);
     setShowNarrationRecorder(null);
@@ -481,6 +561,8 @@ export default function EditStoryPage() {
             : p
         )
       );
+      const dur = await getAudioDurationFromBlob(file);
+      await ensureTimelineDialogEntry(panelId, dialogId, dur > 0 ? dur : undefined);
     }
     setSaving(false);
   }

@@ -114,6 +114,42 @@ function buildDefaultTimeline(panel: Panel): PanelTimelineItem[] {
   return items;
 }
 
+/** Probe an audio URL and return its duration in seconds */
+function getAudioDurationFromUrl(url: string): Promise<number> {
+  return new Promise((resolve) => {
+    const audio = new Audio();
+    audio.preload = "metadata";
+    const cleanup = () => { audio.src = ""; audio.remove(); };
+    audio.addEventListener("loadedmetadata", () => {
+      const dur = audio.duration;
+      cleanup();
+      resolve(Number.isFinite(dur) ? dur : 0);
+    });
+    audio.addEventListener("error", () => { cleanup(); resolve(0); });
+    // Timeout fallback
+    setTimeout(() => { cleanup(); resolve(0); }, 8000);
+    audio.src = url;
+  });
+}
+
+/** Probe a File/Blob and return its duration in seconds */
+function getAudioDurationFromFile(file: Blob): Promise<number> {
+  return new Promise((resolve) => {
+    const url = URL.createObjectURL(file);
+    const audio = new Audio();
+    audio.preload = "metadata";
+    const cleanup = () => { audio.src = ""; audio.remove(); URL.revokeObjectURL(url); };
+    audio.addEventListener("loadedmetadata", () => {
+      const dur = audio.duration;
+      cleanup();
+      resolve(Number.isFinite(dur) ? dur : 0);
+    });
+    audio.addEventListener("error", () => { cleanup(); resolve(0); });
+    setTimeout(() => { cleanup(); resolve(0); }, 8000);
+    audio.src = url;
+  });
+}
+
 export function PanelTimelineEditor({ panel, timelineData, onChange }: PanelTimelineEditorProps) {
   const [items, setItems] = useState<PanelTimelineItem[]>(
     timelineData.length > 0 ? timelineData : buildDefaultTimeline(panel)
@@ -142,9 +178,13 @@ export function PanelTimelineEditor({ panel, timelineData, onChange }: PanelTime
     origStart: number;
     origDuration: number;
   } | null>(null);
+  const isDraggingRef = useRef(false);
+  // Flag: items changed during drag, need to commit to parent after mouseUp
+  const pendingCommitRef = useRef(false);
 
-  // Sync with external timelineData changes (e.g. audio upload adds entry)
+  // Sync with external timelineData changes — blocked while dragging
   useEffect(() => {
+    if (isDraggingRef.current) return; // never overwrite during drag
     if (timelineData.length > 0) {
       setItems(timelineData);
     }
@@ -165,10 +205,74 @@ export function PanelTimelineEditor({ panel, timelineData, onChange }: PanelTime
     setPps(idealPps);
   }
 
-  // Persist changes
+  // Persist changes — only when NOT dragging
+  const onChangeRef = useRef(onChange);
+  onChangeRef.current = onChange;
   useEffect(() => {
-    onChange(items);
+    if (isDraggingRef.current) {
+      pendingCommitRef.current = true;
+      return;
+    }
+    onChangeRef.current(items);
   }, [items]);
+
+  // Auto-detect audio durations on mount and when panel audio URLs change
+  useEffect(() => {
+    let cancelled = false;
+    async function detectDurations() {
+      const updates: { type: PanelTimelineItem["type"]; duration: number }[] = [];
+
+      if (panel.narration_audio_url) {
+        const dur = await getAudioDurationFromUrl(panel.narration_audio_url);
+        if (dur > 0) updates.push({ type: "narration-audio", duration: dur });
+      }
+      if (panel.background_audio_url) {
+        const dur = await getAudioDurationFromUrl(panel.background_audio_url);
+        if (dur > 0) updates.push({ type: "background-audio", duration: dur });
+      }
+      for (const dialog of panel.dialogs || []) {
+        if (dialog.audio_url) {
+          const dur = await getAudioDurationFromUrl(dialog.audio_url);
+          if (dur > 0) updates.push({ type: "dialog", duration: dur });
+        }
+      }
+
+      if (cancelled || updates.length === 0) return;
+
+      setItems((prev) => {
+        let changed = false;
+        const next = prev.map((item) => {
+          const match = updates.find((u) => {
+            if (u.type !== item.type) return false;
+            if (u.type === "dialog") {
+              // Match by ref_id
+              const dialog = (panel.dialogs || []).find((d) => d.id === item.ref_id);
+              return !!dialog?.audio_url;
+            }
+            return true;
+          });
+          if (match && Math.abs(item.duration - match.duration) > 0.3) {
+            changed = true;
+            return { ...item, duration: Math.round(match.duration * 4) / 4 };
+          }
+          return item;
+        });
+
+        if (!changed) return prev;
+
+        // Expand panel duration if needed
+        const panelItem = next.find((it) => it.type === "panel");
+        const maxEnd = Math.max(...next.map((it) => it.start + it.duration));
+        if (panelItem && panelItem.duration < maxEnd) {
+          const idx = next.indexOf(panelItem);
+          next[idx] = { ...panelItem, duration: Math.ceil(maxEnd) };
+        }
+        return next;
+      });
+    }
+    detectDurations();
+    return () => { cancelled = true; };
+  }, [panel.narration_audio_url, panel.background_audio_url, panel.dialogs]);
 
   // Group items by type for layered display
   const trackOrder: PanelTimelineItem["type"][] = [
@@ -187,11 +291,10 @@ export function PanelTimelineEditor({ panel, timelineData, onChange }: PanelTime
     }))
     .filter((t) => t.items.length > 0);
 
-  // --- Drag handlers using ref (no re-render jitter) ---
+  // --- Drag handlers using ref (no re-render during drag) ---
   function handleMouseDown(e: React.MouseEvent, itemId: string, mode: "move" | "resize-left" | "resize-right") {
     e.preventDefault();
     e.stopPropagation();
-    // Read directly from current items state
     setItems((prev) => {
       const item = prev.find((it) => it.id === itemId);
       if (item) {
@@ -203,8 +306,10 @@ export function PanelTimelineEditor({ panel, timelineData, onChange }: PanelTime
           origDuration: item.duration,
         };
       }
-      return prev; // no change
+      return prev; // no state change
     });
+    isDraggingRef.current = true;
+    pendingCommitRef.current = false;
     setSelectedId(itemId);
     setIsDragging(true);
     setDragMode(mode);
@@ -248,8 +353,16 @@ export function PanelTimelineEditor({ panel, timelineData, onChange }: PanelTime
     }
 
     function handleMouseUp() {
+      if (!dragRef.current) return;
       dragRef.current = null;
+      isDraggingRef.current = false;
       setIsDragging(false);
+      // Commit final position to parent
+      setItems((final) => {
+        // Schedule onChange outside of the setState
+        setTimeout(() => onChangeRef.current(final), 0);
+        return final;
+      });
     }
 
     window.addEventListener("mousemove", handleMouseMove);
@@ -485,7 +598,9 @@ export function PanelTimelineEditor({ panel, timelineData, onChange }: PanelTime
                   return (
                     <div
                       key={item.id}
-                      className={`absolute top-1 bottom-1 rounded-lg flex items-center overflow-hidden cursor-grab select-none transition-shadow ${
+                      className={`absolute top-1 bottom-1 rounded-lg flex items-center overflow-hidden cursor-grab select-none ${
+                        isDragging ? "" : "transition-shadow"
+                      } ${
                         isSelected ? "ring-2 ring-white shadow-lg z-20" : "z-10 hover:shadow-md"
                       }`}
                       style={{
