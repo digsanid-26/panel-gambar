@@ -217,6 +217,42 @@ export default function EditStoryPage() {
     setPanels(panels.map((p) => (p.id === panelId ? { ...p, timeline_data: timeline } : p)));
   }
 
+  /** Ensure a timeline entry exists for an audio type; if not, add one and persist. */
+  async function ensureTimelineAudioEntry(
+    panelId: string,
+    audioType: "narration" | "background",
+    audioDuration?: number,
+  ) {
+    const panel = panels.find((p) => p.id === panelId);
+    if (!panel) return;
+
+    const tlType = audioType === "narration" ? "narration-audio" : "background-audio";
+    const existing = (panel.timeline_data as PanelTimelineItem[] | undefined) || [];
+    const alreadyExists = existing.some((it) => it.type === tlType);
+    if (alreadyExists) return;
+
+    const dur = audioDuration || (audioType === "narration" ? 3 : 5);
+    const newItem: PanelTimelineItem = {
+      id: `tl_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`,
+      type: tlType,
+      label: audioType === "narration" ? "Audio Narasi" : "Suara Latar",
+      start: audioType === "narration" ? 0.5 : 0,
+      duration: dur,
+      color: audioType === "narration" ? "#22c55e" : "#14b8a6",
+    };
+
+    const updated = [...existing, newItem];
+
+    // Expand panel duration if needed
+    const panelItem = updated.find((it) => it.type === "panel");
+    const maxEnd = Math.max(...updated.map((it) => it.start + it.duration));
+    if (panelItem && panelItem.duration < maxEnd) {
+      panelItem.duration = Math.ceil(maxEnd);
+    }
+
+    await saveTimelineData(panelId, updated);
+  }
+
   async function saveNarrationOverlay(panelId: string, overlay: NarrationOverlay) {
     await supabase.from("panels").update({
       narration_overlay: overlay as unknown as Record<string, unknown>,
@@ -294,6 +330,7 @@ export default function EditStoryPage() {
 
       const field = type === "narration" ? "narration_audio_url" : "background_audio_url";
       await updatePanelField(panelId, field, publicUrl);
+      await ensureTimelineAudioEntry(panelId, type);
     }
     setSaving(false);
     setShowNarrationRecorder(null);
@@ -408,6 +445,7 @@ export default function EditStoryPage() {
         .getPublicUrl(path);
       const field = type === "narration" ? "narration_audio_url" : "background_audio_url";
       await updatePanelField(panelId, field, publicUrl);
+      await ensureTimelineAudioEntry(panelId, type);
     }
     setSaving(false);
     setShowNarrationRecorder(null);

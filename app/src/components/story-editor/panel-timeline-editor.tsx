@@ -3,7 +3,7 @@
 import { useState, useRef, useCallback, useEffect } from "react";
 import type { PanelTimelineItem, Panel, Dialog } from "@/lib/types";
 import { Button } from "@/components/ui/button";
-import { Clock, Plus, Trash2, GripHorizontal, RotateCcw } from "lucide-react";
+import { Clock, Plus, Trash2, GripHorizontal, RotateCcw, ZoomIn, ZoomOut, Maximize2 } from "lucide-react";
 
 interface PanelTimelineEditorProps {
   panel: Panel;
@@ -11,7 +11,9 @@ interface PanelTimelineEditorProps {
   onChange: (items: PanelTimelineItem[]) => void;
 }
 
-const PIXELS_PER_SECOND = 60;
+const DEFAULT_PPS = 60; // default pixels per second
+const MIN_PPS = 10;
+const MAX_PPS = 120;
 const MIN_DURATION = 0.5;
 const SNAP_THRESHOLD = 0.25; // seconds
 
@@ -124,8 +126,17 @@ export function PanelTimelineEditor({ panel, timelineData, onChange }: PanelTime
     origDuration: number;
   } | null>(null);
   const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [pps, setPps] = useState(DEFAULT_PPS); // pixels per second (zoom level)
 
   const containerRef = useRef<HTMLDivElement>(null);
+  const trackAreaRef = useRef<HTMLDivElement>(null);
+
+  // Sync with external timelineData changes (e.g. audio upload adds entry)
+  useEffect(() => {
+    if (timelineData.length > 0) {
+      setItems(timelineData);
+    }
+  }, [timelineData]);
 
   // Total timeline duration = max end of any item
   const totalDuration = Math.max(
@@ -133,7 +144,14 @@ export function PanelTimelineEditor({ panel, timelineData, onChange }: PanelTime
     ...items.map((it) => it.start + it.duration),
     10
   );
-  const timelineWidth = totalDuration * PIXELS_PER_SECOND;
+  const timelineWidth = totalDuration * pps;
+
+  // Fit all items within visible area
+  function fitAll() {
+    const containerWidth = trackAreaRef.current?.clientWidth || 400;
+    const idealPps = Math.max(MIN_PPS, Math.min(MAX_PPS, Math.floor(containerWidth / totalDuration)));
+    setPps(idealPps);
+  }
 
   // Persist changes
   useEffect(() => {
@@ -182,7 +200,7 @@ export function PanelTimelineEditor({ panel, timelineData, onChange }: PanelTime
     function handleMouseMove(e: MouseEvent) {
       if (!dragging) return;
       const dx = e.clientX - dragging.startX;
-      const dt = dx / PIXELS_PER_SECOND;
+      const dt = dx / pps;
 
       setItems((prev) =>
         prev.map((item) => {
@@ -255,12 +273,46 @@ export function PanelTimelineEditor({ panel, timelineData, onChange }: PanelTime
 
   return (
     <div>
-      <div className="flex items-center justify-between mb-2">
-        <label className="block text-sm font-semibold">
+      <div className="flex items-center justify-between mb-2 gap-2 flex-wrap">
+        <label className="block text-sm font-semibold shrink-0">
           <Clock className="w-4 h-4 inline mr-1" />
           Timeline Panel
         </label>
         <div className="flex items-center gap-1">
+          {/* Zoom controls */}
+          <button
+            onClick={() => setPps((v) => Math.max(MIN_PPS, v - 10))}
+            className="p-1 text-muted hover:text-foreground rounded transition-colors"
+            title="Perkecil"
+          >
+            <ZoomOut className="w-3.5 h-3.5" />
+          </button>
+          <input
+            type="range"
+            min={MIN_PPS}
+            max={MAX_PPS}
+            step={5}
+            value={pps}
+            onChange={(e) => setPps(Number(e.target.value))}
+            className="w-16 h-1 accent-primary cursor-pointer"
+            title={`Zoom: ${pps}px/detik`}
+          />
+          <button
+            onClick={() => setPps((v) => Math.min(MAX_PPS, v + 10))}
+            className="p-1 text-muted hover:text-foreground rounded transition-colors"
+            title="Perbesar"
+          >
+            <ZoomIn className="w-3.5 h-3.5" />
+          </button>
+          <button
+            onClick={fitAll}
+            className="p-1 text-muted hover:text-foreground rounded transition-colors"
+            title="Muat semua"
+          >
+            <Maximize2 className="w-3.5 h-3.5" />
+          </button>
+          <span className="text-[9px] text-muted w-8 text-center">{pps}px/s</span>
+          <div className="w-px h-4 bg-border mx-0.5" />
           <Button variant="ghost" size="sm" onClick={addBubbleTrack} title="Tambah track bubble">
             <Plus className="w-3.5 h-3.5" />
             Bubble
@@ -280,7 +332,7 @@ export function PanelTimelineEditor({ panel, timelineData, onChange }: PanelTime
               <div
                 key={i}
                 className="absolute top-0 bottom-0 border-l border-border/50"
-                style={{ left: `${i * PIXELS_PER_SECOND}px` }}
+                style={{ left: `${i * pps}px` }}
               >
                 <span className="text-[9px] text-muted ml-1 select-none">{i}s</span>
               </div>
@@ -290,7 +342,7 @@ export function PanelTimelineEditor({ panel, timelineData, onChange }: PanelTime
 
         {/* Tracks */}
         <div
-          ref={containerRef}
+          ref={(el) => { containerRef.current = el; trackAreaRef.current = el; }}
           className="overflow-x-auto"
           style={{ cursor: dragging ? (dragging.mode === "move" ? "grabbing" : "col-resize") : "default" }}
         >
@@ -306,8 +358,8 @@ export function PanelTimelineEditor({ panel, timelineData, onChange }: PanelTime
 
                 {/* Items in this track */}
                 {track.items.map((item) => {
-                  const left = item.start * PIXELS_PER_SECOND;
-                  const width = Math.max(item.duration * PIXELS_PER_SECOND, 20);
+                  const left = item.start * pps;
+                  const width = Math.max(item.duration * pps, 20);
                   const isSelected = selectedId === item.id;
 
                   return (
@@ -383,7 +435,7 @@ export function PanelTimelineEditor({ panel, timelineData, onChange }: PanelTime
       </div>
 
       <p className="text-[10px] text-muted mt-1.5">
-        Drag untuk memindahkan · Tarik tepi kiri/kanan untuk mengubah durasi · Klik item untuk memilih
+        Drag untuk memindahkan · Tarik tepi kiri/kanan untuk mengubah durasi · Klik item untuk memilih · Gunakan slider zoom atau tombol <strong>Muat Semua</strong> untuk menyesuaikan tampilan
       </p>
     </div>
   );
