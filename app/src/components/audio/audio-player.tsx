@@ -27,19 +27,26 @@ export function AudioPlayer({
   const [duration, setDuration] = useState(0);
   const audioRef = useRef<HTMLAudioElement | null>(null);
 
+  const onEndedRef = useRef(onEnded);
+  onEndedRef.current = onEnded;
+
   useEffect(() => {
     const audio = new Audio(src);
     audioRef.current = audio;
 
-    audio.addEventListener("loadedmetadata", () => setDuration(audio.duration));
-    audio.addEventListener("timeupdate", () => {
+    const handleMetadata = () => setDuration(audio.duration);
+    const handleTimeUpdate = () => {
       if (audio.duration) setProgress((audio.currentTime / audio.duration) * 100);
-    });
-    audio.addEventListener("ended", () => {
+    };
+    const handleEnded = () => {
       setIsPlaying(false);
       setProgress(0);
-      onEnded?.();
-    });
+      onEndedRef.current?.();
+    };
+
+    audio.addEventListener("loadedmetadata", handleMetadata);
+    audio.addEventListener("timeupdate", handleTimeUpdate);
+    audio.addEventListener("ended", handleEnded);
 
     if (autoPlay) {
       audio.play().then(() => setIsPlaying(true)).catch(() => {});
@@ -47,11 +54,13 @@ export function AudioPlayer({
 
     return () => {
       audio.pause();
-      audio.removeEventListener("loadedmetadata", () => {});
-      audio.removeEventListener("timeupdate", () => {});
-      audio.removeEventListener("ended", () => {});
+      audio.removeEventListener("loadedmetadata", handleMetadata);
+      audio.removeEventListener("timeupdate", handleTimeUpdate);
+      audio.removeEventListener("ended", handleEnded);
+      audio.src = "";
+      audioRef.current = null;
     };
-  }, [src, autoPlay, onEnded]);
+  }, [src, autoPlay]);
 
   const togglePlay = useCallback(() => {
     if (!audioRef.current) return;

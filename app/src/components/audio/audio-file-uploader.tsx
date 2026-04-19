@@ -10,6 +10,7 @@ interface AudioFileUploaderProps {
   accept?: string;
   compact?: boolean;
   className?: string;
+  maxSizeMB?: number;
 }
 
 export function AudioFileUploader({
@@ -18,6 +19,7 @@ export function AudioFileUploader({
   accept = "audio/*",
   compact = false,
   className,
+  maxSizeMB = 10,
 }: AudioFileUploaderProps) {
   const inputRef = useRef<HTMLInputElement>(null);
   const [uploading, setUploading] = useState(false);
@@ -25,9 +27,17 @@ export function AudioFileUploader({
   async function handleChange(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0];
     if (!file) return;
+    if (file.size > maxSizeMB * 1024 * 1024) {
+      alert(`Ukuran file melebihi ${maxSizeMB}MB. Silakan pilih file yang lebih kecil.`);
+      if (inputRef.current) inputRef.current.value = "";
+      return;
+    }
     setUploading(true);
     try {
       await onUpload(file);
+    } catch (err) {
+      console.error("Upload failed:", err);
+      alert("Gagal mengupload file audio.");
     } finally {
       setUploading(false);
       if (inputRef.current) inputRef.current.value = "";
