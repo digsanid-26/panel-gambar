@@ -6,7 +6,8 @@ import { createClient } from "@/lib/supabase/client";
 import { Navbar } from "@/components/layout/navbar";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { BookOpen, Loader2 } from "lucide-react";
+import { Loader2 } from "lucide-react";
+import Image from "next/image";
 
 export default function RoleSelectPage() {
   const router = useRouter();
@@ -115,9 +116,7 @@ export default function RoleSelectPage() {
         <div className="relative w-full max-w-md">
           <div className="bg-surface-card rounded-2xl border border-border p-8 shadow-2xl shadow-primary/5">
             <div className="text-center mb-8">
-              <div className="w-14 h-14 bg-primary rounded-2xl flex items-center justify-center mx-auto mb-4 shadow-lg shadow-primary/20">
-                <BookOpen className="w-7 h-7 text-background" />
-              </div>
+              <Image src="/logo-icon.svg" alt="Logo" width={56} height={56} className="w-14 h-14 mx-auto mb-4" priority />
               <h1 className="text-2xl font-bold text-foreground">Lengkapi Profil</h1>
               <p className="text-sm text-muted mt-1">
                 Pilih peran Anda untuk melanjutkan

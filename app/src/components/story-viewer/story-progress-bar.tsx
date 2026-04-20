@@ -3,7 +3,7 @@
 import { useState, useRef, useEffect, useCallback, useMemo } from "react";
 import { Play, Pause, Square, Volume2, VolumeX, SkipBack, SkipForward } from "lucide-react";
 import { cn } from "@/lib/utils";
-import type { Panel } from "@/lib/types";
+import type { Panel, Dialog } from "@/lib/types";
 import { getPanelDuration } from "./panel-card";
 
 interface StoryProgressBarProps {
@@ -21,6 +21,8 @@ interface StoryProgressBarProps {
   className?: string;
   /** Callback with current time within the active panel (seconds) */
   onPanelTimeUpdate?: (time: number) => void;
+  /** Called when playback auto-pauses on a dialog with audio */
+  onDialogPause?: (dialogId: string) => void;
 }
 
 export function StoryProgressBar({
@@ -35,12 +37,15 @@ export function StoryProgressBar({
   visible = true,
   className,
   onPanelTimeUpdate,
+  onDialogPause,
 }: StoryProgressBarProps) {
   const [panelProgress, setPanelProgress] = useState(0);
   const [activeAudioIdx, setActiveAudioIdx] = useState<number | null>(null);
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const timerRef = useRef<number | null>(null);
   const progressRef = useRef(0);
+  // Track which dialog IDs have already been paused-on for the current panel
+  const pausedDialogsRef = useRef<Set<string>>(new Set());
 
   // Per-panel durations from timeline data
   const panelDurations = useMemo(
@@ -92,7 +97,46 @@ export function StoryProgressBar({
 
       progressRef.current = newProgress;
       setPanelProgress(newProgress);
-      onPanelTimeUpdate?.((newProgress / 100) * currentPanelDur);
+      const currentTimeInPanel = (newProgress / 100) * currentPanelDur;
+      onPanelTimeUpdate?.(currentTimeInPanel);
+
+      // Dialog auto-pause: check if a dialog with audio just became visible
+      if (onDialogPause) {
+        const panel = panels[currentIndex];
+        const tl = panel?.timeline_data || [];
+        const dialogEntries = tl.filter((t) => t.type === "dialog" && t.ref_id);
+
+        if (dialogEntries.length > 0) {
+          // Has timeline data — use timeline entries
+          for (const entry of dialogEntries) {
+            if (currentTimeInPanel >= entry.start && currentTimeInPanel < entry.start + entry.duration) {
+              if (!pausedDialogsRef.current.has(entry.ref_id!)) {
+                const dialog = panel.dialogs?.find((d) => d.id === entry.ref_id);
+                if (dialog?.audio_url) {
+                  pausedDialogsRef.current.add(entry.ref_id!);
+                  onDialogPause(entry.ref_id!);
+                  return;
+                }
+              }
+            }
+          }
+        } else {
+          // No timeline data — distribute dialogs with audio evenly across panel duration
+          const dialogsWithAudio = (panel.dialogs || []).filter((d) => d.audio_url);
+          if (dialogsWithAudio.length > 0) {
+            const slotDuration = currentPanelDur / (dialogsWithAudio.length + 1);
+            for (let di = 0; di < dialogsWithAudio.length; di++) {
+              const triggerTime = slotDuration * (di + 1);
+              if (currentTimeInPanel >= triggerTime && !pausedDialogsRef.current.has(dialogsWithAudio[di].id)) {
+                pausedDialogsRef.current.add(dialogsWithAudio[di].id);
+                onDialogPause(dialogsWithAudio[di].id);
+                return;
+              }
+            }
+          }
+        }
+      }
+
       timerRef.current = requestAnimationFrame(tick);
     }
 
@@ -101,13 +145,14 @@ export function StoryProgressBar({
     return () => {
       if (timerRef.current) cancelAnimationFrame(timerRef.current);
     };
-  }, [isPlaying, currentIndex, currentPanelDur, panels.length, onIndexChange, onStop, onPanelTimeUpdate]);
+  }, [isPlaying, currentIndex, currentPanelDur, panels.length, onIndexChange, onStop, onPanelTimeUpdate, onDialogPause]);
 
   // Reset panel progress on index change
   useEffect(() => {
     progressRef.current = 0;
     setPanelProgress(0);
     onPanelTimeUpdate?.(0);
+    pausedDialogsRef.current = new Set();
   }, [currentIndex]);
 
   // Play narration audio for current panel

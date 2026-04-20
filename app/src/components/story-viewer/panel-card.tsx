@@ -4,7 +4,7 @@ import { useState, useMemo } from "react";
 import type { Panel, Dialog, UserProfile, PanelTimelineItem, NarrationOverlay, StoryCharacter } from "@/lib/types";
 import { AudioPlayer } from "@/components/audio/audio-player";
 import { AudioRecorder } from "@/components/audio/audio-recorder";
-import { Mic, Image as ImageIcon } from "lucide-react";
+import { Mic, Image as ImageIcon, Play, Volume2 } from "lucide-react";
 
 interface PanelCardProps {
   panel: Panel;
@@ -23,6 +23,10 @@ interface PanelCardProps {
   storyCharacters?: StoryCharacter[];
   /** Current user's managed_student ID (if they are a managed student) */
   managedStudentId?: string;
+  /** ID of dialog that triggered auto-pause (show play overlay) */
+  pausedDialogId?: string | null;
+  /** Called when user clicks play on a paused dialog — plays audio then resumes */
+  onDialogPlay?: (dialogId: string) => void;
 }
 
 function getBubbleClass(style: string) {
@@ -60,8 +64,11 @@ export function PanelCard({
   isPlaying = false,
   storyCharacters = [],
   managedStudentId,
+  pausedDialogId,
+  onDialogPlay,
 }: PanelCardProps) {
   const [showRecorder, setShowRecorder] = useState<string | null>(null);
+  const [playingDialogAudio, setPlayingDialogAudio] = useState<string | null>(null);
 
   const tl = panel.timeline_data || [];
   const hasTimeline = tl.length > 0;
@@ -179,12 +186,14 @@ export function PanelCard({
         {/* Dialog bubbles overlay — timeline-aware */}
         {panel.dialogs?.map((dialog) => {
           const visible = isDialogVisible(dialog);
+          const isPausedDialog = pausedDialogId === dialog.id;
+          const isPlayingAudio = playingDialogAudio === dialog.id;
           return (
             <div
               key={dialog.id}
               className={`absolute ${getBubbleClass(dialog.bubble_style)} bg-white shadow-md border-2 px-4 py-3 max-w-[200px] transition-all duration-300 ${
                 visible ? "opacity-100 scale-100" : "opacity-0 scale-90 pointer-events-none"
-              }`}
+              } ${isPausedDialog ? "ring-2 ring-primary ring-offset-2 z-30" : ""}`}
               style={{
                 left: `${dialog.position_x}%`,
                 top: `${dialog.position_y}%`,
@@ -196,26 +205,57 @@ export function PanelCard({
                 {dialog.character_name}
               </p>
               <p className="text-sm leading-relaxed">{dialog.text}</p>
-              <div className="flex items-center gap-1 mt-2">
-                {dialog.audio_url && (
-                  <AudioPlayer src={dialog.audio_url} compact label="🔊" />
-                )}
-                {user && user.role === "siswa" && onSaveRecording && (() => {
-                  // Check if this student is the assigned performer for this character
-                  const char = storyCharacters.find((c) => c.name === dialog.character_name);
-                  const isPerformer = !char?.performed_by || char.performed_by === managedStudentId;
-                  if (!isPerformer) return null;
-                  return (
-                    <button
-                      onClick={() => setShowRecorder(showRecorder === dialog.id ? null : dialog.id)}
-                      className="inline-flex items-center gap-1 px-2 py-1 rounded-full text-[10px] font-semibold bg-danger/10 text-danger hover:bg-danger/20 transition-colors"
-                    >
-                      <Mic className="w-3 h-3" />
-                      Rekam
-                    </button>
-                  );
-                })()}
-              </div>
+
+              {/* Auto-pause play overlay */}
+              {isPausedDialog && dialog.audio_url && !isPlayingAudio && (
+                <button
+                  onClick={() => {
+                    setPlayingDialogAudio(dialog.id);
+                    const audio = new Audio(dialog.audio_url!);
+                    audio.play().catch(() => {});
+                    audio.onended = () => {
+                      setPlayingDialogAudio(null);
+                      onDialogPlay?.(dialog.id);
+                    };
+                  }}
+                  className="mt-2 w-full flex items-center justify-center gap-2 px-3 py-2 rounded-xl bg-primary text-white text-xs font-bold hover:bg-primary/90 transition-all animate-pulse shadow-lg"
+                >
+                  <Play className="w-4 h-4 fill-current" />
+                  Putar Dialog
+                </button>
+              )}
+
+              {/* Playing indicator */}
+              {isPlayingAudio && (
+                <div className="mt-2 flex items-center justify-center gap-2 px-3 py-2 rounded-xl bg-secondary/20 text-secondary text-xs font-bold">
+                  <Volume2 className="w-4 h-4 animate-pulse" />
+                  Memutar...
+                </div>
+              )}
+
+              {/* Normal audio + recorder controls (when not in paused state) */}
+              {!isPausedDialog && (
+                <div className="flex items-center gap-1 mt-2">
+                  {dialog.audio_url && (
+                    <AudioPlayer src={dialog.audio_url} compact label="🔊" />
+                  )}
+                  {user && user.role === "siswa" && onSaveRecording && (() => {
+                    // Check if this student is the assigned performer for this character
+                    const char = storyCharacters.find((c) => c.name === dialog.character_name);
+                    const isPerformer = !char?.performed_by || char.performed_by === managedStudentId;
+                    if (!isPerformer) return null;
+                    return (
+                      <button
+                        onClick={() => setShowRecorder(showRecorder === dialog.id ? null : dialog.id)}
+                        className="inline-flex items-center gap-1 px-2 py-1 rounded-full text-[10px] font-semibold bg-danger/10 text-danger hover:bg-danger/20 transition-colors"
+                      >
+                        <Mic className="w-3 h-3" />
+                        Rekam
+                      </button>
+                    );
+                  })()}
+                </div>
+              )}
               {showRecorder === dialog.id && onSaveRecording && (
                 <div className="mt-2">
                   <AudioRecorder

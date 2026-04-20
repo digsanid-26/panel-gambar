@@ -22,6 +22,8 @@ export function VerticalScrollViewer({ panels, user, onSaveRecording, storyChara
   const [isPlaying, setIsPlaying] = useState(false);
   const [flyboxVisible, setFlyboxVisible] = useState(true);
   const [infinityScroll, setInfinityScroll] = useState(false);
+  const [panelTime, setPanelTime] = useState(0);
+  const [pausedDialogId, setPausedDialogId] = useState<string | null>(null);
 
   const containerRef = useRef<HTMLDivElement>(null);
   const hideTimerRef = useRef<NodeJS.Timeout | null>(null);
@@ -119,7 +121,7 @@ export function VerticalScrollViewer({ panels, user, onSaveRecording, storyChara
   const handleIndexChange = useCallback((index: number) => {
     const el = panelRefs.current[index];
     if (el) {
-      el.scrollIntoView({ behavior: "smooth", block: "center" });
+      el.scrollIntoView({ behavior: "smooth", block: "start" });
     }
     setCurrentIndex(index);
   }, []);
@@ -127,6 +129,8 @@ export function VerticalScrollViewer({ panels, user, onSaveRecording, storyChara
   const handleStop = useCallback(() => {
     setIsPlaying(false);
     setInfinityScroll(false);
+    setPanelTime(0);
+    setPausedDialogId(null);
     if (containerRef.current) containerRef.current.scrollTop = 0;
     setCurrentIndex(0);
   }, []);
@@ -134,6 +138,14 @@ export function VerticalScrollViewer({ panels, user, onSaveRecording, storyChara
   const toggleInfinity = useCallback(() => {
     setInfinityScroll((prev) => !prev);
   }, []);
+
+  // Get panel height from canvas_data if available (complete panels)
+  function getPanelHeight(panel: Panel): string | undefined {
+    if (panel.panel_type === "complete" && panel.canvas_data?.height) {
+      return `${panel.canvas_data.height}px`;
+    }
+    return undefined;
+  }
 
   return (
     <div className="flex-1 flex flex-col relative">
@@ -143,22 +155,37 @@ export function VerticalScrollViewer({ panels, user, onSaveRecording, storyChara
         className="flex-1 overflow-y-auto scroll-smooth"
         style={{ scrollBehavior: infinityScroll ? "auto" : "smooth" }}
       >
-        <div className="max-w-4xl mx-auto py-8 px-4 sm:px-8 space-y-8">
-          {panels.map((panel, i) => (
-            <div
-              key={panel.id}
-              ref={(el) => { panelRefs.current[i] = el; }}
-            >
-              <PanelCard
-                panel={panel}
-                index={i}
-                user={user}
-                onSaveRecording={onSaveRecording ? (blob, dialogId) => onSaveRecording(panel.id, blob, dialogId) : undefined}
-                storyCharacters={storyCharacters}
-                managedStudentId={managedStudentId}
-              />
-            </div>
-          ))}
+        {/* Seamless panel container — no gaps for complete panels */}
+        <div className="max-w-4xl mx-auto">
+          {panels.map((panel, i) => {
+            const canvasHeight = getPanelHeight(panel);
+            const isComplete = panel.panel_type === "complete";
+            return (
+              <div
+                key={panel.id}
+                ref={(el) => { panelRefs.current[i] = el; }}
+                style={canvasHeight ? { minHeight: canvasHeight } : undefined}
+                className={isComplete ? "" : "px-4 sm:px-8 py-4"}
+              >
+                <PanelCard
+                  panel={panel}
+                  index={i}
+                  user={user}
+                  onSaveRecording={onSaveRecording ? (blob, dialogId) => onSaveRecording(panel.id, blob, dialogId) : undefined}
+                  storyCharacters={storyCharacters}
+                  managedStudentId={managedStudentId}
+                  className={isComplete ? "!rounded-none !border-x-0 !shadow-none" : ""}
+                  currentTime={isPlaying || pausedDialogId ? panelTime : undefined}
+                  isPlaying={isPlaying}
+                  pausedDialogId={currentIndex === i ? pausedDialogId : null}
+                  onDialogPlay={() => {
+                    setPausedDialogId(null);
+                    setIsPlaying(true);
+                  }}
+                />
+              </div>
+            );
+          })}
 
           {/* End indicator */}
           <div className="flex items-center justify-center py-8 text-muted">
@@ -172,12 +199,17 @@ export function VerticalScrollViewer({ panels, user, onSaveRecording, storyChara
       <StoryProgressBar
         panels={panels}
         currentIndex={currentIndex}
-        onIndexChange={handleIndexChange}
+        onIndexChange={(idx) => { handleIndexChange(idx); setPausedDialogId(null); }}
         isPlaying={isPlaying}
         onPlayPause={() => setIsPlaying(!isPlaying)}
         onStop={handleStop}
         flybox
         visible={flyboxVisible}
+        onPanelTimeUpdate={setPanelTime}
+        onDialogPause={(dialogId) => {
+          setIsPlaying(false);
+          setPausedDialogId(dialogId);
+        }}
       />
 
       {/* Infinity scroll toggle button */}

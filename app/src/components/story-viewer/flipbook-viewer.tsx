@@ -20,6 +20,7 @@ export function FlipBookViewer({ panels, user, onSaveRecording, storyCharacters,
   const [flipDirection, setFlipDirection] = useState<"next" | "prev">("next");
   const [displayIndex, setDisplayIndex] = useState(0);
   const [panelTime, setPanelTime] = useState(0);
+  const [pausedDialogId, setPausedDialogId] = useState<string | null>(null);
 
   const handleIndexChange = useCallback((newIndex: number) => {
     if (newIndex === displayIndex || flipState === "flipping") return;
@@ -98,10 +99,15 @@ export function FlipBookViewer({ panels, user, onSaveRecording, storyCharacters,
                   index={displayIndex}
                   user={user}
                   onSaveRecording={onSaveRecording ? (blob, dialogId) => onSaveRecording(currentPanel.id, blob, dialogId) : undefined}
-                  currentTime={isPlaying ? panelTime : undefined}
+                  currentTime={isPlaying || pausedDialogId ? panelTime : undefined}
                   isPlaying={isPlaying}
                   storyCharacters={storyCharacters}
                   managedStudentId={managedStudentId}
+                  pausedDialogId={pausedDialogId}
+                  onDialogPlay={() => {
+                    setPausedDialogId(null);
+                    setIsPlaying(true);
+                  }}
                 />
               </div>
             </div>
@@ -132,11 +138,15 @@ export function FlipBookViewer({ panels, user, onSaveRecording, storyCharacters,
       <StoryProgressBar
         panels={panels}
         currentIndex={currentIndex}
-        onIndexChange={handleIndexChange}
+        onIndexChange={(idx) => { handleIndexChange(idx); setPausedDialogId(null); }}
         isPlaying={isPlaying}
         onPlayPause={() => setIsPlaying(!isPlaying)}
         onStop={handleStop}
         onPanelTimeUpdate={setPanelTime}
+        onDialogPause={(dialogId) => {
+          setIsPlaying(false);
+          setPausedDialogId(dialogId);
+        }}
       />
     </div>
   );

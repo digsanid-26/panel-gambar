@@ -345,6 +345,113 @@ export default function EditStoryPage() {
     await supabase.from("panels").update({ canvas_data: canvasData as unknown as Record<string, unknown> }).eq("id", panelId);
     setPanels(prev => prev.map((p) => (p.id === panelId ? { ...p, canvas_data: canvasData } : p)));
     setSaving(false);
+
+    // Auto-sync canvas layers → timeline entries
+    syncCanvasLayersToTimeline(panelId, canvasData);
+  }
+
+  /** Sync canvas layers into timeline entries so every canvas element appears on the timeline */
+  async function syncCanvasLayersToTimeline(panelId: string, canvasData: import("@/lib/types").CanvasData) {
+    const panel = panelsRef.current.find((p) => p.id === panelId);
+    if (!panel) return;
+
+    const existing = (panel.timeline_data as PanelTimelineItem[] | undefined) || [];
+    const layers = canvasData.layers || [];
+
+    // Canvas layer ref_ids use prefix "cl_" to distinguish from dialog refs
+    const canvasRefPrefix = "cl_";
+    const existingCanvasEntries = existing.filter((it) => it.ref_id?.startsWith(canvasRefPrefix));
+    const existingCanvasRefIds = new Set(existingCanvasEntries.map((it) => it.ref_id!));
+    const currentLayerRefIds = new Set(layers.map((l) => canvasRefPrefix + l.id));
+
+    let updated = [...existing];
+    let changed = false;
+
+    // Remove timeline entries for layers that no longer exist
+    const toRemove = existingCanvasEntries.filter((it) => !currentLayerRefIds.has(it.ref_id!));
+    if (toRemove.length > 0) {
+      const removeIds = new Set(toRemove.map((it) => it.id));
+      updated = updated.filter((it) => !removeIds.has(it.id));
+      changed = true;
+    }
+
+    // Add timeline entries for new canvas layers
+    const layerTypeColors: Record<string, string> = {
+      image: "#3b82f6",
+      text: "#a855f7",
+      shape: "#ec4899",
+      "speech-bubble": "#f97316",
+    };
+    const layerTypeLabels: Record<string, string> = {
+      image: "Gambar",
+      text: "Teks",
+      shape: "Bentuk",
+      "speech-bubble": "Balon Dialog",
+    };
+
+    // Compute next start time for staggering new entries
+    let nextStart = 0;
+    const allEnds = updated.map((it) => it.start + it.duration);
+    if (allEnds.length > 0) {
+      const maxEnd = Math.max(...allEnds);
+      // Place new items near the beginning with stagger
+      nextStart = 0;
+    }
+
+    // Get the panel duration entry
+    let panelItem = updated.find((it) => it.type === "panel");
+
+    for (const layer of layers) {
+      const refId = canvasRefPrefix + layer.id;
+      if (existingCanvasRefIds.has(refId)) continue; // already exists
+
+      const tlType: PanelTimelineItem["type"] = layer.type === "image" ? "image" : "bubble";
+      const label = `${layerTypeLabels[layer.type] || layer.type}: ${layer.name}`;
+      const color = layerTypeColors[layer.type] || "#6366f1";
+
+      // Stagger start: each new layer starts 0.5s after the previous
+      const layerStart = nextStart;
+      nextStart += 0.5;
+
+      const newItem: PanelTimelineItem = {
+        id: `tl_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`,
+        type: tlType,
+        label,
+        ref_id: refId,
+        start: Math.round(layerStart * 4) / 4,
+        duration: 5,
+        color,
+      };
+      updated.push(newItem);
+      changed = true;
+    }
+
+    // Ensure panel duration item exists
+    if (!panelItem) {
+      panelItem = {
+        id: `tl_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`,
+        type: "panel",
+        label: "Durasi Panel",
+        start: 0,
+        duration: 5,
+        color: "#6366f1",
+      };
+      updated.unshift(panelItem);
+      changed = true;
+    }
+
+    // Expand panel duration if needed
+    const maxEnd = Math.max(...updated.map((it) => it.start + it.duration));
+    if (panelItem.duration < maxEnd) {
+      updated = updated.map((it) =>
+        it.id === panelItem!.id ? { ...it, duration: Math.ceil(maxEnd) } : it
+      );
+      changed = true;
+    }
+
+    if (changed) {
+      await saveTimelineData(panelId, updated);
+    }
   }
 
   async function uploadCanvasImage(panelId: string, file: File): Promise<string | null> {

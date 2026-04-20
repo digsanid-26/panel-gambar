@@ -12,6 +12,8 @@ import {
   Square,
   Circle as CircleIcon,
   Triangle,
+  Pen,
+  Ruler,
   Layers,
   Trash2,
   Undo2,
@@ -57,6 +59,11 @@ export function CanvasEditor({ canvasData, onSave, onUploadImage }: CanvasEditor
   const shapeBgInputRef = useRef<HTMLInputElement>(null);
   const transformerRef = useRef<any>(null);
   const shapeRefs = useRef<Record<string, any>>({});
+
+  // Lasso tool state
+  const [lassoActive, setLassoActive] = useState(false);
+  const [lassoPoints, setLassoPoints] = useState<number[]>([]);
+  const [lassoMousePos, setLassoMousePos] = useState<{ x: number; y: number } | null>(null);
 
   // Auto-fit scale
   const containerRef = useRef<HTMLDivElement>(null);
@@ -321,6 +328,76 @@ export function CanvasEditor({ canvasData, onSave, onUploadImage }: CanvasEditor
     e.target.value = "";
   }
 
+  // Finalize lasso: convert drawn points into a polygon shape layer
+  function finalizeLasso() {
+    if (lassoPoints.length < 6) {
+      setLassoPoints([]);
+      setLassoActive(false);
+      setLassoMousePos(null);
+      return;
+    }
+    // Points are in absolute canvas coords. Find bounding box.
+    const xs = lassoPoints.filter((_, i) => i % 2 === 0);
+    const ys = lassoPoints.filter((_, i) => i % 2 === 1);
+    const minX = Math.min(...xs);
+    const maxX = Math.max(...xs);
+    const minY = Math.min(...ys);
+    const maxY = Math.max(...ys);
+    const w = Math.max(10, maxX - minX);
+    const h = Math.max(10, maxY - minY);
+
+    // Convert absolute points to 0-100 normalized space relative to bounding box
+    const normalizedPts: number[] = [];
+    for (let i = 0; i < lassoPoints.length; i += 2) {
+      normalizedPts.push(((lassoPoints[i] - minX) / w) * 100);
+      normalizedPts.push(((lassoPoints[i + 1] - minY) / h) * 100);
+    }
+
+    addLayer({
+      id: generateId(),
+      type: "shape",
+      name: "Lasso Polygon",
+      visible: true,
+      locked: false,
+      x: minX,
+      y: minY,
+      width: w,
+      height: h,
+      rotation: 0,
+      opacity: 1,
+      zIndex: data.layers.length,
+      shapeType: "polygon",
+      fill: "#45f882",
+      stroke: "#ffffff",
+      strokeWidth: 2,
+      borderRadius: 0,
+      points: normalizedPts,
+    });
+
+    setLassoPoints([]);
+    setLassoActive(false);
+    setLassoMousePos(null);
+  }
+
+  // Cancel lasso with Escape key
+  useEffect(() => {
+    function handleKeyDown(e: KeyboardEvent) {
+      if (e.key === "Escape" && lassoActive) {
+        setLassoPoints([]);
+        setLassoActive(false);
+        setLassoMousePos(null);
+      }
+    }
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [lassoActive]);
+
+  // Update canvas height
+  function setCanvasHeight(h: number) {
+    const clamped = Math.max(100, Math.min(5000, h));
+    pushHistory({ ...data, height: clamped });
+  }
+
   const selectedLayer = data.layers.find((l) => l.id === selectedId);
   const sortedLayers = [...data.layers].sort((a, b) => a.zIndex - b.zIndex);
 
@@ -352,6 +429,32 @@ export function CanvasEditor({ canvasData, onSave, onUploadImage }: CanvasEditor
           <Triangle className="w-4 h-4" />
           Polygon
         </Button>
+        <Button
+          variant={lassoActive ? "primary" : "outline"}
+          size="sm"
+          onClick={() => {
+            setLassoActive(!lassoActive);
+            setLassoPoints([]);
+            setLassoMousePos(null);
+            setSelectedId(null);
+          }}
+        >
+          <Pen className="w-4 h-4" />
+          Lasso
+        </Button>
+        <div className="w-px h-6 bg-border mx-1" />
+        <div className="flex items-center gap-1">
+          <Ruler className="w-3.5 h-3.5 text-muted" />
+          <label className="text-[10px] text-muted">Tinggi:</label>
+          <input
+            type="number"
+            min={100}
+            max={5000}
+            value={data.height}
+            onChange={(e) => setCanvasHeight(Number(e.target.value))}
+            className="w-16 text-xs px-1.5 py-0.5 rounded border border-border bg-surface-alt text-foreground"
+          />
+        </div>
         <div className="w-px h-6 bg-border mx-1" />
         <Button variant="ghost" size="sm" onClick={undo} disabled={historyIdx <= 0}>
           <Undo2 className="w-4 h-4" />
@@ -377,6 +480,12 @@ export function CanvasEditor({ canvasData, onSave, onUploadImage }: CanvasEditor
       <div className="flex gap-3">
         {/* Canvas */}
         <div className="flex-1 overflow-auto rounded-xl border border-border bg-[#1a1a2e] p-5">
+          {lassoActive && (
+            <div className="mb-2 px-3 py-1.5 bg-primary/10 border border-primary/30 rounded-lg text-xs text-primary flex items-center gap-2">
+              <Pen className="w-3.5 h-3.5" />
+              <span><strong>Lasso Mode:</strong> Klik untuk menambah titik. Klik titik pertama untuk menutup bentuk. Tekan <kbd className="px-1 py-0.5 bg-surface-alt rounded text-[10px]">Esc</kbd> untuk batal.</span>
+            </div>
+          )}
           <Stage
             ref={stageRef}
             width={data.width * scale}
@@ -384,9 +493,39 @@ export function CanvasEditor({ canvasData, onSave, onUploadImage }: CanvasEditor
             scaleX={scale}
             scaleY={scale}
             onMouseDown={(e) => {
+              if (lassoActive) {
+                const stage = stageRef.current;
+                if (!stage) return;
+                const pointer = stage.getPointerPosition();
+                if (!pointer) return;
+                const x = pointer.x / scale;
+                const y = pointer.y / scale;
+
+                // Check if close to first point (close the polygon)
+                if (lassoPoints.length >= 6) {
+                  const firstX = lassoPoints[0];
+                  const firstY = lassoPoints[1];
+                  const dist = Math.sqrt((x - firstX) ** 2 + (y - firstY) ** 2);
+                  if (dist < 12) {
+                    finalizeLasso();
+                    return;
+                  }
+                }
+
+                setLassoPoints((prev) => [...prev, x, y]);
+                return;
+              }
               if (e.target === e.target.getStage()) setSelectedId(null);
             }}
-            style={{ cursor: "default" }}
+            onMouseMove={() => {
+              if (!lassoActive || lassoPoints.length === 0) return;
+              const stage = stageRef.current;
+              if (!stage) return;
+              const pointer = stage.getPointerPosition();
+              if (!pointer) return;
+              setLassoMousePos({ x: pointer.x / scale, y: pointer.y / scale });
+            }}
+            style={{ cursor: lassoActive ? "crosshair" : "default" }}
           >
             <Layer>
               {/* Background */}
@@ -636,6 +775,49 @@ export function CanvasEditor({ canvasData, onSave, onUploadImage }: CanvasEditor
 
                 return null;
               })}
+
+              {/* Lasso preview */}
+              {lassoActive && lassoPoints.length >= 2 && (
+                <>
+                  {/* Completed segments */}
+                  <Line
+                    points={lassoPoints}
+                    stroke="#45f882"
+                    strokeWidth={2}
+                    dash={[6, 3]}
+                    listening={false}
+                  />
+                  {/* Preview line from last point to mouse */}
+                  {lassoMousePos && (
+                    <Line
+                      points={[
+                        lassoPoints[lassoPoints.length - 2],
+                        lassoPoints[lassoPoints.length - 1],
+                        lassoMousePos.x,
+                        lassoMousePos.y,
+                      ]}
+                      stroke="#45f882"
+                      strokeWidth={1}
+                      dash={[4, 4]}
+                      opacity={0.6}
+                      listening={false}
+                    />
+                  )}
+                  {/* Point markers */}
+                  {Array.from({ length: lassoPoints.length / 2 }).map((_, i) => (
+                    <Circle
+                      key={`lasso-pt-${i}`}
+                      x={lassoPoints[i * 2]}
+                      y={lassoPoints[i * 2 + 1]}
+                      radius={i === 0 && lassoPoints.length >= 6 ? 7 : 4}
+                      fill={i === 0 ? "#45f882" : "#ffffff"}
+                      stroke="#45f882"
+                      strokeWidth={1.5}
+                      listening={false}
+                    />
+                  ))}
+                </>
+              )}
 
               {/* Transformer for selected element */}
               <Transformer

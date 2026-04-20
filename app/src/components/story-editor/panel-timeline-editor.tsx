@@ -99,7 +99,7 @@ function buildDefaultTimeline(panel: Panel): PanelTimelineItem[] {
     t += 2.5;
   });
 
-  // Image appearance
+  // Image appearance (simple panels)
   if (panel.image_url) {
     items.push({
       id: generateId(),
@@ -109,6 +109,43 @@ function buildDefaultTimeline(panel: Panel): PanelTimelineItem[] {
       duration: 5,
       color: TYPE_COLORS.image,
     });
+  }
+
+  // Canvas layers (complete panels)
+  if (panel.canvas_data?.layers) {
+    const layerTypeColors: Record<string, string> = {
+      image: "#3b82f6",
+      text: "#a855f7",
+      shape: "#ec4899",
+      "speech-bubble": "#f97316",
+    };
+    const layerTypeLabels: Record<string, string> = {
+      image: "Gambar",
+      text: "Teks",
+      shape: "Bentuk",
+      "speech-bubble": "Balon Dialog",
+    };
+    let layerStart = 0;
+    for (const layer of panel.canvas_data.layers) {
+      const tlType: PanelTimelineItem["type"] = layer.type === "image" ? "image" : "bubble";
+      items.push({
+        id: generateId(),
+        type: tlType,
+        label: `${layerTypeLabels[layer.type] || layer.type}: ${layer.name}`,
+        ref_id: `cl_${layer.id}`,
+        start: layerStart,
+        duration: 5,
+        color: layerTypeColors[layer.type] || "#6366f1",
+      });
+      layerStart += 0.5;
+    }
+  }
+
+  // Expand panel duration to cover all items
+  const maxEnd = Math.max(...items.map((it) => it.start + it.duration));
+  const panelItem = items.find((it) => it.type === "panel");
+  if (panelItem && panelItem.duration < maxEnd) {
+    panelItem.duration = Math.ceil(maxEnd);
   }
 
   return items;

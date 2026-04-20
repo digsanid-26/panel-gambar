@@ -17,6 +17,7 @@ export function SlideViewer({ panels, user, onSaveRecording, storyCharacters, ma
   const [currentIndex, setCurrentIndex] = useState(0);
   const [isPlaying, setIsPlaying] = useState(false);
   const [panelTime, setPanelTime] = useState(0);
+  const [pausedDialogId, setPausedDialogId] = useState<string | null>(null);
 
   const currentPanel = panels[currentIndex];
 
@@ -38,10 +39,15 @@ export function SlideViewer({ panels, user, onSaveRecording, storyCharacters, ma
             index={currentIndex}
             user={user}
             onSaveRecording={onSaveRecording ? (blob, dialogId) => onSaveRecording(currentPanel.id, blob, dialogId) : undefined}
-            currentTime={isPlaying ? panelTime : undefined}
+            currentTime={isPlaying || pausedDialogId ? panelTime : undefined}
             isPlaying={isPlaying}
             storyCharacters={storyCharacters}
             managedStudentId={managedStudentId}
+            pausedDialogId={pausedDialogId}
+            onDialogPlay={() => {
+              setPausedDialogId(null);
+              setIsPlaying(true);
+            }}
           />
         </div>
       </div>
@@ -50,11 +56,15 @@ export function SlideViewer({ panels, user, onSaveRecording, storyCharacters, ma
       <StoryProgressBar
         panels={panels}
         currentIndex={currentIndex}
-        onIndexChange={(idx) => { setCurrentIndex(idx); setPanelTime(0); }}
+        onIndexChange={(idx) => { setCurrentIndex(idx); setPanelTime(0); setPausedDialogId(null); }}
         isPlaying={isPlaying}
         onPlayPause={() => setIsPlaying(!isPlaying)}
         onStop={handleStop}
         onPanelTimeUpdate={setPanelTime}
+        onDialogPause={(dialogId) => {
+          setIsPlaying(false);
+          setPausedDialogId(dialogId);
+        }}
       />
     </div>
   );

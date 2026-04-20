@@ -19,6 +19,7 @@ export function FadeViewer({ panels, user, onSaveRecording, storyCharacters, man
   const [fadingOut, setFadingOut] = useState(false);
   const [displayIndex, setDisplayIndex] = useState(0);
   const [panelTime, setPanelTime] = useState(0);
+  const [pausedDialogId, setPausedDialogId] = useState<string | null>(null);
 
   const handleIndexChange = useCallback((newIndex: number) => {
     if (newIndex === displayIndex) return;
@@ -57,10 +58,15 @@ export function FadeViewer({ panels, user, onSaveRecording, storyCharacters, man
             index={displayIndex}
             user={user}
             onSaveRecording={onSaveRecording ? (blob, dialogId) => onSaveRecording(currentPanel.id, blob, dialogId) : undefined}
-            currentTime={isPlaying ? panelTime : undefined}
+            currentTime={isPlaying || pausedDialogId ? panelTime : undefined}
             isPlaying={isPlaying}
             storyCharacters={storyCharacters}
             managedStudentId={managedStudentId}
+            pausedDialogId={pausedDialogId}
+            onDialogPlay={() => {
+              setPausedDialogId(null);
+              setIsPlaying(true);
+            }}
           />
         </div>
       </div>
@@ -69,11 +75,15 @@ export function FadeViewer({ panels, user, onSaveRecording, storyCharacters, man
       <StoryProgressBar
         panels={panels}
         currentIndex={currentIndex}
-        onIndexChange={handleAutoIndex}
+        onIndexChange={(idx) => { handleAutoIndex(idx); setPausedDialogId(null); }}
         isPlaying={isPlaying}
         onPlayPause={() => setIsPlaying(!isPlaying)}
         onStop={handleStop}
         onPanelTimeUpdate={setPanelTime}
+        onDialogPause={(dialogId) => {
+          setIsPlaying(false);
+          setPausedDialogId(dialogId);
+        }}
       />
     </div>
   );
