@@ -40,12 +40,24 @@ export default function HomePage() {
     const supabase = createClient();
     supabase
       .from("stories")
-      .select("id, title, cover_image_url, theme, level, author_name")
+      .select("id, title, cover_image_url, theme, level, profiles!stories_author_id_fkey(name)")
       .eq("status", "published")
       .order("updated_at", { ascending: false })
       .limit(6)
-      .then(({ data }: { data: StoryPreview[] | null }) => {
-        if (data) setStories(data);
+      .then(({ data, error }: { data: Record<string, unknown>[] | null; error: unknown }) => {
+        if (error) { console.error("Failed to load stories:", error); return; }
+        if (data) {
+          setStories(
+            data.map((s: Record<string, unknown>) => ({
+              id: s.id as string,
+              title: s.title as string,
+              cover_image_url: s.cover_image_url as string | undefined,
+              theme: s.theme as string | undefined,
+              level: s.level as string | undefined,
+              author_name: (s.profiles as { name: string } | null)?.name || undefined,
+            }))
+          );
+        }
       });
   }, []);
 
@@ -329,6 +341,9 @@ export default function HomePage() {
           <p>&copy; 2026 Panel Gambar Bersuara. Hak cipta dilindungi.</p>
           <p className="mt-1">
             Media Pembelajaran Interaktif untuk Sekolah Dasar
+          </p>
+          <p className="mt-2 text-xs text-muted/70">
+            Author : Maria Ulfah, S.Pd.SD | Executor : Arisnwh (Dev.Digsan.id)
           </p>
         </div>
       </footer>
