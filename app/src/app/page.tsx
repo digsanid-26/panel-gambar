@@ -42,6 +42,7 @@ export default function HomePage() {
       .from("stories")
       .select("id, title, cover_image_url, theme, level, profiles!stories_author_id_fkey(name)")
       .eq("status", "published")
+      .eq("visibility", "public")
       .order("updated_at", { ascending: false })
       .limit(6)
       .then(({ data, error }: { data: Record<string, unknown>[] | null; error: unknown }) => {

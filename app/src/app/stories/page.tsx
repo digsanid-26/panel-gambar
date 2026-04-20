@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, useRef } from "react";
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/client";
 import type { Story } from "@/lib/types";
@@ -14,6 +14,13 @@ import {
   PlusCircle,
   Loader2,
   Filter,
+  MoreVertical,
+  Eye,
+  EyeOff,
+  Globe,
+  Lock,
+  Trash2,
+  Pencil,
 } from "lucide-react";
 
 const LEVELS = [
@@ -30,6 +37,9 @@ export default function StoriesPage() {
   const [search, setSearch] = useState("");
   const [levelFilter, setLevelFilter] = useState("");
   const [userRole, setUserRole] = useState<string | null>(null);
+  const [userId, setUserId] = useState<string | null>(null);
+  const [openMenu, setOpenMenu] = useState<string | null>(null);
+  const menuRef = useRef<HTMLDivElement>(null);
 
   const supabase = createClient();
 
@@ -37,6 +47,7 @@ export default function StoriesPage() {
     async function load() {
       const { data: { user } } = await supabase.auth.getUser();
       if (user) {
+        setUserId(user.id);
         const { data: profile } = await supabase
           .from("profiles")
           .select("role")
@@ -67,6 +78,54 @@ export default function StoriesPage() {
     }
     load();
   }, []);
+
+  // Close menu on outside click
+  useEffect(() => {
+    function handleClick(e: MouseEvent) {
+      if (menuRef.current && !menuRef.current.contains(e.target as Node)) {
+        setOpenMenu(null);
+      }
+    }
+    document.addEventListener("mousedown", handleClick);
+    return () => document.removeEventListener("mousedown", handleClick);
+  }, []);
+
+  function canManage(story: Story) {
+    return userRole === "admin" || (userRole === "guru" && story.author_id === userId);
+  }
+
+  async function togglePublish(story: Story) {
+    const newStatus = story.status === "published" ? "draft" : "published";
+    const { error } = await supabase
+      .from("stories")
+      .update({ status: newStatus, updated_at: new Date().toISOString() })
+      .eq("id", story.id);
+    if (!error) {
+      setStories((prev) => prev.map((s) => s.id === story.id ? { ...s, status: newStatus } : s));
+    }
+    setOpenMenu(null);
+  }
+
+  async function toggleVisibility(story: Story) {
+    const newVis = story.visibility === "private" ? "public" : "private";
+    const { error } = await supabase
+      .from("stories")
+      .update({ visibility: newVis, updated_at: new Date().toISOString() })
+      .eq("id", story.id);
+    if (!error) {
+      setStories((prev) => prev.map((s) => s.id === story.id ? { ...s, visibility: newVis } : s));
+    }
+    setOpenMenu(null);
+  }
+
+  async function deleteStory(story: Story) {
+    if (!confirm(`Hapus cerita "${story.title}"? Semua panel, dialog, dan rekaman akan ikut terhapus.`)) return;
+    const { error } = await supabase.from("stories").delete().eq("id", story.id);
+    if (!error) {
+      setStories((prev) => prev.filter((s) => s.id !== story.id));
+    }
+    setOpenMenu(null);
+  }
 
   const filtered = stories.filter((s) => {
     const matchSearch =
@@ -141,8 +200,8 @@ export default function StoriesPage() {
         ) : (
           <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-5">
             {filtered.map((story) => (
-              <Link key={story.id} href={`/stories/${story.id}`}>
-                <div className="bg-surface-card rounded-xl border border-border overflow-hidden hover:shadow-lg hover:border-primary/30 transition-all h-full flex flex-col">
+              <div key={story.id} className="relative bg-surface-card rounded-xl border border-border overflow-hidden hover:shadow-lg hover:border-primary/30 transition-all h-full flex flex-col">
+                <Link href={`/stories/${story.id}`}>
                   {story.cover_image_url ? (
                     <div className="w-full aspect-[3/2] bg-surface-alt overflow-hidden">
                       <img
@@ -156,6 +215,61 @@ export default function StoriesPage() {
                       <BookOpen className="w-12 h-12 text-primary/30" />
                     </div>
                   )}
+                </Link>
+
+                {/* Management menu */}
+                {canManage(story) && (
+                  <div className="absolute top-2 right-2 z-10" ref={openMenu === story.id ? menuRef : undefined}>
+                    <button
+                      onClick={(e) => { e.preventDefault(); setOpenMenu(openMenu === story.id ? null : story.id); }}
+                      className="p-1.5 rounded-lg bg-black/50 text-white hover:bg-black/70 transition-colors"
+                    >
+                      <MoreVertical className="w-4 h-4" />
+                    </button>
+                    {openMenu === story.id && (
+                      <div className="absolute right-0 top-full mt-1 w-48 bg-surface-card border border-border rounded-xl shadow-xl py-1 z-50">
+                        <Link
+                          href={`/stories/${story.id}/edit`}
+                          className="flex items-center gap-2 px-3 py-2 text-sm hover:bg-surface-alt transition-colors text-foreground"
+                          onClick={() => setOpenMenu(null)}
+                        >
+                          <Pencil className="w-3.5 h-3.5" />
+                          Edit Cerita
+                        </Link>
+                        <button
+                          onClick={() => togglePublish(story)}
+                          className="flex items-center gap-2 px-3 py-2 text-sm hover:bg-surface-alt transition-colors w-full text-left text-foreground"
+                        >
+                          {story.status === "published" ? (
+                            <><EyeOff className="w-3.5 h-3.5" /> Unpublish (Draft)</>
+                          ) : (
+                            <><Eye className="w-3.5 h-3.5" /> Publish</>
+                          )}
+                        </button>
+                        <button
+                          onClick={() => toggleVisibility(story)}
+                          className="flex items-center gap-2 px-3 py-2 text-sm hover:bg-surface-alt transition-colors w-full text-left text-foreground"
+                        >
+                          {story.visibility === "private" ? (
+                            <><Globe className="w-3.5 h-3.5" /> Jadikan Publik</>
+                          ) : (
+                            <><Lock className="w-3.5 h-3.5" /> Jadikan Privat</>
+                          )}
+                        </button>
+                        <div className="border-t border-border my-1" />
+                        <button
+                          onClick={() => deleteStory(story)}
+                          className="flex items-center gap-2 px-3 py-2 text-sm hover:bg-danger/10 transition-colors w-full text-left text-danger"
+                        >
+                          <Trash2 className="w-3.5 h-3.5" />
+                          Hapus Cerita
+                        </button>
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                <Link href={`/stories/${story.id}`} className="flex-1 flex flex-col">
                   <div className="p-5 flex-1 flex flex-col">
                     <div className="flex items-center gap-2 mb-2">
                       <Badge
@@ -165,6 +279,11 @@ export default function StoriesPage() {
                       >
                         {story.status === "published" ? "Terbit" : "Draft"}
                       </Badge>
+                      {story.visibility === "private" && (
+                        <Badge variant="outline">
+                          <Lock className="w-3 h-3 mr-0.5" /> Privat
+                        </Badge>
+                      )}
                       <Badge variant="secondary">{story.level}</Badge>
                     </div>
                     <h3 className="font-bold text-base mb-1 line-clamp-2">
@@ -182,8 +301,8 @@ export default function StoriesPage() {
                       </span>
                     </div>
                   </div>
-                </div>
-              </Link>
+                </Link>
+              </div>
             ))}
           </div>
         )}

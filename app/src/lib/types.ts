@@ -27,6 +27,7 @@ export interface Story {
   /** How student recordings are handled */
   recording_mode?: RecordingMode;
   status: "draft" | "published" | "archived";
+  visibility?: "public" | "private";
   author_id: string;
   author_name?: string;
   created_at: string;
