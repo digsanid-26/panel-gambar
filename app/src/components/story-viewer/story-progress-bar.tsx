@@ -155,33 +155,47 @@ export function StoryProgressBar({
     pausedDialogsRef.current = new Set();
   }, [currentIndex]);
 
-  // Play narration audio for current panel
+  // Create narration audio when panel changes
   useEffect(() => {
-    const panel = panels[currentIndex];
-    if (!panel) return;
-
-    // Stop previous audio
+    // Stop & discard previous audio
     if (audioRef.current) {
       audioRef.current.pause();
+      audioRef.current.src = "";
       audioRef.current = null;
       setActiveAudioIdx(null);
     }
 
-    if (panel.narration_audio_url && isPlaying) {
-      const audio = new Audio(panel.narration_audio_url);
-      audioRef.current = audio;
-      setActiveAudioIdx(currentIndex);
-      audio.play().catch(() => {});
-      audio.onended = () => setActiveAudioIdx(null);
-    }
+    const panel = panels[currentIndex];
+    if (!panel?.narration_audio_url) return;
+
+    const audio = new Audio(panel.narration_audio_url);
+    audioRef.current = audio;
+    audio.onended = () => setActiveAudioIdx(null);
 
     return () => {
       if (audioRef.current) {
         audioRef.current.pause();
+        audioRef.current.src = "";
         audioRef.current = null;
       }
     };
-  }, [currentIndex, isPlaying]);
+  }, [currentIndex, panels]);
+
+  // Pause / resume narration audio when isPlaying changes
+  useEffect(() => {
+    const audio = audioRef.current;
+    if (!audio) return;
+
+    if (isPlaying) {
+      // Only play if not already ended
+      if (audio.paused && audio.currentTime < (audio.duration || Infinity)) {
+        setActiveAudioIdx(currentIndex);
+        audio.play().catch(() => {});
+      }
+    } else {
+      audio.pause();
+    }
+  }, [isPlaying, currentIndex]);
 
   function handleSeek(e: React.MouseEvent<HTMLDivElement>) {
     const rect = e.currentTarget.getBoundingClientRect();

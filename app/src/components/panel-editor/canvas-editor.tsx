@@ -2,7 +2,7 @@
 
 import { useState, useRef, useCallback, useEffect } from "react";
 import { Stage, Layer, Rect, Image as KonvaImage, Text, Group, Circle, Arrow, Line, Transformer } from "react-konva";
-import type { CanvasData, CanvasLayer } from "@/lib/types";
+import type { CanvasData, CanvasLayer, Dialog } from "@/lib/types";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import {
@@ -34,6 +34,8 @@ interface CanvasEditorProps {
   canvasData: CanvasData | null;
   onSave: (data: CanvasData) => void;
   onUploadImage: (file: File) => Promise<string | null>;
+  /** Panel dialogs to display as overlay bubbles on the canvas */
+  dialogs?: Dialog[];
 }
 
 const DEFAULT_CANVAS: CanvasData = {
@@ -46,7 +48,7 @@ function generateId() {
   return `layer_${Date.now()}_${Math.random().toString(36).substr(2, 6)}`;
 }
 
-export function CanvasEditor({ canvasData, onSave, onUploadImage }: CanvasEditorProps) {
+export function CanvasEditor({ canvasData, onSave, onUploadImage, dialogs = [] }: CanvasEditorProps) {
   const [data, setData] = useState<CanvasData>(canvasData || DEFAULT_CANVAS);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [history, setHistory] = useState<CanvasData[]>([canvasData || DEFAULT_CANVAS]);
@@ -774,6 +776,64 @@ export function CanvasEditor({ canvasData, onSave, onUploadImage }: CanvasEditor
                 }
 
                 return null;
+              })}
+
+              {/* Dialog overlays (from panel.dialogs) */}
+              {dialogs.map((dialog) => {
+                const dx = (dialog.position_x / 100) * data.width;
+                const dy = (dialog.position_y / 100) * data.height;
+                const bw = 160;
+                const bh = 60;
+                return (
+                  <Group
+                    key={`dlg-${dialog.id}`}
+                    x={dx - bw / 2}
+                    y={dy - bh / 2}
+                    listening={false}
+                    opacity={0.85}
+                  >
+                    <Rect
+                      x={0}
+                      y={0}
+                      width={bw}
+                      height={bh}
+                      fill="white"
+                      cornerRadius={bh / 3}
+                      stroke={dialog.character_color || "#f59e0b"}
+                      strokeWidth={2}
+                      shadowColor="rgba(0,0,0,0.15)"
+                      shadowBlur={6}
+                      shadowOffsetY={2}
+                    />
+                    <Text
+                      x={8}
+                      y={6}
+                      text={dialog.character_name}
+                      fontSize={10}
+                      fontStyle="bold"
+                      fill={dialog.character_color || "#f59e0b"}
+                      width={bw - 16}
+                    />
+                    <Text
+                      x={8}
+                      y={20}
+                      text={dialog.text.length > 40 ? dialog.text.slice(0, 40) + "…" : dialog.text}
+                      fontSize={11}
+                      fill="#333"
+                      width={bw - 16}
+                      height={bh - 26}
+                      ellipsis={true}
+                    />
+                    {dialog.audio_url && (
+                      <Text
+                        x={bw - 20}
+                        y={bh - 16}
+                        text="🔊"
+                        fontSize={11}
+                      />
+                    )}
+                  </Group>
+                );
               })}
 
               {/* Lasso preview */}

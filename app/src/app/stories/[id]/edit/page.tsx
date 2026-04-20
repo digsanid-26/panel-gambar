@@ -36,6 +36,7 @@ import {
   Music,
   Pencil,
   Plus,
+  Ruler,
   Save,
   Settings,
   Trash2,
@@ -375,7 +376,7 @@ export default function EditStoryPage() {
       changed = true;
     }
 
-    // Add timeline entries for new canvas layers
+    // Canvas layer type mappings
     const layerTypeColors: Record<string, string> = {
       image: "#3b82f6",
       text: "#a855f7",
@@ -389,40 +390,58 @@ export default function EditStoryPage() {
       "speech-bubble": "Balon Dialog",
     };
 
+    function makeLabel(layer: import("@/lib/types").CanvasLayer): string {
+      const typeLabel = layerTypeLabels[layer.type] || layer.type;
+      return `${typeLabel}: ${layer.name}`;
+    }
+
+    // Update labels of existing canvas entries if layer name changed
+    for (const layer of layers) {
+      const refId = canvasRefPrefix + layer.id;
+      const entry = updated.find((it) => it.ref_id === refId);
+      if (entry) {
+        const newLabel = makeLabel(layer);
+        if (entry.label !== newLabel) {
+          updated = updated.map((it) =>
+            it.id === entry.id ? { ...it, label: newLabel } : it
+          );
+          changed = true;
+        }
+      }
+    }
+
     // Compute next start time for staggering new entries
     let nextStart = 0;
-    const allEnds = updated.map((it) => it.start + it.duration);
-    if (allEnds.length > 0) {
-      const maxEnd = Math.max(...allEnds);
-      // Place new items near the beginning with stagger
-      nextStart = 0;
+    const existingCanvasStarts = updated
+      .filter((it) => it.ref_id?.startsWith(canvasRefPrefix))
+      .map((it) => it.start);
+    if (existingCanvasStarts.length > 0) {
+      nextStart = Math.max(...existingCanvasStarts) + 0.5;
     }
 
     // Get the panel duration entry
     let panelItem = updated.find((it) => it.type === "panel");
 
+    // Add timeline entries for new canvas layers
     for (const layer of layers) {
       const refId = canvasRefPrefix + layer.id;
       if (existingCanvasRefIds.has(refId)) continue; // already exists
 
       const tlType: PanelTimelineItem["type"] = layer.type === "image" ? "image" : "bubble";
-      const label = `${layerTypeLabels[layer.type] || layer.type}: ${layer.name}`;
+      const label = makeLabel(layer);
       const color = layerTypeColors[layer.type] || "#6366f1";
-
-      // Stagger start: each new layer starts 0.5s after the previous
-      const layerStart = nextStart;
-      nextStart += 0.5;
 
       const newItem: PanelTimelineItem = {
         id: `tl_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`,
         type: tlType,
         label,
         ref_id: refId,
-        start: Math.round(layerStart * 4) / 4,
+        start: Math.round(nextStart * 4) / 4,
         duration: 5,
         color,
       };
       updated.push(newItem);
+      nextStart += 0.5;
       changed = true;
     }
 
@@ -1078,11 +1097,38 @@ export default function EditStoryPage() {
                 <div className="border-t border-border px-5 py-5 space-y-5">
                   {/* Canvas Editor for complete panels */}
                   {panel.panel_type === "complete" && (
-                    <CanvasEditor
-                      canvasData={panel.canvas_data || null}
-                      onSave={(cd) => saveCanvasData(panel.id, cd)}
-                      onUploadImage={(file) => uploadCanvasImage(panel.id, file)}
-                    />
+                    <>
+                      <CanvasEditor
+                        canvasData={panel.canvas_data || null}
+                        onSave={(cd) => saveCanvasData(panel.id, cd)}
+                        onUploadImage={(file) => uploadCanvasImage(panel.id, file)}
+                        dialogs={panel.dialogs || []}
+                      />
+                      {/* Panel height setting — affects vertical scroll display */}
+                      <div className="flex items-center gap-3 p-3 bg-surface-alt rounded-xl border border-border">
+                        <Ruler className="w-4 h-4 text-muted shrink-0" />
+                        <div className="flex-1 min-w-0">
+                          <label className="block text-sm font-semibold">Tinggi Panel</label>
+                          <p className="text-[11px] text-muted">Tinggi area canvas & tampilan di mode Vertical Scroll</p>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <input
+                            type="number"
+                            min={200}
+                            max={5000}
+                            step={50}
+                            value={panel.canvas_data?.height || 600}
+                            onChange={(e) => {
+                              const h = Math.max(200, Math.min(5000, Number(e.target.value) || 600));
+                              const cd = panel.canvas_data || { width: 800, height: 600, layers: [] };
+                              saveCanvasData(panel.id, { ...cd, height: h });
+                            }}
+                            className="w-20 text-sm px-2 py-1.5 rounded-lg border border-border bg-surface text-foreground text-center"
+                          />
+                          <span className="text-xs text-muted">px</span>
+                        </div>
+                      </div>
+                    </>
                   )}
 
                   {/* Live editor for simple panels — image + draggable bubbles */}
