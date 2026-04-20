@@ -1,8 +1,9 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Navbar } from "@/components/layout/navbar";
+import { createClient } from "@/lib/supabase/client";
 import {
   BookOpen,
   Mic,
@@ -15,13 +16,38 @@ import {
   Sparkles,
   ChevronRight,
   Play,
+  Eye,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import gsap from "gsap";
 
+interface StoryPreview {
+  id: string;
+  title: string;
+  cover_image_url?: string;
+  theme?: string;
+  level?: string;
+  author_name?: string;
+}
+
 export default function HomePage() {
   const heroRef = useRef<HTMLDivElement>(null);
   const featuresRef = useRef<HTMLDivElement>(null);
+  const [stories, setStories] = useState<StoryPreview[]>([]);
+
+  // Fetch published stories for the story list
+  useEffect(() => {
+    const supabase = createClient();
+    supabase
+      .from("stories")
+      .select("id, title, cover_image_url, theme, level, author_name")
+      .eq("status", "published")
+      .order("updated_at", { ascending: false })
+      .limit(6)
+      .then(({ data }: { data: StoryPreview[] | null }) => {
+        if (data) setStories(data);
+      });
+  }, []);
 
   useEffect(() => {
     const ctx = gsap.context(() => {
@@ -44,14 +70,17 @@ export default function HomePage() {
 
   useEffect(() => {
     const ctx = gsap.context(() => {
-      gsap.from(".feature-card", {
-        opacity: 0,
-        y: 40,
-        duration: 0.6,
-        stagger: 0.12,
-        delay: 0.3,
-        ease: "power2.out",
-      });
+      gsap.fromTo(".feature-card",
+        { opacity: 0, y: 40 },
+        {
+          opacity: 1,
+          y: 0,
+          duration: 0.6,
+          stagger: 0.12,
+          delay: 0.3,
+          ease: "power2.out",
+        }
+      );
     }, featuresRef);
     return () => ctx.revert();
   }, []);
@@ -102,37 +131,76 @@ export default function HomePage() {
             </div>
           </div>
 
-          {/* Preview illustration */}
-          <div className="hero-preview mt-16 max-w-4xl mx-auto">
+          {/* Story list */}
+          <div className="hero-preview mt-16 max-w-5xl mx-auto">
             <div className="bg-surface-card rounded-2xl border border-border p-6 sm:p-8 shadow-2xl shadow-primary/5">
-              <div className="grid grid-cols-3 gap-4">
-                {[
-                  { bg: "bg-primary/5", border: "border-primary/20", color: "text-primary" },
-                  { bg: "bg-secondary/5", border: "border-secondary/20", color: "text-secondary" },
-                  { bg: "bg-accent/5", border: "border-accent/20", color: "text-accent" },
-                ].map((panel, i) => (
-                  <div
-                    key={i}
-                    className={`${panel.bg} ${panel.border} border rounded-xl p-4 aspect-square flex flex-col items-center justify-center gap-2 hover:scale-105 transition-transform duration-300`}
-                  >
-                    <ImageIcon className={`w-8 h-8 ${panel.color}`} />
-                    <div className="bg-surface-alt rounded-lg px-3 py-1.5 border border-border text-xs font-medium text-center text-foreground">
-                      &ldquo;Halo, aku Kelinci!&rdquo;
-                    </div>
-                    <div className="flex gap-1 mt-1">
-                      <span className="w-6 h-6 rounded-full bg-secondary/20 flex items-center justify-center">
-                        <Volume2 className="w-3 h-3 text-secondary" />
-                      </span>
-                      <span className="w-6 h-6 rounded-full bg-danger/20 flex items-center justify-center">
-                        <Mic className="w-3 h-3 text-danger" />
-                      </span>
-                    </div>
-                  </div>
-                ))}
+              <div className="flex items-center justify-between mb-5">
+                <h3 className="text-lg font-bold text-foreground flex items-center gap-2">
+                  <BookOpen className="w-5 h-5 text-primary" />
+                  Cerita Terbaru
+                </h3>
+                <Link href="/stories" className="text-sm text-primary hover:text-primary-dark font-medium flex items-center gap-1">
+                  Lihat Semua <ChevronRight className="w-4 h-4" />
+                </Link>
               </div>
-              <p className="text-center text-xs text-muted mt-4">
-                Contoh tampilan panel cerita dengan dialog dan fitur audio
-              </p>
+              {stories.length > 0 ? (
+                <div className="grid grid-cols-2 sm:grid-cols-3 gap-4">
+                  {stories.map((story) => (
+                    <Link
+                      key={story.id}
+                      href={`/stories/${story.id}`}
+                      className="group bg-surface-alt rounded-xl border border-border hover:border-primary/40 overflow-hidden transition-all duration-300 hover:shadow-lg hover:shadow-primary/10"
+                    >
+                      <div className="aspect-[4/3] bg-background relative overflow-hidden">
+                        {story.cover_image_url ? (
+                          <img
+                            src={story.cover_image_url}
+                            alt={story.title}
+                            className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
+                          />
+                        ) : (
+                          <div className="w-full h-full flex items-center justify-center">
+                            <BookOpen className="w-10 h-10 text-muted/30" />
+                          </div>
+                        )}
+                        <div className="absolute inset-0 bg-gradient-to-t from-black/50 to-transparent opacity-0 group-hover:opacity-100 transition-opacity flex items-end justify-center pb-3">
+                          <span className="text-white text-xs font-medium flex items-center gap-1">
+                            <Eye className="w-3.5 h-3.5" /> Baca
+                          </span>
+                        </div>
+                      </div>
+                      <div className="p-3">
+                        <h4 className="text-sm font-semibold text-foreground truncate group-hover:text-primary transition-colors">
+                          {story.title}
+                        </h4>
+                        <div className="flex items-center gap-2 mt-1.5">
+                          {story.theme && (
+                            <span className="text-[10px] px-2 py-0.5 bg-primary/10 text-primary rounded-full font-medium">
+                              {story.theme}
+                            </span>
+                          )}
+                          {story.level && (
+                            <span className="text-[10px] px-2 py-0.5 bg-secondary/10 text-secondary rounded-full font-medium">
+                              {story.level}
+                            </span>
+                          )}
+                        </div>
+                        {story.author_name && (
+                          <p className="text-[10px] text-muted mt-1.5 truncate">oleh {story.author_name}</p>
+                        )}
+                      </div>
+                    </Link>
+                  ))}
+                </div>
+              ) : (
+                <div className="text-center py-10 text-muted">
+                  <BookOpen className="w-12 h-12 mx-auto mb-3 opacity-30" />
+                  <p className="text-sm">Belum ada cerita yang diterbitkan.</p>
+                  <Link href="/register" className="text-primary text-sm font-medium mt-2 inline-block hover:underline">
+                    Mulai buat cerita pertamamu!
+                  </Link>
+                </div>
+              )}
             </div>
           </div>
         </div>
@@ -195,6 +263,7 @@ export default function HomePage() {
               <div
                 key={i}
                 className={`feature-card group p-6 rounded-2xl bg-surface-card border border-border hover:border-border-light transition-all duration-300 hover:shadow-xl ${f.glow}`}
+                style={{ opacity: 1 }}
               >
                 <div className={`w-12 h-12 rounded-xl bg-surface-alt flex items-center justify-center mb-4`}>
                   <f.icon className={`w-6 h-6 ${f.color}`} />
