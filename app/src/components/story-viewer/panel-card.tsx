@@ -148,6 +148,34 @@ export function PanelCard({
           );
         })()}
 
+        {/* Narration audio controls (inside panel, bottom-left) */}
+        {!compact && (panel.narration_audio_url || (user && user.role === "siswa" && onSaveRecording && panel.narration_text)) && visibility.narration && (
+          <div className="absolute bottom-2 left-2 z-20 flex flex-col items-start gap-1">
+            <div className="flex items-center gap-1.5">
+              {panel.narration_audio_url && (
+                <AudioPlayer src={panel.narration_audio_url} compact label="Narasi" className="shadow-md !bg-black/60 !text-white hover:!bg-black/80" />
+              )}
+              {user && user.role === "siswa" && onSaveRecording && panel.narration_text && (
+                <button
+                  onClick={() => setShowRecorder(showRecorder === "narration" ? null : "narration")}
+                  className="inline-flex items-center gap-1 px-3 py-1.5 rounded-full text-xs font-semibold bg-black/60 text-white hover:bg-black/80 transition-colors shadow-md"
+                >
+                  <Mic className="w-3 h-3" />
+                  Rekam Narasi
+                </button>
+              )}
+            </div>
+            {showRecorder === "narration" && onSaveRecording && (
+              <div className="w-64 bg-surface-card/95 backdrop-blur-sm rounded-lg border border-border p-2 shadow-lg">
+                <AudioRecorder
+                  onSave={(blob) => { onSaveRecording(blob); setShowRecorder(null); }}
+                  onCancel={() => setShowRecorder(null)}
+                />
+              </div>
+            )}
+          </div>
+        )}
+
         {/* Dialog bubbles overlay — timeline-aware */}
         {panel.dialogs?.map((dialog) => {
           const visible = isDialogVisible(dialog);
@@ -200,32 +228,6 @@ export function PanelCard({
           );
         })}
       </div>
-
-      {/* Narration audio controls (text is now in-panel overlay) */}
-      {!compact && (panel.narration_audio_url || (user && user.role === "siswa" && onSaveRecording && panel.narration_text)) && visibility.narration && (
-        <div className="mt-3 flex items-center gap-2 flex-wrap">
-          {panel.narration_audio_url && (
-            <AudioPlayer src={panel.narration_audio_url} compact label="Narasi" />
-          )}
-          {user && user.role === "siswa" && onSaveRecording && panel.narration_text && (
-            <button
-              onClick={() => setShowRecorder(showRecorder === "narration" ? null : "narration")}
-              className="inline-flex items-center gap-1 px-3 py-1.5 rounded-full text-xs font-semibold bg-danger/10 text-danger hover:bg-danger/20 transition-colors"
-            >
-              <Mic className="w-3 h-3" />
-              Rekam Narasi
-            </button>
-          )}
-          {showRecorder === "narration" && onSaveRecording && (
-            <div className="w-full mt-1">
-              <AudioRecorder
-                onSave={(blob) => { onSaveRecording(blob); setShowRecorder(null); }}
-                onCancel={() => setShowRecorder(null)}
-              />
-            </div>
-          )}
-        </div>
-      )}
 
       {/* Background audio */}
       {!compact && panel.background_audio_url && visibility.bgAudio && (
