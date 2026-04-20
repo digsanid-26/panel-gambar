@@ -141,6 +141,8 @@ export interface CanvasLayer {
   fontSize?: number;
   fontFamily?: string;
   fill?: string;
+  /** Text alignment */
+  textAlign?: "left" | "center" | "right";
   // Speech bubble specific
   bubbleStyle?: "oval" | "cloud" | "jagged" | "rectangle";
   tailX?: number;

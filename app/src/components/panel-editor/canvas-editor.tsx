@@ -36,6 +36,8 @@ interface CanvasEditorProps {
   onUploadImage: (file: File) => Promise<string | null>;
   /** Panel dialogs to display as overlay bubbles on the canvas */
   dialogs?: Dialog[];
+  /** Called when a dialog is dragged to a new position */
+  onDialogPositionChange?: (dialogId: string, posX: number, posY: number) => void;
 }
 
 const DEFAULT_CANVAS: CanvasData = {
@@ -48,7 +50,7 @@ function generateId() {
   return `layer_${Date.now()}_${Math.random().toString(36).substr(2, 6)}`;
 }
 
-export function CanvasEditor({ canvasData, onSave, onUploadImage, dialogs = [] }: CanvasEditorProps) {
+export function CanvasEditor({ canvasData, onSave, onUploadImage, dialogs = [], onDialogPositionChange }: CanvasEditorProps) {
   const [data, setData] = useState<CanvasData>(canvasData || DEFAULT_CANVAS);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [history, setHistory] = useState<CanvasData[]>([canvasData || DEFAULT_CANVAS]);
@@ -591,6 +593,7 @@ export function CanvasEditor({ canvasData, onSave, onUploadImage, dialogs = [] }
                       fontSize={layer.fontSize || 24}
                       fontFamily={layer.fontFamily || "Arial"}
                       fill={layer.fill || "#000"}
+                      align={layer.textAlign || "left"}
                       width={layer.width}
                       rotation={layer.rotation}
                       opacity={layer.opacity}
@@ -643,7 +646,7 @@ export function CanvasEditor({ canvasData, onSave, onUploadImage, dialogs = [] }
                         fill={layer.fill || "#000"}
                         width={layer.width - 20}
                         height={layer.height - 20}
-                        align="center" verticalAlign="middle"
+                        align={layer.textAlign || "center"} verticalAlign="middle"
                       />
                     </Group>
                   );
@@ -778,7 +781,7 @@ export function CanvasEditor({ canvasData, onSave, onUploadImage, dialogs = [] }
                 return null;
               })}
 
-              {/* Dialog overlays (from panel.dialogs) */}
+              {/* Dialog overlays (from panel.dialogs) — draggable */}
               {dialogs.map((dialog) => {
                 const dx = (dialog.position_x / 100) * data.width;
                 const dy = (dialog.position_y / 100) * data.height;
@@ -789,8 +792,16 @@ export function CanvasEditor({ canvasData, onSave, onUploadImage, dialogs = [] }
                     key={`dlg-${dialog.id}`}
                     x={dx - bw / 2}
                     y={dy - bh / 2}
-                    listening={false}
+                    draggable={!!onDialogPositionChange}
                     opacity={0.85}
+                    onDragEnd={(e: any) => {
+                      if (!onDialogPositionChange) return;
+                      const newX = e.target.x() + bw / 2;
+                      const newY = e.target.y() + bh / 2;
+                      const posX = Math.round((newX / data.width) * 100 * 10) / 10;
+                      const posY = Math.round((newY / data.height) * 100 * 10) / 10;
+                      onDialogPositionChange(dialog.id, Math.max(0, Math.min(100, posX)), Math.max(0, Math.min(100, posY)));
+                    }}
                   >
                     <Rect
                       x={0}
@@ -1001,26 +1012,47 @@ export function CanvasEditor({ canvasData, onSave, onUploadImage, dialogs = [] }
               </div>
               {/* Text properties */}
               {(selectedLayer.type === "text" || selectedLayer.type === "speech-bubble") && (
-                <div className="grid grid-cols-2 gap-1">
-                  <div>
-                    <label className="text-[10px] text-muted">Font Size</label>
-                    <input
-                      type="number"
-                      value={selectedLayer.fontSize || 16}
-                      onChange={(e) => updateLayer(selectedLayer.id, { fontSize: Number(e.target.value) })}
-                      className="w-full text-xs px-1.5 py-0.5 rounded border border-border bg-surface-alt text-foreground"
-                    />
+                <>
+                  <div className="grid grid-cols-2 gap-1">
+                    <div>
+                      <label className="text-[10px] text-muted">Font Size</label>
+                      <input
+                        type="number"
+                        value={selectedLayer.fontSize || 16}
+                        onChange={(e) => updateLayer(selectedLayer.id, { fontSize: Number(e.target.value) })}
+                        className="w-full text-xs px-1.5 py-0.5 rounded border border-border bg-surface-alt text-foreground"
+                      />
+                    </div>
+                    <div>
+                      <label className="text-[10px] text-muted">Warna</label>
+                      <input
+                        type="color"
+                        value={selectedLayer.fill || "#000000"}
+                        onChange={(e) => updateLayer(selectedLayer.id, { fill: e.target.value })}
+                        className="w-full h-6 rounded border border-border cursor-pointer"
+                      />
+                    </div>
                   </div>
+                  {/* Text Align */}
                   <div>
-                    <label className="text-[10px] text-muted">Warna</label>
-                    <input
-                      type="color"
-                      value={selectedLayer.fill || "#000000"}
-                      onChange={(e) => updateLayer(selectedLayer.id, { fill: e.target.value })}
-                      className="w-full h-6 rounded border border-border cursor-pointer"
-                    />
+                    <label className="text-[10px] text-muted">Rata Teks</label>
+                    <div className="flex gap-1 mt-0.5">
+                      {(["left", "center", "right"] as const).map((align) => (
+                        <button
+                          key={align}
+                          onClick={() => updateLayer(selectedLayer.id, { textAlign: align })}
+                          className={`flex-1 text-[10px] py-1 rounded border transition-colors ${
+                            (selectedLayer.textAlign || (selectedLayer.type === "speech-bubble" ? "center" : "left")) === align
+                              ? "bg-primary text-white border-primary"
+                              : "bg-surface-alt text-foreground border-border hover:bg-surface"
+                          }`}
+                        >
+                          {align === "left" ? "Kiri" : align === "center" ? "Tengah" : "Kanan"}
+                        </button>
+                      ))}
+                    </div>
                   </div>
-                </div>
+                </>
               )}
               {/* Shape-specific properties */}
               {selectedLayer.type === "shape" && (

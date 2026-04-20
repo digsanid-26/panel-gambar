@@ -311,22 +311,44 @@ export function PanelTimelineEditor({ panel, timelineData, onChange }: PanelTime
     return () => { cancelled = true; };
   }, [panel.narration_audio_url, panel.background_audio_url, panel.dialogs]);
 
-  // Group items by type for layered display
-  const trackOrder: PanelTimelineItem["type"][] = [
+  // Group items into tracks:
+  // - Non-canvas items grouped by type (panel, narration-audio, etc.)
+  // - Canvas layer items (ref_id starting with "cl_") each get their own row
+  const systemTrackOrder: PanelTimelineItem["type"][] = [
     "panel",
-    "image",
     "narration-audio",
     "background-audio",
-    "dialog",
-    "bubble",
   ];
 
-  const tracks = trackOrder
-    .map((type) => ({
-      type,
-      items: items.filter((it) => it.type === type),
-    }))
-    .filter((t) => t.items.length > 0);
+  const tracks: { key: string; label: string; items: PanelTimelineItem[] }[] = [];
+
+  // System tracks (grouped by type)
+  for (const type of systemTrackOrder) {
+    const trackItems = items.filter((it) => it.type === type && !it.ref_id?.startsWith("cl_"));
+    if (trackItems.length > 0) {
+      tracks.push({ key: type, label: TYPE_LABELS[type] || type, items: trackItems });
+    }
+  }
+
+  // Non-canvas dialog/image tracks (grouped by type)
+  const nonCanvasDialogs = items.filter((it) => it.type === "dialog" && !it.ref_id?.startsWith("cl_"));
+  if (nonCanvasDialogs.length > 0) {
+    tracks.push({ key: "dialog", label: TYPE_LABELS.dialog, items: nonCanvasDialogs });
+  }
+  const nonCanvasImages = items.filter((it) => it.type === "image" && !it.ref_id?.startsWith("cl_"));
+  if (nonCanvasImages.length > 0) {
+    tracks.push({ key: "image", label: TYPE_LABELS.image, items: nonCanvasImages });
+  }
+  const nonCanvasBubbles = items.filter((it) => it.type === "bubble" && !it.ref_id?.startsWith("cl_"));
+  if (nonCanvasBubbles.length > 0) {
+    tracks.push({ key: "bubble", label: TYPE_LABELS.bubble, items: nonCanvasBubbles });
+  }
+
+  // Canvas layer tracks — each gets its own row
+  const canvasItems = items.filter((it) => it.ref_id?.startsWith("cl_"));
+  for (const item of canvasItems) {
+    tracks.push({ key: item.id, label: item.label, items: [item] });
+  }
 
   // --- Drag handlers using ref (no re-render during drag) ---
   function handleMouseDown(e: React.MouseEvent, itemId: string, mode: "move" | "resize-left" | "resize-right") {
@@ -610,11 +632,11 @@ export function PanelTimelineEditor({ panel, timelineData, onChange }: PanelTime
         >
           <div style={{ width: `${timelineWidth}px`, minWidth: "100%" }}>
             {tracks.map((track) => (
-              <div key={track.type} className="relative border-b border-border last:border-b-0" style={{ height: "40px" }}>
+              <div key={track.key} className="relative border-b border-border last:border-b-0" style={{ height: "40px" }}>
                 {/* Track label */}
                 <div className="absolute left-1 top-1 z-10">
-                  <span className="text-[9px] text-muted font-medium bg-surface/80 px-1 rounded select-none">
-                    {TYPE_LABELS[track.type] || track.type}
+                  <span className="text-[9px] text-muted font-medium bg-surface/80 px-1 rounded select-none truncate max-w-[120px] inline-block">
+                    {track.label}
                   </span>
                 </div>
 

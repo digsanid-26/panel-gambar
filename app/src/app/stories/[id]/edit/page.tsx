@@ -1103,6 +1103,7 @@ export default function EditStoryPage() {
                         onSave={(cd) => saveCanvasData(panel.id, cd)}
                         onUploadImage={(file) => uploadCanvasImage(panel.id, file)}
                         dialogs={panel.dialogs || []}
+                        onDialogPositionChange={updateDialogPosition}
                       />
                       {/* Panel height setting — affects vertical scroll display */}
                       <div className="flex items-center gap-3 p-3 bg-surface-alt rounded-xl border border-border">
