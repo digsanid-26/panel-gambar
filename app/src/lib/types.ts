@@ -149,6 +149,20 @@ export interface CanvasLayer {
   shapeType?: "rect" | "circle" | "polygon";
   stroke?: string;
   strokeWidth?: number;
+  /** Border radius for rect shapes (px or array for individual corners) */
+  borderRadius?: number;
+  /** Background image URL for shapes */
+  backgroundImage?: string;
+  /** How the background image is sized: cover, contain, or fill */
+  bgSize?: "cover" | "contain" | "fill";
+  /** Background image position */
+  bgPosition?: "top-left" | "top-center" | "top-right" | "center-left" | "center-center" | "center-right" | "bottom-left" | "bottom-center" | "bottom-right";
+  /** Custom polygon points as flat [x1,y1,x2,y2,...] relative to layer origin */
+  points?: number[];
+  /** Skew X in degrees (for trapezoid-like shapes) */
+  skewX?: number;
+  /** Skew Y in degrees */
+  skewY?: number;
 }
 
 export interface Dialog {

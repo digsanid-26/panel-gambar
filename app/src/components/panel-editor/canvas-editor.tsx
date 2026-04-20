@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useRef, useCallback, useEffect } from "react";
-import { Stage, Layer, Rect, Image as KonvaImage, Text, Group, Circle, Arrow } from "react-konva";
+import { Stage, Layer, Rect, Image as KonvaImage, Text, Group, Circle, Arrow, Line, Transformer } from "react-konva";
 import type { CanvasData, CanvasLayer } from "@/lib/types";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -10,6 +10,8 @@ import {
   Type,
   MessageCircle,
   Square,
+  Circle as CircleIcon,
+  Triangle,
   Layers,
   Trash2,
   Undo2,
@@ -49,8 +51,12 @@ export function CanvasEditor({ canvasData, onSave, onUploadImage }: CanvasEditor
   const [historyIdx, setHistoryIdx] = useState(0);
   const [scale, setScale] = useState(1);
   const [loadedImages, setLoadedImages] = useState<Record<string, HTMLImageElement>>({});
+  const [shapeBgImages, setShapeBgImages] = useState<Record<string, HTMLImageElement>>({});
   const stageRef = useRef<any>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const shapeBgInputRef = useRef<HTMLInputElement>(null);
+  const transformerRef = useRef<any>(null);
+  const shapeRefs = useRef<Record<string, any>>({});
 
   // Auto-fit scale
   const containerRef = useRef<HTMLDivElement>(null);
@@ -62,7 +68,7 @@ export function CanvasEditor({ canvasData, onSave, onUploadImage }: CanvasEditor
     }
   }, [data.width]);
 
-  // Load images
+  // Load images (layer images)
   useEffect(() => {
     data.layers
       .filter((l) => l.type === "image" && l.src && !loadedImages[l.id])
@@ -75,6 +81,32 @@ export function CanvasEditor({ canvasData, onSave, onUploadImage }: CanvasEditor
         img.src = layer.src!;
       });
   }, [data.layers]);
+
+  // Load shape background images
+  useEffect(() => {
+    data.layers
+      .filter((l) => l.type === "shape" && l.backgroundImage && !shapeBgImages[l.id])
+      .forEach((layer) => {
+        const img = new window.Image();
+        img.crossOrigin = "anonymous";
+        img.onload = () => {
+          setShapeBgImages((prev) => ({ ...prev, [layer.id]: img }));
+        };
+        img.src = layer.backgroundImage!;
+      });
+  }, [data.layers]);
+
+  // Attach transformer to selected node
+  useEffect(() => {
+    if (!transformerRef.current) return;
+    const node = selectedId ? shapeRefs.current[selectedId] : null;
+    if (node) {
+      transformerRef.current.nodes([node]);
+    } else {
+      transformerRef.current.nodes([]);
+    }
+    transformerRef.current.getLayer()?.batchDraw();
+  }, [selectedId, data.layers]);
 
   function pushHistory(newData: CanvasData) {
     const newHistory = history.slice(0, historyIdx + 1);
@@ -209,11 +241,12 @@ export function CanvasEditor({ canvasData, onSave, onUploadImage }: CanvasEditor
     });
   }
 
-  function addShape() {
-    addLayer({
+  function addShape(shapeType: "rect" | "circle" | "polygon" = "rect") {
+    const names: Record<string, string> = { rect: "Kotak", circle: "Lingkaran", polygon: "Polygon" };
+    const base: CanvasLayer = {
       id: generateId(),
       type: "shape",
-      name: "Kotak",
+      name: names[shapeType] || "Bentuk",
       visible: true,
       locked: false,
       x: data.width / 2 - 50,
@@ -223,11 +256,69 @@ export function CanvasEditor({ canvasData, onSave, onUploadImage }: CanvasEditor
       rotation: 0,
       opacity: 1,
       zIndex: data.layers.length,
-      shapeType: "rect",
+      shapeType,
       fill: "#45f882",
       stroke: "#ffffff",
       strokeWidth: 2,
-    });
+      borderRadius: 0,
+    };
+    if (shapeType === "polygon") {
+      // Default trapezoid points relative to width/height
+      base.points = [20, 0, 80, 0, 100, 100, 0, 100];
+    }
+    addLayer(base);
+  }
+
+  // Compute background image fill pattern offset based on bgSize and bgPosition
+  function computeFillPattern(
+    img: HTMLImageElement,
+    layerW: number,
+    layerH: number,
+    bgSize: string = "cover",
+    bgPosition: string = "center-center"
+  ): { scaleX: number; scaleY: number; offsetX: number; offsetY: number } {
+    const iw = img.width;
+    const ih = img.height;
+    let sx = 1, sy = 1;
+
+    if (bgSize === "cover") {
+      const ratio = Math.max(layerW / iw, layerH / ih);
+      sx = ratio; sy = ratio;
+    } else if (bgSize === "contain") {
+      const ratio = Math.min(layerW / iw, layerH / ih);
+      sx = ratio; sy = ratio;
+    } else {
+      sx = layerW / iw; sy = layerH / ih;
+    }
+
+    const scaledW = iw * sx;
+    const scaledH = ih * sy;
+
+    // Position offsets (negative means shift the pattern)
+    const [vy, vx] = bgPosition.split("-");
+    let ox = 0, oy = 0;
+    if (vx === "center") ox = -(scaledW - layerW) / 2;
+    else if (vx === "right") ox = -(scaledW - layerW);
+    if (vy === "center") oy = -(scaledH - layerH) / 2;
+    else if (vy === "bottom") oy = -(scaledH - layerH);
+
+    return { scaleX: sx, scaleY: sy, offsetX: -ox / sx, offsetY: -oy / sy };
+  }
+
+  // Upload shape background image
+  async function handleShapeBgFile(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    if (!file || !selectedId) return;
+    const url = await onUploadImage(file);
+    if (!url) return;
+    const img = new window.Image();
+    img.crossOrigin = "anonymous";
+    img.onload = () => {
+      setShapeBgImages((prev) => ({ ...prev, [selectedId]: img }));
+    };
+    img.src = url;
+    updateLayer(selectedId, { backgroundImage: url, bgSize: "cover", bgPosition: "center-center" });
+    e.target.value = "";
   }
 
   const selectedLayer = data.layers.find((l) => l.id === selectedId);
@@ -249,9 +340,17 @@ export function CanvasEditor({ canvasData, onSave, onUploadImage }: CanvasEditor
           <MessageCircle className="w-4 h-4" />
           Balon Kata
         </Button>
-        <Button variant="outline" size="sm" onClick={addShape}>
+        <Button variant="outline" size="sm" onClick={() => addShape("rect")}>
           <Square className="w-4 h-4" />
-          Bentuk
+          Kotak
+        </Button>
+        <Button variant="outline" size="sm" onClick={() => addShape("circle")}>
+          <CircleIcon className="w-4 h-4" />
+          Lingkaran
+        </Button>
+        <Button variant="outline" size="sm" onClick={() => addShape("polygon")}>
+          <Triangle className="w-4 h-4" />
+          Polygon
         </Button>
         <div className="w-px h-6 bg-border mx-1" />
         <Button variant="ghost" size="sm" onClick={undo} disabled={historyIdx <= 0}>
@@ -295,12 +394,38 @@ export function CanvasEditor({ canvasData, onSave, onUploadImage }: CanvasEditor
 
               {/* Layers */}
               {sortedLayers.filter((l) => l.visible).map((layer) => {
-                const isSelected = selectedId === layer.id;
+                const commonHandlers = {
+                  onClick: () => setSelectedId(layer.id),
+                  onTap: () => setSelectedId(layer.id),
+                  onDragEnd: (e: any) => {
+                    updateLayer(layer.id, { x: e.target.x(), y: e.target.y() });
+                  },
+                  onTransformEnd: (e: any) => {
+                    const node = e.target;
+                    const scaleX = node.scaleX();
+                    const scaleY = node.scaleY();
+                    // Reset scale back to 1 and apply to width/height
+                    node.scaleX(1);
+                    node.scaleY(1);
+                    updateLayer(layer.id, {
+                      x: node.x(),
+                      y: node.y(),
+                      width: Math.max(5, node.width() * scaleX),
+                      height: Math.max(5, node.height() * scaleY),
+                      rotation: node.rotation(),
+                    });
+                  },
+                };
+
+                const setRef = (node: any) => {
+                  if (node) shapeRefs.current[layer.id] = node;
+                };
 
                 if (layer.type === "image" && loadedImages[layer.id]) {
                   return (
                     <KonvaImage
                       key={layer.id}
+                      ref={setRef}
                       image={loadedImages[layer.id]}
                       x={layer.x}
                       y={layer.y}
@@ -309,13 +434,7 @@ export function CanvasEditor({ canvasData, onSave, onUploadImage }: CanvasEditor
                       rotation={layer.rotation}
                       opacity={layer.opacity}
                       draggable={!layer.locked}
-                      onClick={() => setSelectedId(layer.id)}
-                      onTap={() => setSelectedId(layer.id)}
-                      onDragEnd={(e) => {
-                        updateLayer(layer.id, { x: e.target.x(), y: e.target.y() });
-                      }}
-                      stroke={isSelected ? "#45f882" : undefined}
-                      strokeWidth={isSelected ? 2 : 0}
+                      {...commonHandlers}
                     />
                   );
                 }
@@ -324,6 +443,7 @@ export function CanvasEditor({ canvasData, onSave, onUploadImage }: CanvasEditor
                   return (
                     <Text
                       key={layer.id}
+                      ref={setRef}
                       x={layer.x}
                       y={layer.y}
                       text={layer.text || ""}
@@ -334,11 +454,7 @@ export function CanvasEditor({ canvasData, onSave, onUploadImage }: CanvasEditor
                       rotation={layer.rotation}
                       opacity={layer.opacity}
                       draggable={!layer.locked}
-                      onClick={() => setSelectedId(layer.id)}
-                      onTap={() => setSelectedId(layer.id)}
-                      onDragEnd={(e) => {
-                        updateLayer(layer.id, { x: e.target.x(), y: e.target.y() });
-                      }}
+                      {...commonHandlers}
                     />
                   );
                 }
@@ -347,80 +463,80 @@ export function CanvasEditor({ canvasData, onSave, onUploadImage }: CanvasEditor
                   return (
                     <Group
                       key={layer.id}
+                      ref={setRef}
                       x={layer.x}
                       y={layer.y}
                       draggable={!layer.locked}
-                      onClick={() => setSelectedId(layer.id)}
-                      onTap={() => setSelectedId(layer.id)}
-                      onDragEnd={(e) => {
-                        updateLayer(layer.id, { x: e.target.x(), y: e.target.y() });
-                      }}
                       opacity={layer.opacity}
                       rotation={layer.rotation}
+                      {...commonHandlers}
                     >
-                      {/* Bubble shape */}
                       {layer.bubbleStyle === "oval" ? (
                         <>
                           <Rect
-                            x={0}
-                            y={0}
-                            width={layer.width}
-                            height={layer.height}
+                            x={0} y={0}
+                            width={layer.width} height={layer.height}
                             fill="white"
                             cornerRadius={layer.height / 2}
-                            stroke={isSelected ? "#45f882" : "#333"}
-                            strokeWidth={isSelected ? 2 : 1}
+                            stroke="#333" strokeWidth={1}
                           />
-                          {/* Tail */}
                           <Arrow
                             points={[layer.width / 2, layer.height, layer.width / 2 + (layer.tailX || 0), layer.height + (layer.tailY || 30)]}
-                            fill="white"
-                            stroke={isSelected ? "#45f882" : "#333"}
-                            strokeWidth={1}
-                            pointerLength={0}
-                            pointerWidth={0}
+                            fill="white" stroke="#333" strokeWidth={1}
+                            pointerLength={0} pointerWidth={0}
                           />
                         </>
                       ) : (
                         <Rect
-                          x={0}
-                          y={0}
-                          width={layer.width}
-                          height={layer.height}
-                          fill="white"
-                          cornerRadius={8}
-                          stroke={isSelected ? "#45f882" : "#333"}
-                          strokeWidth={isSelected ? 2 : 1}
+                          x={0} y={0}
+                          width={layer.width} height={layer.height}
+                          fill="white" cornerRadius={8}
+                          stroke="#333" strokeWidth={1}
                         />
                       )}
-                      {/* Text */}
                       <Text
-                        x={10}
-                        y={10}
+                        x={10} y={10}
                         text={layer.text || ""}
                         fontSize={layer.fontSize || 16}
                         fontFamily={layer.fontFamily || "Arial"}
                         fill={layer.fill || "#000"}
                         width={layer.width - 20}
                         height={layer.height - 20}
-                        align="center"
-                        verticalAlign="middle"
+                        align="center" verticalAlign="middle"
                       />
                     </Group>
                   );
                 }
 
                 if (layer.type === "shape") {
+                  // Build fill pattern props for shapes with background images
+                  const bgImg = shapeBgImages[layer.id];
+                  const hasBgImage = !!layer.backgroundImage && !!bgImg;
+                  let fillPatternProps: Record<string, any> = {};
+                  if (hasBgImage) {
+                    const fp = computeFillPattern(bgImg, layer.width, layer.height, layer.bgSize || "cover", layer.bgPosition || "center-center");
+                    fillPatternProps = {
+                      fillPatternImage: bgImg,
+                      fillPatternScaleX: fp.scaleX,
+                      fillPatternScaleY: fp.scaleY,
+                      fillPatternOffsetX: fp.offsetX,
+                      fillPatternOffsetY: fp.offsetY,
+                      fillPatternRepeat: "no-repeat",
+                    };
+                  }
+
                   if (layer.shapeType === "circle") {
                     return (
                       <Circle
                         key={layer.id}
+                        ref={setRef}
                         x={layer.x + layer.width / 2}
                         y={layer.y + layer.height / 2}
-                        radius={Math.min(layer.width, layer.height) / 2}
-                        fill={layer.fill || "#45f882"}
-                        stroke={isSelected ? "#45f882" : layer.stroke}
-                        strokeWidth={isSelected ? 2 : layer.strokeWidth || 0}
+                        radiusX={layer.width / 2}
+                        radiusY={layer.height / 2}
+                        fill={hasBgImage ? undefined : (layer.fill || "#45f882")}
+                        stroke={layer.stroke}
+                        strokeWidth={layer.strokeWidth || 0}
                         rotation={layer.rotation}
                         opacity={layer.opacity}
                         draggable={!layer.locked}
@@ -432,40 +548,120 @@ export function CanvasEditor({ canvasData, onSave, onUploadImage }: CanvasEditor
                             y: e.target.y() - layer.height / 2,
                           });
                         }}
+                        onTransformEnd={(e) => {
+                          const node = e.target;
+                          const sx = node.scaleX();
+                          const sy = node.scaleY();
+                          node.scaleX(1);
+                          node.scaleY(1);
+                          const newW = Math.max(5, layer.width * sx);
+                          const newH = Math.max(5, layer.height * sy);
+                          updateLayer(layer.id, {
+                            x: node.x() - newW / 2,
+                            y: node.y() - newH / 2,
+                            width: newW,
+                            height: newH,
+                            rotation: node.rotation(),
+                          });
+                        }}
+                        {...(hasBgImage ? fillPatternProps : {})}
                       />
                     );
                   }
+
+                  if (layer.shapeType === "polygon" && layer.points) {
+                    // Scale points from 0-100 space to actual layer width/height
+                    const scaledPoints = layer.points.map((v, i) =>
+                      i % 2 === 0 ? (v / 100) * layer.width : (v / 100) * layer.height
+                    );
+                    return (
+                      <Line
+                        key={layer.id}
+                        ref={setRef}
+                        x={layer.x}
+                        y={layer.y}
+                        points={scaledPoints}
+                        closed
+                        fill={hasBgImage ? undefined : (layer.fill || "#45f882")}
+                        stroke={layer.stroke}
+                        strokeWidth={layer.strokeWidth || 0}
+                        rotation={layer.rotation}
+                        opacity={layer.opacity}
+                        draggable={!layer.locked}
+                        skewX={layer.skewX || 0}
+                        skewY={layer.skewY || 0}
+                        {...commonHandlers}
+                        onTransformEnd={(e) => {
+                          const node = e.target;
+                          const sx = node.scaleX();
+                          const sy = node.scaleY();
+                          node.scaleX(1);
+                          node.scaleY(1);
+                          updateLayer(layer.id, {
+                            x: node.x(),
+                            y: node.y(),
+                            width: Math.max(5, layer.width * sx),
+                            height: Math.max(5, layer.height * sy),
+                            rotation: node.rotation(),
+                          });
+                        }}
+                        {...(hasBgImage ? fillPatternProps : {})}
+                      />
+                    );
+                  }
+
+                  // Default: rect shape
                   return (
                     <Rect
                       key={layer.id}
+                      ref={setRef}
                       x={layer.x}
                       y={layer.y}
                       width={layer.width}
                       height={layer.height}
-                      fill={layer.fill || "#45f882"}
-                      stroke={isSelected ? "#45f882" : layer.stroke}
-                      strokeWidth={isSelected ? 2 : layer.strokeWidth || 0}
-                      cornerRadius={4}
+                      fill={hasBgImage ? undefined : (layer.fill || "#45f882")}
+                      stroke={layer.stroke}
+                      strokeWidth={layer.strokeWidth || 0}
+                      cornerRadius={layer.borderRadius || 0}
                       rotation={layer.rotation}
                       opacity={layer.opacity}
+                      skewX={layer.skewX || 0}
+                      skewY={layer.skewY || 0}
                       draggable={!layer.locked}
-                      onClick={() => setSelectedId(layer.id)}
-                      onTap={() => setSelectedId(layer.id)}
-                      onDragEnd={(e) => {
-                        updateLayer(layer.id, { x: e.target.x(), y: e.target.y() });
-                      }}
+                      {...commonHandlers}
+                      {...(hasBgImage ? fillPatternProps : {})}
                     />
                   );
                 }
 
                 return null;
               })}
+
+              {/* Transformer for selected element */}
+              <Transformer
+                ref={transformerRef}
+                rotateEnabled={true}
+                enabledAnchors={[
+                  "top-left", "top-center", "top-right",
+                  "middle-left", "middle-right",
+                  "bottom-left", "bottom-center", "bottom-right",
+                ]}
+                boundBoxFunc={(oldBox, newBox) => {
+                  if (newBox.width < 5 || newBox.height < 5) return oldBox;
+                  return newBox;
+                }}
+                anchorSize={8}
+                anchorCornerRadius={2}
+                borderStroke="#45f882"
+                anchorStroke="#45f882"
+                anchorFill="#1a1a2e"
+              />
             </Layer>
           </Stage>
         </div>
 
-        {/* Layers panel */}
-        <div className="w-56 shrink-0 bg-surface-card rounded-xl border border-border overflow-hidden">
+        {/* Layers panel + Properties */}
+        <div className="w-64 shrink-0 bg-surface-card rounded-xl border border-border overflow-hidden flex flex-col max-h-[700px]">
           <div className="px-3 py-2 border-b border-border">
             <p className="text-xs font-semibold text-foreground flex items-center gap-1.5">
               <Layers className="w-3.5 h-3.5" />
@@ -474,7 +670,7 @@ export function CanvasEditor({ canvasData, onSave, onUploadImage }: CanvasEditor
           </div>
 
           {/* Layer list */}
-          <div className="max-h-[300px] overflow-y-auto divide-y divide-border">
+          <div className="max-h-[200px] overflow-y-auto divide-y divide-border shrink-0">
             {[...data.layers].reverse().map((layer) => (
               <button
                 key={layer.id}
@@ -502,7 +698,7 @@ export function CanvasEditor({ canvasData, onSave, onUploadImage }: CanvasEditor
 
           {/* Selected layer properties */}
           {selectedLayer && (
-            <div className="border-t border-border p-3 space-y-2">
+            <div className="border-t border-border p-3 space-y-2 overflow-y-auto flex-1">
               <p className="text-xs font-semibold text-foreground">Properti</p>
               <Input
                 placeholder="Nama"
@@ -519,6 +715,7 @@ export function CanvasEditor({ canvasData, onSave, onUploadImage }: CanvasEditor
                   placeholder="Teks..."
                 />
               )}
+              {/* Size */}
               <div className="grid grid-cols-2 gap-1">
                 <div>
                   <label className="text-[10px] text-muted">W</label>
@@ -539,14 +736,12 @@ export function CanvasEditor({ canvasData, onSave, onUploadImage }: CanvasEditor
                   />
                 </div>
               </div>
+              {/* Opacity + Rotation */}
               <div className="grid grid-cols-2 gap-1">
                 <div>
                   <label className="text-[10px] text-muted">Opacity</label>
                   <input
-                    type="range"
-                    min={0}
-                    max={1}
-                    step={0.1}
+                    type="range" min={0} max={1} step={0.1}
                     value={selectedLayer.opacity}
                     onChange={(e) => updateLayer(selectedLayer.id, { opacity: Number(e.target.value) })}
                     className="w-full"
@@ -562,6 +757,7 @@ export function CanvasEditor({ canvasData, onSave, onUploadImage }: CanvasEditor
                   />
                 </div>
               </div>
+              {/* Text properties */}
               {(selectedLayer.type === "text" || selectedLayer.type === "speech-bubble") && (
                 <div className="grid grid-cols-2 gap-1">
                   <div>
@@ -584,35 +780,164 @@ export function CanvasEditor({ canvasData, onSave, onUploadImage }: CanvasEditor
                   </div>
                 </div>
               )}
+              {/* Shape-specific properties */}
               {selectedLayer.type === "shape" && (
-                <div className="grid grid-cols-2 gap-1">
-                  <div>
-                    <label className="text-[10px] text-muted">Fill</label>
-                    <input
-                      type="color"
-                      value={selectedLayer.fill || "#45f882"}
-                      onChange={(e) => updateLayer(selectedLayer.id, { fill: e.target.value })}
-                      className="w-full h-6 rounded border border-border cursor-pointer"
-                    />
+                <div className="space-y-2">
+                  {/* Fill + Stroke */}
+                  <div className="grid grid-cols-2 gap-1">
+                    <div>
+                      <label className="text-[10px] text-muted">Fill</label>
+                      <input
+                        type="color"
+                        value={selectedLayer.fill || "#45f882"}
+                        onChange={(e) => updateLayer(selectedLayer.id, { fill: e.target.value })}
+                        className="w-full h-6 rounded border border-border cursor-pointer"
+                      />
+                    </div>
+                    <div>
+                      <label className="text-[10px] text-muted">Stroke</label>
+                      <input
+                        type="color"
+                        value={selectedLayer.stroke || "#ffffff"}
+                        onChange={(e) => updateLayer(selectedLayer.id, { stroke: e.target.value })}
+                        className="w-full h-6 rounded border border-border cursor-pointer"
+                      />
+                    </div>
                   </div>
-                  <div>
-                    <label className="text-[10px] text-muted">Stroke</label>
-                    <input
-                      type="color"
-                      value={selectedLayer.stroke || "#ffffff"}
-                      onChange={(e) => updateLayer(selectedLayer.id, { stroke: e.target.value })}
-                      className="w-full h-6 rounded border border-border cursor-pointer"
-                    />
+                  {/* Stroke Width + Border Radius */}
+                  <div className="grid grid-cols-2 gap-1">
+                    <div>
+                      <label className="text-[10px] text-muted">Stroke Width</label>
+                      <input
+                        type="number" min={0} max={50}
+                        value={selectedLayer.strokeWidth || 0}
+                        onChange={(e) => updateLayer(selectedLayer.id, { strokeWidth: Number(e.target.value) })}
+                        className="w-full text-xs px-1.5 py-0.5 rounded border border-border bg-surface-alt text-foreground"
+                      />
+                    </div>
+                    {selectedLayer.shapeType === "rect" && (
+                      <div>
+                        <label className="text-[10px] text-muted">Border Radius</label>
+                        <input
+                          type="number" min={0} max={200}
+                          value={selectedLayer.borderRadius || 0}
+                          onChange={(e) => updateLayer(selectedLayer.id, { borderRadius: Number(e.target.value) })}
+                          className="w-full text-xs px-1.5 py-0.5 rounded border border-border bg-surface-alt text-foreground"
+                        />
+                      </div>
+                    )}
+                  </div>
+                  {/* Skew for rect/polygon */}
+                  {(selectedLayer.shapeType === "rect" || selectedLayer.shapeType === "polygon") && (
+                    <div className="grid grid-cols-2 gap-1">
+                      <div>
+                        <label className="text-[10px] text-muted">Skew X</label>
+                        <input
+                          type="number" step={0.01}
+                          value={selectedLayer.skewX || 0}
+                          onChange={(e) => updateLayer(selectedLayer.id, { skewX: Number(e.target.value) })}
+                          className="w-full text-xs px-1.5 py-0.5 rounded border border-border bg-surface-alt text-foreground"
+                        />
+                      </div>
+                      <div>
+                        <label className="text-[10px] text-muted">Skew Y</label>
+                        <input
+                          type="number" step={0.01}
+                          value={selectedLayer.skewY || 0}
+                          onChange={(e) => updateLayer(selectedLayer.id, { skewY: Number(e.target.value) })}
+                          className="w-full text-xs px-1.5 py-0.5 rounded border border-border bg-surface-alt text-foreground"
+                        />
+                      </div>
+                    </div>
+                  )}
+                  {/* Polygon points editor */}
+                  {selectedLayer.shapeType === "polygon" && selectedLayer.points && (
+                    <div>
+                      <label className="text-[10px] text-muted">Points (x,y pairs 0-100)</label>
+                      <textarea
+                        value={(selectedLayer.points || []).join(", ")}
+                        onChange={(e) => {
+                          const pts = e.target.value.split(",").map((s) => Number(s.trim())).filter((n) => !isNaN(n));
+                          if (pts.length >= 6 && pts.length % 2 === 0) {
+                            updateLayer(selectedLayer.id, { points: pts });
+                          }
+                        }}
+                        className="w-full text-xs px-2 py-1 rounded-lg border border-border bg-surface-alt text-foreground resize-none font-mono"
+                        rows={2}
+                        placeholder="20, 0, 80, 0, 100, 100, 0, 100"
+                      />
+                    </div>
+                  )}
+                  {/* Background Image */}
+                  <div className="space-y-1">
+                    <label className="text-[10px] text-muted font-semibold">Background Image</label>
+                    {selectedLayer.backgroundImage ? (
+                      <div className="flex items-center gap-1">
+                        <img src={selectedLayer.backgroundImage} alt="" className="w-8 h-8 rounded object-cover border border-border" />
+                        <button
+                          onClick={() => {
+                            const copy = { ...selectedLayer };
+                            delete copy.backgroundImage;
+                            updateLayer(selectedLayer.id, { backgroundImage: undefined, bgSize: undefined, bgPosition: undefined });
+                            setShapeBgImages((prev) => { const n = { ...prev }; delete n[selectedLayer.id]; return n; });
+                          }}
+                          className="text-[10px] text-danger hover:underline"
+                        >Hapus</button>
+                      </div>
+                    ) : (
+                      <button
+                        onClick={() => shapeBgInputRef.current?.click()}
+                        className="text-[10px] px-2 py-1 rounded border border-border bg-surface-alt text-foreground hover:bg-surface-alt/80 flex items-center gap-1"
+                      >
+                        <Upload className="w-3 h-3" /> Upload
+                      </button>
+                    )}
+                    {selectedLayer.backgroundImage && (
+                      <>
+                        <div>
+                          <label className="text-[10px] text-muted">Size</label>
+                          <select
+                            value={selectedLayer.bgSize || "cover"}
+                            onChange={(e) => updateLayer(selectedLayer.id, { bgSize: e.target.value as any })}
+                            className="w-full text-xs px-1.5 py-0.5 rounded border border-border bg-surface-alt text-foreground"
+                          >
+                            <option value="cover">Cover</option>
+                            <option value="contain">Contain</option>
+                            <option value="fill">Fill (stretch)</option>
+                          </select>
+                        </div>
+                        <div>
+                          <label className="text-[10px] text-muted">Position</label>
+                          <select
+                            value={selectedLayer.bgPosition || "center-center"}
+                            onChange={(e) => updateLayer(selectedLayer.id, { bgPosition: e.target.value as any })}
+                            className="w-full text-xs px-1.5 py-0.5 rounded border border-border bg-surface-alt text-foreground"
+                          >
+                            <option value="top-left">Top Left</option>
+                            <option value="top-center">Top Center</option>
+                            <option value="top-right">Top Right</option>
+                            <option value="center-left">Center Left</option>
+                            <option value="center-center">Center</option>
+                            <option value="center-right">Center Right</option>
+                            <option value="bottom-left">Bottom Left</option>
+                            <option value="bottom-center">Bottom Center</option>
+                            <option value="bottom-right">Bottom Right</option>
+                          </select>
+                        </div>
+                      </>
+                    )}
                   </div>
                 </div>
               )}
+              {/* Z-index + Delete */}
               <div className="flex items-center gap-1 pt-1">
-                <Button variant="ghost" size="sm" onClick={() => moveLayerZ(selectedLayer.id, "up")} className="!p-1">
+                <Button variant="ghost" size="sm" onClick={() => moveLayerZ(selectedLayer.id, "up")} className="!p-1" title="Naikkan">
                   <ChevronUp className="w-3 h-3" />
                 </Button>
-                <Button variant="ghost" size="sm" onClick={() => moveLayerZ(selectedLayer.id, "down")} className="!p-1">
+                <Button variant="ghost" size="sm" onClick={() => moveLayerZ(selectedLayer.id, "down")} className="!p-1" title="Turunkan">
                   <ChevronDown className="w-3 h-3" />
                 </Button>
+                <span className="text-[9px] text-muted">z:{selectedLayer.zIndex}</span>
                 <div className="flex-1" />
                 <Button variant="danger" size="sm" onClick={() => deleteLayer(selectedLayer.id)} className="!p-1 !px-2">
                   <Trash2 className="w-3 h-3" />
@@ -624,6 +949,7 @@ export function CanvasEditor({ canvasData, onSave, onUploadImage }: CanvasEditor
       </div>
 
       <input ref={fileInputRef} type="file" accept="image/*" className="hidden" onChange={handleImageFile} />
+      <input ref={shapeBgInputRef} type="file" accept="image/*" className="hidden" onChange={handleShapeBgFile} />
     </div>
   );
 }
