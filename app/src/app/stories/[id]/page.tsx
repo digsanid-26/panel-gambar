@@ -14,6 +14,7 @@ import {
   ContinuousViewer,
   VerticalScrollViewer,
   FlipBookViewer,
+  StoryCoverPage,
 } from "@/components/story-viewer";
 import {
   ChevronLeft,
@@ -40,6 +41,7 @@ export default function StoryViewerPage() {
   const [showTrailer, setShowTrailer] = useState(false);
   const [managedStudentId, setManagedStudentId] = useState<string | undefined>(undefined);
   const [duplicating, setDuplicating] = useState(false);
+  const [showCover, setShowCover] = useState(true);
 
   const supabase = createClient();
 
@@ -287,8 +289,16 @@ export default function StoryViewerPage() {
           </div>
         </div>
 
-        {/* Viewer (rendered based on display_mode) */}
-        {renderViewer()}
+        {/* Cover page or viewer */}
+        {showCover ? (
+          <StoryCoverPage
+            story={story}
+            onPlay={() => setShowCover(false)}
+            onShowTrailer={story.video_trailer_url ? () => setShowTrailer(true) : undefined}
+          />
+        ) : (
+          renderViewer()
+        )}
       </main>
     </div>
   );

@@ -765,6 +765,68 @@ export default function EditStoryPage() {
               />
             </div>
 
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+              <Input
+                id="edit-kurikulum"
+                label="Kurikulum"
+                placeholder="Misal: Kurikulum Merdeka"
+                value={story.kurikulum || ""}
+                onChange={(e) => updateStoryField("kurikulum", e.target.value)}
+              />
+              <Input
+                id="edit-mata-pelajaran"
+                label="Mata Pelajaran"
+                placeholder="Misal: Bahasa Indonesia"
+                value={story.mata_pelajaran || ""}
+                onChange={(e) => updateStoryField("mata_pelajaran", e.target.value)}
+              />
+              <Select
+                id="edit-semester"
+                label="Semester"
+                value={story.semester || ""}
+                onChange={(e) => updateStoryField("semester", e.target.value)}
+                options={[
+                  { value: "", label: "-- Pilih --" },
+                  { value: "Semester 1", label: "Semester 1" },
+                  { value: "Semester 2", label: "Semester 2" },
+                ]}
+              />
+            </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <Select
+                id="edit-sumber-cerita"
+                label="Sumber Cerita"
+                value={story.sumber_cerita || ""}
+                onChange={(e) => updateStoryField("sumber_cerita", e.target.value)}
+                options={[
+                  { value: "", label: "-- Pilih --" },
+                  { value: "Karangan Sendiri", label: "Karangan Sendiri" },
+                  { value: "Buku", label: "Buku" },
+                  { value: "Novel", label: "Novel" },
+                  { value: "Novel Online", label: "Novel Online" },
+                  { value: "Film", label: "Film" },
+                  { value: "Cerita Rakyat", label: "Cerita Rakyat" },
+                  { value: "Lainnya", label: "Lainnya" },
+                ]}
+              />
+              <Input
+                id="edit-detail-sumber"
+                label="Detail Sumber"
+                placeholder="Nama buku, film, novel, seri, dll"
+                value={story.detail_sumber || ""}
+                onChange={(e) => updateStoryField("detail_sumber", e.target.value)}
+              />
+            </div>
+
+            <Textarea
+              id="edit-informasi-tambahan"
+              label="Informasi Tambahan"
+              placeholder="Catatan atau keterangan tambahan tentang cerita ini..."
+              value={story.informasi_tambahan || ""}
+              onChange={(e) => updateStoryField("informasi_tambahan", e.target.value)}
+            />
+
             {/* Display Mode Selector */}
             <div>
               <label className="block text-sm font-semibold mb-3">Mode Tampilan Cerita</label>

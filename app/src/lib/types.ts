@@ -26,6 +26,18 @@ export interface Story {
   characters?: StoryCharacter[];
   /** How student recordings are handled */
   recording_mode?: RecordingMode;
+  /** Curriculum reference */
+  kurikulum?: string;
+  /** Subject / mata pelajaran */
+  mata_pelajaran?: string;
+  /** Semester */
+  semester?: string;
+  /** Story source type: Karangan sendiri, Buku, Novel Online, Film, etc. */
+  sumber_cerita?: string;
+  /** Source details: book name, film title, etc. */
+  detail_sumber?: string;
+  /** Additional information (free text) */
+  informasi_tambahan?: string;
   status: "draft" | "published" | "archived";
   visibility?: "public" | "private";
   author_id: string;

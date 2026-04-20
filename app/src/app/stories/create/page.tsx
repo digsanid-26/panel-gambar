@@ -23,6 +23,12 @@ export default function CreateStoryPage() {
   const [theme, setTheme] = useState("");
   const [level, setLevel] = useState("");
   const [targetClass, setTargetClass] = useState("");
+  const [kurikulum, setKurikulum] = useState("");
+  const [mataPelajaran, setMataPelajaran] = useState("");
+  const [semester, setSemester] = useState("");
+  const [sumberCerita, setSumberCerita] = useState("");
+  const [detailSumber, setDetailSumber] = useState("");
+  const [informasiTambahan, setInformasiTambahan] = useState("");
   const [coverFile, setCoverFile] = useState<File | null>(null);
   const [coverPreview, setCoverPreview] = useState<string | null>(null);
   const [videoFile, setVideoFile] = useState<File | null>(null);
@@ -121,6 +127,12 @@ export default function CreateStoryPage() {
         theme,
         level,
         target_class: targetClass,
+        kurikulum: kurikulum || null,
+        mata_pelajaran: mataPelajaran || null,
+        semester: semester || null,
+        sumber_cerita: sumberCerita || null,
+        detail_sumber: detailSumber || null,
+        informasi_tambahan: informasiTambahan || null,
         cover_image_url: coverImageUrl,
         video_trailer_url: videoTrailerUrl,
         author_id: user.id,
@@ -223,6 +235,68 @@ export default function CreateStoryPage() {
                 options={classOptions}
               />
             </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+              <Input
+                id="kurikulum"
+                label="Kurikulum"
+                placeholder="Misal: Kurikulum Merdeka"
+                value={kurikulum}
+                onChange={(e) => setKurikulum(e.target.value)}
+              />
+              <Input
+                id="mataPelajaran"
+                label="Mata Pelajaran"
+                placeholder="Misal: Bahasa Indonesia"
+                value={mataPelajaran}
+                onChange={(e) => setMataPelajaran(e.target.value)}
+              />
+              <Select
+                id="semester"
+                label="Semester"
+                value={semester}
+                onChange={(e) => setSemester(e.target.value)}
+                options={[
+                  { value: "", label: "-- Pilih --" },
+                  { value: "Semester 1", label: "Semester 1" },
+                  { value: "Semester 2", label: "Semester 2" },
+                ]}
+              />
+            </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <Select
+                id="sumberCerita"
+                label="Sumber Cerita"
+                value={sumberCerita}
+                onChange={(e) => setSumberCerita(e.target.value)}
+                options={[
+                  { value: "", label: "-- Pilih --" },
+                  { value: "Karangan Sendiri", label: "Karangan Sendiri" },
+                  { value: "Buku", label: "Buku" },
+                  { value: "Novel", label: "Novel" },
+                  { value: "Novel Online", label: "Novel Online" },
+                  { value: "Film", label: "Film" },
+                  { value: "Cerita Rakyat", label: "Cerita Rakyat" },
+                  { value: "Lainnya", label: "Lainnya" },
+                ]}
+              />
+              <Input
+                id="detailSumber"
+                label="Detail Sumber"
+                placeholder="Nama buku, film, novel, seri, dll"
+                value={detailSumber}
+                onChange={(e) => setDetailSumber(e.target.value)}
+              />
+            </div>
+
+            <Textarea
+              id="informasiTambahan"
+              label="Informasi Tambahan"
+              placeholder="Catatan atau keterangan tambahan tentang cerita ini..."
+              value={informasiTambahan}
+              onChange={(e) => setInformasiTambahan(e.target.value)}
+            />
 
             {error && (
               <div className="p-3 bg-danger/10 border border-danger/20 rounded-xl text-sm text-danger">

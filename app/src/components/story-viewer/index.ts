@@ -5,3 +5,4 @@ export { VerticalScrollViewer } from "./vertical-scroll-viewer";
 export { FlipBookViewer } from "./flipbook-viewer";
 export { StoryProgressBar } from "./story-progress-bar";
 export { PanelCard, getPanelDuration } from "./panel-card";
+export { StoryCoverPage } from "./story-cover-page";
