@@ -10,6 +10,9 @@
   },
   "dependencies": {
     "@auth/supabase-adapter": "^1.11.1",
+    "@google/model-viewer": "^4.2.0",
+    "@react-three/drei": "^10.7.7",
+    "@react-three/fiber": "^9.6.0",
     "@supabase/ssr": "^0.10.2",
     "@supabase/supabase-js": "^2.103.0",
     "class-variance-authority": "^0.7.1",
@@ -18,12 +21,14 @@
     "howler": "^2.2.4",
     "konva": "^10.2.5",
     "lucide-react": "^1.8.0",
+    "mind-ar": "^1.2.5",
     "next": "16.2.3",
     "next-auth": "^5.0.0-beta.30",
     "react": "19.2.4",
     "react-dom": "19.2.4",
     "react-konva": "^19.2.3",
     "tailwind-merge": "^3.5.0",
+    "three": "^0.184.0",
     "uuid": "^13.0.0"
   },
   "devDependencies": {
@@ -32,6 +37,7 @@
     "@types/node": "^20",
     "@types/react": "^19",
     "@types/react-dom": "^19",
+    "@types/three": "^0.184.0",
     "@types/uuid": "^10.0.0",
     "eslint": "^9",
     "eslint-config-next": "16.2.3",

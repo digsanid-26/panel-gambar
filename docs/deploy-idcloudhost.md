@@ -322,6 +322,7 @@ git pull origin main
 npm install
 npm run build
 pm2 restart panel-gambar
+
 ```
 
 Buat script untuk mempermudah:

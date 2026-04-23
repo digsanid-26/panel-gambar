@@ -18,6 +18,7 @@ import {
   PlusCircle,
   Radio,
   Settings,
+  Sparkles,
   User,
   X,
 } from "lucide-react";
@@ -76,6 +77,7 @@ export function Navbar() {
     ? [
         { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
         { href: "/live", label: "Sesi Live", icon: Radio },
+        { href: "/ar", label: "Panel AR", icon: Sparkles },
         ...(isGuru
           ? [
               { href: "/school", label: "Sekolah", icon: Building2 },
@@ -83,7 +85,9 @@ export function Navbar() {
             ]
           : []),
       ]
-    : [];
+    : [
+        { href: "/ar", label: "Panel AR", icon: Sparkles },
+      ];
 
   // Stories sub-menu items
   const storiesSubLinks = user
