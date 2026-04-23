@@ -2,12 +2,15 @@
 
 import Link from "next/link";
 import { useParams } from "next/navigation";
+import { useEffect, useState } from "react";
 import { Navbar } from "@/components/layout/navbar";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { findARScene } from "@/lib/ar/seed";
+import { getUserScene } from "@/lib/ar/storage";
+import type { ARScene } from "@/lib/ar/types";
 import { ARSceneViewer } from "@/components/ar-viewer/ar-scene-viewer";
-import { ArrowLeft, Sparkles } from "lucide-react";
+import { ArrowLeft, Loader2, Pencil, Sparkles } from "lucide-react";
 
 const SUBJECT_LABELS: Record<string, string> = {
   bahasa: "Bahasa Indonesia",
@@ -20,7 +23,36 @@ const SUBJECT_LABELS: Record<string, string> = {
 export default function ARSceneDetailPage() {
   const params = useParams<{ slug: string }>();
   const slug = params?.slug ?? "";
-  const scene = findARScene(slug);
+  const [scene, setScene] = useState<ARScene | null | "loading">("loading");
+  const [isUserScene, setIsUserScene] = useState(false);
+
+  useEffect(() => {
+    if (!slug) return;
+    const seed = findARScene(slug);
+    if (seed) {
+      setScene(seed);
+      setIsUserScene(false);
+      return;
+    }
+    const user = getUserScene(slug);
+    if (user) {
+      setScene(user);
+      setIsUserScene(true);
+    } else {
+      setScene(null);
+    }
+  }, [slug]);
+
+  if (scene === "loading") {
+    return (
+      <div className="flex flex-col min-h-screen bg-surface">
+        <Navbar />
+        <main className="flex-1 flex items-center justify-center">
+          <Loader2 className="w-6 h-6 animate-spin text-muted" />
+        </main>
+      </div>
+    );
+  }
 
   if (!scene) {
     return (
@@ -58,21 +90,31 @@ export default function ARSceneDetailPage() {
         </Link>
 
         {/* Header */}
-        <header className="mb-4">
-          <h1 className="text-2xl sm:text-3xl font-heading font-bold text-foreground">
-            {scene.title}
-          </h1>
-          <div className="flex flex-wrap items-center gap-2 mt-2">
-            <Badge variant="primary">{SUBJECT_LABELS[scene.subject] ?? scene.subject}</Badge>
-            <Badge variant="secondary">{scene.level}</Badge>
-            <Badge variant="outline">
-              {scene.type === "marker"
-                ? "AR Marker"
-                : scene.type === "markerless"
-                ? "AR Ruangan"
-                : "Model 3D"}
-            </Badge>
+        <header className="mb-4 flex items-start justify-between gap-3 flex-wrap">
+          <div className="flex-1 min-w-0">
+            <h1 className="text-2xl sm:text-3xl font-heading font-bold text-foreground">
+              {scene.title}
+            </h1>
+            <div className="flex flex-wrap items-center gap-2 mt-2">
+              <Badge variant="primary">{SUBJECT_LABELS[scene.subject] ?? scene.subject}</Badge>
+              <Badge variant="secondary">{scene.level}</Badge>
+              <Badge variant="outline">
+                {scene.type === "marker"
+                  ? "AR Marker"
+                  : scene.type === "markerless"
+                  ? "AR Ruangan"
+                  : "Model 3D"}
+              </Badge>
+            </div>
           </div>
+          {isUserScene && (
+            <Link href={`/ar/${scene.slug}/edit`}>
+              <Button variant="outline" size="sm">
+                <Pencil className="w-4 h-4" />
+                Edit
+              </Button>
+            </Link>
+          )}
         </header>
 
         {/* Viewer */}

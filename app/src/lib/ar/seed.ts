@@ -117,3 +117,8 @@ export const AR_SCENES: ARScene[] = [
 export function findARScene(idOrSlug: string): ARScene | undefined {
   return AR_SCENES.find((s) => s.id === idOrSlug || s.slug === idOrSlug);
 }
+
+/** ID scene hasil seed (read-only, tidak bisa di-edit user). */
+export function isSeedScene(idOrSlug: string): boolean {
+  return !!findARScene(idOrSlug);
+}

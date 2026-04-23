@@ -14,6 +14,7 @@ import dynamic from "next/dynamic";
 import { useEffect, useRef, useState } from "react";
 import type { ARScene } from "@/lib/ar/types";
 import { detectARCapabilities, type ARCapabilities } from "@/lib/ar/capabilities";
+import { resolveARUrl } from "@/lib/ar/storage";
 import { Button } from "@/components/ui/button";
 import {
   Camera,
@@ -69,14 +70,48 @@ export function ARSceneViewer({ scene }: ARSceneViewerProps) {
   useEffect(() => {
     const autoAsset = scene.assets.find((a) => a.audioTrigger === "auto" && a.audioUrl);
     if (!autoAsset?.audioUrl) return;
-    const audio = new Audio(autoAsset.audioUrl);
-    audio.loop = false;
-    audioRef.current = audio;
+    let cancelled = false;
+    let objectUrl: string | null = null;
+
+    (async () => {
+      const resolved = await resolveARUrl(autoAsset.audioUrl);
+      if (cancelled || !resolved) return;
+      if (resolved.startsWith("blob:")) objectUrl = resolved;
+      const audio = new Audio(resolved);
+      audio.loop = false;
+      audioRef.current = audio;
+    })();
+
     return () => {
-      audio.pause();
+      cancelled = true;
+      audioRef.current?.pause();
       audioRef.current = null;
+      if (objectUrl) URL.revokeObjectURL(objectUrl);
     };
   }, [scene.id, scene.assets]);
+
+  // Resolve marker image + mind file (for marker type)
+  const [markerImgUrl, setMarkerImgUrl] = useState<string | undefined>(undefined);
+  const [markerMindUrl, setMarkerMindUrl] = useState<string | undefined>(undefined);
+  useEffect(() => {
+    let cancelled = false;
+    const blobs: string[] = [];
+    (async () => {
+      const [img, mind] = await Promise.all([
+        resolveARUrl(scene.markerImage),
+        resolveARUrl(scene.markerMindFile),
+      ]);
+      if (cancelled) return;
+      if (img?.startsWith("blob:")) blobs.push(img);
+      if (mind?.startsWith("blob:")) blobs.push(mind);
+      setMarkerImgUrl(img);
+      setMarkerMindUrl(mind);
+    })();
+    return () => {
+      cancelled = true;
+      blobs.forEach((u) => URL.revokeObjectURL(u));
+    };
+  }, [scene.markerImage, scene.markerMindFile]);
 
   function toggleAudio() {
     if (!audioRef.current) return;
@@ -99,11 +134,11 @@ export function ARSceneViewer({ scene }: ARSceneViewerProps) {
     !!caps?.canRunMarkerAR;
 
   // Render marker AR in fullscreen overlay
-  if (mode === "marker-ar" && scene.markerMindFile && scene.markerImage) {
+  if (mode === "marker-ar" && markerMindUrl && markerImgUrl) {
     return (
       <ARMarkerViewer
-        mindFileUrl={scene.markerMindFile}
-        markerImageUrl={scene.markerImage}
+        mindFileUrl={markerMindUrl}
+        markerImageUrl={markerImgUrl}
         assets={scene.assets}
         onExit={() => setMode("model-only")}
       />

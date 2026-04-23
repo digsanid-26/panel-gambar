@@ -1,12 +1,15 @@
 "use client";
 
 import Link from "next/link";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Navbar } from "@/components/layout/navbar";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { AR_SCENES } from "@/lib/ar/seed";
-import { Box, Camera, Filter, Search, Sparkles } from "lucide-react";
+import { listUserScenes } from "@/lib/ar/storage";
+import type { ARScene } from "@/lib/ar/types";
+import { Box, Camera, Filter, PlusCircle, Search, Sparkles, User as UserIcon } from "lucide-react";
 
 const SUBJECTS = [
   { value: "", label: "Semua Mapel" },
@@ -26,8 +29,16 @@ const TYPE_LABELS: Record<string, string> = {
 export default function ARGalleryPage() {
   const [search, setSearch] = useState("");
   const [subject, setSubject] = useState("");
+  const [userScenes, setUserScenes] = useState<ARScene[]>([]);
 
-  const filtered = AR_SCENES.filter((s) => {
+  useEffect(() => {
+    setUserScenes(listUserScenes());
+  }, []);
+
+  const userSceneIds = new Set(userScenes.map((s) => s.id));
+  const allScenes = [...userScenes, ...AR_SCENES];
+
+  const filtered = allScenes.filter((s) => {
     if (subject && s.subject !== subject) return false;
     if (search && !s.title.toLowerCase().includes(search.toLowerCase())) return false;
     return true;
@@ -53,9 +64,17 @@ export default function ARGalleryPage() {
               </p>
             </div>
           </div>
-          <div className="mt-3 inline-flex items-center gap-2 px-3 py-1.5 rounded-full bg-accent/10 text-accent text-xs font-medium">
-            <Box className="w-3.5 h-3.5" />
-            Fase A · MVP · Konten Demo
+          <div className="flex flex-wrap items-center justify-between gap-3 mt-3">
+            <div className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full bg-accent/10 text-accent text-xs font-medium">
+              <Box className="w-3.5 h-3.5" />
+              Fase B · Authoring Tool · {userScenes.length} scene saya
+            </div>
+            <Link href="/ar/create">
+              <Button variant="primary" size="sm">
+                <PlusCircle className="w-4 h-4" />
+                Buat Scene AR
+              </Button>
+            </Link>
           </div>
         </div>
 
@@ -101,12 +120,12 @@ export default function ARGalleryPage() {
                 className="group rounded-2xl overflow-hidden bg-surface-card border border-border hover:border-primary/40 hover:shadow-lg transition-all"
               >
                 <div className="aspect-video bg-gradient-to-br from-primary/20 to-secondary/20 relative overflow-hidden">
-                  {/* eslint-disable-next-line @next/next/no-img-element */}
-                  <img
+                  <ResolvingImage
                     src={scene.coverImage}
                     alt={scene.title}
                     className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
                   />
+                  
                   <div className="absolute top-2 right-2 flex items-center gap-1.5 px-2 py-1 rounded-full bg-black/60 backdrop-blur text-white text-[10px] font-medium">
                     {scene.type === "marker" ? (
                       <Camera className="w-3 h-3" />
@@ -115,6 +134,12 @@ export default function ARGalleryPage() {
                     )}
                     {TYPE_LABELS[scene.type] || scene.type}
                   </div>
+                  {userSceneIds.has(scene.id) && (
+                    <div className="absolute top-2 left-2 flex items-center gap-1 px-2 py-1 rounded-full bg-primary text-background text-[10px] font-bold">
+                      <UserIcon className="w-3 h-3" />
+                      Saya
+                    </div>
+                  )}
                 </div>
                 <div className="p-4 space-y-2">
                   <h3 className="font-heading font-bold text-foreground line-clamp-1">
@@ -142,11 +167,52 @@ export default function ARGalleryPage() {
           <p className="font-semibold text-foreground mb-1">Tentang Panel AR</p>
           <p>
             Panel AR adalah perluasan dari Panel Cerita yang memungkinkan pembelajaran
-            dengan objek 3D dan Augmented Reality. Fase A ini menampilkan konten demo
-            (model 3D via CDN Khronos). Konten buatan guru akan tersedia di Fase B.
+            dengan objek 3D dan Augmented Reality. Scene buatan guru disimpan di
+            perangkat ini (browser). Saat database VM PostgreSQL tersedia, konten
+            akan disinkronkan ke server dan dapat dibagikan ke kelas.
           </p>
         </div>
       </main>
     </div>
   );
+}
+
+/**
+ * Image wrapper yang resolve URL `idb://...` ke blob URL.
+ * Untuk URL http(s) standar, langsung di-render tanpa delay.
+ */
+function ResolvingImage({
+  src,
+  alt,
+  className,
+}: {
+  src: string;
+  alt: string;
+  className?: string;
+}) {
+  const [resolved, setResolved] = useState<string>(src.startsWith("idb://") ? "" : src);
+
+  useEffect(() => {
+    if (!src) { setResolved(""); return; }
+    if (!src.startsWith("idb://")) { setResolved(src); return; }
+    let cancelled = false;
+    let blob: string | null = null;
+    import("@/lib/ar/storage").then(({ resolveARUrl }) => {
+      resolveARUrl(src).then((u) => {
+        if (cancelled || !u) return;
+        if (u.startsWith("blob:")) blob = u;
+        setResolved(u);
+      });
+    });
+    return () => {
+      cancelled = true;
+      if (blob) URL.revokeObjectURL(blob);
+    };
+  }, [src]);
+
+  if (!resolved) {
+    return <div className={className} style={{ background: "linear-gradient(135deg, rgba(69,248,130,0.15), rgba(99,102,241,0.15))" }} />;
+  }
+  // eslint-disable-next-line @next/next/no-img-element
+  return <img src={resolved} alt={alt} className={className} />;
 }
