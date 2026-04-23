@@ -5,6 +5,7 @@ import { Stage, Layer, Rect, Image as KonvaImage, Text, Group, Circle, Arrow, Li
 import type { CanvasData, CanvasLayer, Dialog } from "@/lib/types";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { listARSceneOptions, type ARSceneOption } from "@/lib/ar/picker";
 import {
   ImageIcon,
   Type,
@@ -15,6 +16,7 @@ import {
   Pen,
   Ruler,
   Layers,
+  Sparkles,
   Trash2,
   Undo2,
   Redo2,
@@ -68,6 +70,12 @@ export function CanvasEditor({ canvasData, onSave, onUploadImage, dialogs = [], 
   const [lassoActive, setLassoActive] = useState(false);
   const [lassoPoints, setLassoPoints] = useState<number[]>([]);
   const [lassoMousePos, setLassoMousePos] = useState<{ x: number; y: number } | null>(null);
+
+  // AR scene options (load once on mount)
+  const [arSceneOptions, setArSceneOptions] = useState<ARSceneOption[]>([]);
+  useEffect(() => {
+    setArSceneOptions(listARSceneOptions());
+  }, []);
 
   // Auto-fit scale
   const containerRef = useRef<HTMLDivElement>(null);
@@ -280,6 +288,27 @@ export function CanvasEditor({ canvasData, onSave, onUploadImage, dialogs = [], 
     addLayer(base);
   }
 
+  function addARTrigger() {
+    const firstOption = arSceneOptions[0];
+    addLayer({
+      id: generateId(),
+      type: "ar-trigger",
+      name: firstOption ? `AR: ${firstOption.label}` : "Trigger AR",
+      visible: true,
+      locked: false,
+      x: data.width / 2 - 32,
+      y: data.height / 2 - 32,
+      width: 64,
+      height: 64,
+      rotation: 0,
+      opacity: 1,
+      zIndex: data.layers.length,
+      arSceneSlug: firstOption?.value,
+      arLabel: firstOption ? `Lihat ${firstOption.label}` : "Buka AR",
+      arIconColor: "#a855f7",
+    });
+  }
+
   // Compute background image fill pattern offset based on bgSize and bgPosition
   function computeFillPattern(
     img: HTMLImageElement,
@@ -432,6 +461,16 @@ export function CanvasEditor({ canvasData, onSave, onUploadImage, dialogs = [], 
         <Button variant="outline" size="sm" onClick={() => addShape("polygon")}>
           <Triangle className="w-4 h-4" />
           Polygon
+        </Button>
+        <Button
+          variant="outline"
+          size="sm"
+          onClick={addARTrigger}
+          className="!border-purple-500/40 !text-purple-400 hover:!bg-purple-500/10"
+          title="Tambah trigger AR — pembaca tap untuk buka scene AR"
+        >
+          <Sparkles className="w-4 h-4" />
+          Trigger AR
         </Button>
         <Button
           variant={lassoActive ? "primary" : "outline"}
@@ -778,6 +817,73 @@ export function CanvasEditor({ canvasData, onSave, onUploadImage, dialogs = [], 
                   );
                 }
 
+                if (layer.type === "ar-trigger") {
+                  const color = layer.arIconColor || "#a855f7";
+                  const size = Math.min(layer.width, layer.height);
+                  return (
+                    <Group
+                      key={layer.id}
+                      ref={setRef}
+                      x={layer.x}
+                      y={layer.y}
+                      rotation={layer.rotation}
+                      opacity={layer.opacity}
+                      draggable={!layer.locked}
+                      {...commonHandlers}
+                    >
+                      {/* Outer halo */}
+                      <Circle
+                        x={size / 2}
+                        y={size / 2}
+                        radius={size / 2}
+                        fill={color}
+                        opacity={0.25}
+                      />
+                      {/* Inner button */}
+                      <Circle
+                        x={size / 2}
+                        y={size / 2}
+                        radius={size / 2.8}
+                        fill={color}
+                        stroke="#ffffff"
+                        strokeWidth={2}
+                      />
+                      {/* Sparkle icon (simplified 4-point star) */}
+                      <Line
+                        points={[
+                          size / 2, size / 2 - size / 5,
+                          size / 2 + size / 16, size / 2 - size / 16,
+                          size / 2 + size / 5, size / 2,
+                          size / 2 + size / 16, size / 2 + size / 16,
+                          size / 2, size / 2 + size / 5,
+                          size / 2 - size / 16, size / 2 + size / 16,
+                          size / 2 - size / 5, size / 2,
+                          size / 2 - size / 16, size / 2 - size / 16,
+                        ]}
+                        closed
+                        fill="#ffffff"
+                      />
+                      {/* Label below */}
+                      {layer.arLabel && (
+                        <Text
+                          x={-20}
+                          y={size + 4}
+                          width={size + 40}
+                          text={layer.arLabel}
+                          fontSize={Math.max(10, size / 6)}
+                          fontFamily="Arial"
+                          fontStyle="bold"
+                          fill="#ffffff"
+                          align="center"
+                          shadowColor="black"
+                          shadowBlur={4}
+                          shadowOpacity={0.8}
+                        />
+                      )}
+                    </Group>
+                  );
+                }
+
                 return null;
               })}
 
@@ -1054,6 +1160,63 @@ export function CanvasEditor({ canvasData, onSave, onUploadImage, dialogs = [], 
                   </div>
                 </>
               )}
+              {/* AR Trigger specific properties */}
+              {selectedLayer.type === "ar-trigger" && (
+                <div className="space-y-2">
+                  <div>
+                    <label className="text-[10px] text-muted">Scene AR</label>
+                    <select
+                      value={selectedLayer.arSceneSlug || ""}
+                      onChange={(e) => {
+                        const slug = e.target.value;
+                        const option = arSceneOptions.find((o) => o.value === slug);
+                        updateLayer(selectedLayer.id, {
+                          arSceneSlug: slug,
+                          name: option ? `AR: ${option.label}` : "Trigger AR",
+                          arLabel: option ? `Lihat ${option.label}` : selectedLayer.arLabel,
+                        });
+                      }}
+                      className="w-full text-xs px-1.5 py-1 rounded border border-border bg-surface-alt text-foreground"
+                    >
+                      <option value="">— pilih scene —</option>
+                      {arSceneOptions.length === 0 && (
+                        <option value="" disabled>Belum ada scene AR. Buat di /ar/create</option>
+                      )}
+                      {arSceneOptions.map((o) => (
+                        <option key={o.value} value={o.value}>
+                          {o.owner === "user" ? "★ " : ""}{o.label}
+                        </option>
+                      ))}
+                    </select>
+                    {!selectedLayer.arSceneSlug && (
+                      <p className="text-[10px] text-danger mt-0.5">Scene belum dipilih</p>
+                    )}
+                  </div>
+                  <div>
+                    <label className="text-[10px] text-muted">Label tombol (untuk siswa)</label>
+                    <input
+                      type="text"
+                      value={selectedLayer.arLabel || ""}
+                      onChange={(e) => updateLayer(selectedLayer.id, { arLabel: e.target.value })}
+                      placeholder="Misal: Lihat Candi Borobudur"
+                      className="w-full text-xs px-1.5 py-1 rounded border border-border bg-surface-alt text-foreground"
+                    />
+                  </div>
+                  <div>
+                    <label className="text-[10px] text-muted">Warna tombol</label>
+                    <input
+                      type="color"
+                      value={selectedLayer.arIconColor || "#a855f7"}
+                      onChange={(e) => updateLayer(selectedLayer.id, { arIconColor: e.target.value })}
+                      className="w-full h-6 rounded border border-border cursor-pointer"
+                    />
+                  </div>
+                  <p className="text-[10px] text-muted leading-snug mt-1">
+                    Siswa akan melihat tombol sparkle di posisi ini. Tap untuk membuka scene AR.
+                  </p>
+                </div>
+              )}
+
               {/* Shape-specific properties */}
               {selectedLayer.type === "shape" && (
                 <div className="space-y-2">

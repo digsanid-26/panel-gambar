@@ -118,16 +118,23 @@ function buildDefaultTimeline(panel: Panel): PanelTimelineItem[] {
       text: "#a855f7",
       shape: "#ec4899",
       "speech-bubble": "#f97316",
+      "ar-trigger": "#c026d3",
     };
     const layerTypeLabels: Record<string, string> = {
       image: "Gambar",
       text: "Teks",
       shape: "Bentuk",
       "speech-bubble": "Balon Dialog",
+      "ar-trigger": "Trigger AR",
     };
     let layerStart = 0;
     for (const layer of panel.canvas_data.layers) {
-      const tlType: PanelTimelineItem["type"] = layer.type === "image" ? "image" : "bubble";
+      const tlType: PanelTimelineItem["type"] =
+        layer.type === "image"
+          ? "image"
+          : layer.type === "ar-trigger"
+          ? "ar-trigger"
+          : "bubble";
       items.push({
         id: generateId(),
         type: tlType,

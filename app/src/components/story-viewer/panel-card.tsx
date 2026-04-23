@@ -4,6 +4,7 @@ import { useState, useMemo } from "react";
 import type { Panel, Dialog, UserProfile, PanelTimelineItem, NarrationOverlay, StoryCharacter } from "@/lib/types";
 import { AudioPlayer } from "@/components/audio/audio-player";
 import { AudioRecorder } from "@/components/audio/audio-recorder";
+import { PanelARTriggerOverlay } from "./panel-ar-trigger-overlay";
 import { Mic, Image as ImageIcon, Play, Volume2 } from "lucide-react";
 
 interface PanelCardProps {
@@ -77,7 +78,7 @@ export function PanelCard({
   // Pre-compute visibility for each element type
   const visibility = useMemo(() => {
     if (!useTimeline || currentTime === undefined) {
-      return { image: true, narration: true, bgAudio: true, dialogs: new Set<string>() };
+      return { image: true, narration: true, bgAudio: true, dialogs: new Set<string>(), arTriggers: new Set<string>() };
     }
 
     const imageItem = tl.find((t) => t.type === "image");
@@ -91,11 +92,19 @@ export function PanelCard({
       }
     });
 
+    const visibleARTriggers = new Set<string>();
+    tl.filter((t) => t.type === "ar-trigger").forEach((t) => {
+      if (isVisibleAt(t, currentTime) && t.ref_id) {
+        visibleARTriggers.add(t.ref_id);
+      }
+    });
+
     return {
       image: imageItem ? isVisibleAt(imageItem, currentTime) : true,
       narration: narrationItem ? isVisibleAt(narrationItem, currentTime) : true,
       bgAudio: bgAudioItem ? isVisibleAt(bgAudioItem, currentTime) : true,
       dialogs: visibleDialogs,
+      arTriggers: visibleARTriggers,
     };
   }, [useTimeline, currentTime, tl]);
 
@@ -129,6 +138,13 @@ export function PanelCard({
             <ImageIcon className="w-20 h-20 text-black/10" />
           </div>
         )}
+
+        {/* AR Trigger overlays from canvas_data */}
+        <PanelARTriggerOverlay
+          panel={panel}
+          visibleRefIds={visibility.arTriggers}
+          useTimelineFilter={useTimeline}
+        />
 
         {/* Narration overlay (inside panel) — timeline-aware */}
         {panel.narration_text && visibility.narration && (() => {

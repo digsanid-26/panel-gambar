@@ -102,7 +102,7 @@ export interface Panel {
 export interface PanelTimelineItem {
   id: string;
   /** element type: panel-default is the base duration, others are overlays */
-  type: "panel" | "narration-audio" | "background-audio" | "dialog" | "image" | "bubble";
+  type: "panel" | "narration-audio" | "background-audio" | "dialog" | "image" | "bubble" | "ar-trigger";
   label: string;
   /** Reference id (dialog id, etc.) */
   ref_id?: string;
@@ -123,7 +123,7 @@ export interface CanvasData {
 
 export interface CanvasLayer {
   id: string;
-  type: "image" | "text" | "shape" | "speech-bubble";
+  type: "image" | "text" | "shape" | "speech-bubble" | "ar-trigger";
   name: string;
   visible: boolean;
   locked: boolean;
@@ -165,6 +165,13 @@ export interface CanvasLayer {
   skewX?: number;
   /** Skew Y in degrees */
   skewY?: number;
+  // AR trigger specific
+  /** Slug ARScene yang dibuka saat trigger di-tap (tipe: ar-trigger) */
+  arSceneSlug?: string;
+  /** Label aksesibilitas untuk trigger (misal "Lihat Candi Borobudur") */
+  arLabel?: string;
+  /** Warna ikon trigger (default ungu/primary) */
+  arIconColor?: string;
 }
 
 export interface Dialog {
