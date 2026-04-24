@@ -23,6 +23,10 @@ const Textarea = forwardRef<HTMLTextAreaElement, TextareaProps>(
         <textarea
           ref={ref}
           id={id}
+          spellCheck={false}
+          autoComplete="off"
+          autoCorrect="off"
+          autoCapitalize="off"
           className={cn(
             "w-full px-4 py-2.5 bg-surface-alt border-2 border-border rounded-xl text-sm text-foreground transition-colors focus:outline-none focus:border-primary focus:ring-1 focus:ring-primary placeholder:text-muted resize-y min-h-[80px]",
             error && "border-danger focus:border-danger focus:ring-danger",

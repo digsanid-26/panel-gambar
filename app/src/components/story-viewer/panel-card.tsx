@@ -5,6 +5,7 @@ import type { Panel, Dialog, UserProfile, PanelTimelineItem, NarrationOverlay, S
 import { AudioPlayer } from "@/components/audio/audio-player";
 import { AudioRecorder } from "@/components/audio/audio-recorder";
 import { PanelARTriggerOverlay } from "./panel-ar-trigger-overlay";
+import { PanelCanvasOverlay } from "./panel-canvas-overlay";
 import { Mic, Image as ImageIcon, Play, Volume2 } from "lucide-react";
 
 interface PanelCardProps {
@@ -137,6 +138,11 @@ export function PanelCard({
           <div className="w-full aspect-[3/2] flex items-center justify-center">
             <ImageIcon className="w-20 h-20 text-black/10" />
           </div>
+        )}
+
+        {/* Canvas layers (images, text, shapes, speech bubbles) */}
+        {panel.canvas_data && (
+          <PanelCanvasOverlay canvasData={panel.canvas_data} />
         )}
 
         {/* AR Trigger overlays from canvas_data */}
