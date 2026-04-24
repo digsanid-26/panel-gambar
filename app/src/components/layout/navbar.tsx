@@ -30,8 +30,11 @@ export function Navbar() {
   const [user, setUser] = useState<UserProfile | null>(null);
   const [mobileOpen, setMobileOpen] = useState(false);
   const [storiesDropdownOpen, setStoriesDropdownOpen] = useState(false);
+  const [settingsDropdownOpen, setSettingsDropdownOpen] = useState(false);
   const [mobileStoriesOpen, setMobileStoriesOpen] = useState(false);
-  const dropdownRef = useRef<HTMLDivElement>(null);
+  const [mobileSettingsOpen, setMobileSettingsOpen] = useState(false);
+  const storiesDropdownRef = useRef<HTMLDivElement>(null);
+  const settingsDropdownRef = useRef<HTMLDivElement>(null);
   const supabase = createClient();
 
   useEffect(() => {
@@ -51,11 +54,14 @@ export function Navbar() {
     getUser();
   }, []);
 
-  // Close desktop dropdown on outside click
+  // Close desktop dropdowns on outside click
   useEffect(() => {
     function handleClickOutside(e: MouseEvent) {
-      if (dropdownRef.current && !dropdownRef.current.contains(e.target as Node)) {
+      if (storiesDropdownRef.current && !storiesDropdownRef.current.contains(e.target as Node)) {
         setStoriesDropdownOpen(false);
+      }
+      if (settingsDropdownRef.current && !settingsDropdownRef.current.contains(e.target as Node)) {
+        setSettingsDropdownOpen(false);
       }
     }
     document.addEventListener("mousedown", handleClickOutside);
@@ -70,32 +76,43 @@ export function Navbar() {
   }
 
   const isGuru = user?.role === "guru" || user?.role === "admin";
-  const isStoriesActive = pathname === "/stories" || pathname.startsWith("/stories/");
+  const isStoriesActive =
+    pathname === "/stories" ||
+    pathname.startsWith("/stories/") ||
+    pathname === "/live" ||
+    pathname.startsWith("/live/") ||
+    pathname === "/ar" ||
+    pathname.startsWith("/ar/");
+  const isSettingsActive =
+    pathname === "/school" ||
+    pathname.startsWith("/school/") ||
+    pathname === "/settings" ||
+    pathname.startsWith("/settings/");
 
   // Simple nav links (no dropdown items)
   const navLinks = user
+    ? [{ href: "/dashboard", label: "Dashboard", icon: LayoutDashboard }]
+    : [];
+
+  // Stories sub-menu items
+  const storiesSubLinks = user
     ? [
-        { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
+        { href: "/stories", label: "Daftar Cerita", icon: List },
         { href: "/live", label: "Sesi Live", icon: Radio },
         { href: "/ar", label: "Panel AR", icon: Sparkles },
         ...(isGuru
-          ? [
-              { href: "/school", label: "Sekolah", icon: Building2 },
-              { href: "/settings", label: "Pengaturan", icon: Settings },
-            ]
+          ? [{ href: "/stories/create", label: "Buat Cerita", icon: PlusCircle }]
           : []),
       ]
     : [
         { href: "/ar", label: "Panel AR", icon: Sparkles },
       ];
 
-  // Stories sub-menu items
-  const storiesSubLinks = user
+  // Settings sub-menu items (guru only)
+  const settingsSubLinks = isGuru
     ? [
-        { href: "/stories", label: "Daftar Cerita", icon: List },
-        ...(isGuru
-          ? [{ href: "/stories/create", label: "Buat Cerita", icon: PlusCircle }]
-          : []),
+        { href: "/school", label: "Sekolah", icon: Building2 },
+        { href: "/settings", label: "Pengaturan", icon: Settings },
       ]
     : [];
 
@@ -130,8 +147,8 @@ export function Navbar() {
             ))}
 
             {/* Cerita dropdown (desktop) */}
-            {user && storiesSubLinks.length > 0 && (
-              <div className="relative" ref={dropdownRef}>
+            {storiesSubLinks.length > 0 && (
+              <div className="relative" ref={storiesDropdownRef}>
                 <button
                   onClick={() => setStoriesDropdownOpen((v) => !v)}
                   className={cn(
@@ -153,6 +170,46 @@ export function Navbar() {
                         key={sub.href}
                         href={sub.href}
                         onClick={() => setStoriesDropdownOpen(false)}
+                        className={cn(
+                          "flex items-center gap-2 px-4 py-2.5 text-sm font-medium transition-colors",
+                          pathname === sub.href
+                            ? "bg-primary/10 text-primary"
+                            : "text-muted hover:text-foreground hover:bg-surface-alt"
+                        )}
+                      >
+                        <sub.icon className="w-4 h-4" />
+                        {sub.label}
+                      </Link>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* Pengaturan dropdown (desktop) */}
+            {settingsSubLinks.length > 0 && (
+              <div className="relative" ref={settingsDropdownRef}>
+                <button
+                  onClick={() => setSettingsDropdownOpen((v) => !v)}
+                  className={cn(
+                    "flex items-center gap-1.5 px-4 py-2 rounded-xl text-sm font-medium transition-all duration-200",
+                    isSettingsActive
+                      ? "bg-primary/15 text-primary"
+                      : "text-muted hover:text-foreground hover:bg-surface-alt"
+                  )}
+                >
+                  <Settings className="w-4 h-4" />
+                  Pengaturan
+                  <ChevronDown className={cn("w-3.5 h-3.5 transition-transform", settingsDropdownOpen && "rotate-180")} />
+                </button>
+
+                {settingsDropdownOpen && (
+                  <div className="absolute top-full left-0 mt-1 bg-surface-card border border-border rounded-xl shadow-lg py-1 min-w-[180px] z-50">
+                    {settingsSubLinks.map((sub) => (
+                      <Link
+                        key={sub.href}
+                        href={sub.href}
+                        onClick={() => setSettingsDropdownOpen(false)}
                         className={cn(
                           "flex items-center gap-2 px-4 py-2.5 text-sm font-medium transition-colors",
                           pathname === sub.href
@@ -258,6 +315,45 @@ export function Navbar() {
                       key={sub.href}
                       href={sub.href}
                       onClick={() => { setMobileOpen(false); setMobileStoriesOpen(false); }}
+                      className={cn(
+                        "flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-medium transition-colors",
+                        pathname === sub.href
+                          ? "bg-primary/10 text-primary"
+                          : "text-muted hover:text-foreground hover:bg-surface-alt"
+                      )}
+                    >
+                      <sub.icon className="w-4 h-4" />
+                      {sub.label}
+                    </Link>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* Pengaturan collapsible group (mobile) */}
+          {settingsSubLinks.length > 0 && (
+            <div>
+              <button
+                onClick={() => setMobileSettingsOpen((v) => !v)}
+                className={cn(
+                  "flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-medium transition-colors w-full",
+                  isSettingsActive
+                    ? "bg-primary/15 text-primary"
+                    : "text-muted hover:text-foreground hover:bg-surface-alt"
+                )}
+              >
+                <Settings className="w-4 h-4" />
+                <span className="flex-1 text-left">Pengaturan</span>
+                <ChevronDown className={cn("w-3.5 h-3.5 transition-transform", mobileSettingsOpen && "rotate-180")} />
+              </button>
+              {mobileSettingsOpen && (
+                <div className="ml-4 mt-1 space-y-0.5 border-l-2 border-border pl-3">
+                  {settingsSubLinks.map((sub) => (
+                    <Link
+                      key={sub.href}
+                      href={sub.href}
+                      onClick={() => { setMobileOpen(false); setMobileSettingsOpen(false); }}
                       className={cn(
                         "flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-medium transition-colors",
                         pathname === sub.href
