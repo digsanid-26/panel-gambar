@@ -20,12 +20,10 @@ module.exports = {
         NODE_ENV: 'production',
         PORT: 3000,
       },
-      // Log rotate
-      log_date_format: 'YYYY-MM-DD HH:mm:ss Z',
-      error_log: './logs/err.log',
-      out_log: './logs/out.log',
       // Merge logs untuk hemat disk
       merge_logs: true,
+      // Biarkan PM2 pakai default ~/.pm2/logs agar tidak ada masalah path
+      log_date_format: 'YYYY-MM-DD HH:mm:ss Z',
       // Kill timeout: beri Next.js waktu untuk graceful shutdown
       kill_timeout: 5000,
     },
