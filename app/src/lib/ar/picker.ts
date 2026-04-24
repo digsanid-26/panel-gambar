@@ -1,12 +1,14 @@
 "use client";
 
 /**
- * AR Scene Picker helper — menggabungkan seed scenes dengan scene
- * buatan user (localStorage) untuk dropdown pemilihan AR trigger.
+ * AR Scene Picker — menggabungkan seed scenes (frontend static) dengan
+ * user/published scenes (Supabase).
+ *
+ * Semua fungsi async karena scene user ada di DB.
  */
 
-import { AR_SCENES } from "./seed";
-import { listUserScenes } from "./storage";
+import { AR_SCENES, findARScene as findSeedScene } from "./seed";
+import { listPublishedARScenes, listUserScenes, getUserScene } from "./storage";
 import type { ARScene } from "./types";
 
 export interface ARSceneOption {
@@ -16,12 +18,16 @@ export interface ARSceneOption {
   type: ARScene["type"];
 }
 
-export function listAllARScenes(): ARScene[] {
-  const userScenes = listUserScenes();
-  // User scenes first, then seed. Dedup by slug (user takes priority)
+/** Gabungan semua scene yang relevan untuk pengguna saat ini:
+ *  scene buatan sendiri (author) + scene published publik + seed. */
+export async function listAllARScenes(): Promise<ARScene[]> {
+  const [mine, published] = await Promise.all([
+    listUserScenes().catch(() => [] as ARScene[]),
+    listPublishedARScenes().catch(() => [] as ARScene[]),
+  ]);
   const seen = new Set<string>();
   const result: ARScene[] = [];
-  for (const s of [...userScenes, ...AR_SCENES]) {
+  for (const s of [...mine, ...published, ...AR_SCENES]) {
     if (seen.has(s.slug)) continue;
     seen.add(s.slug);
     result.push(s);
@@ -29,33 +35,35 @@ export function listAllARScenes(): ARScene[] {
   return result;
 }
 
-export function listARSceneOptions(): ARSceneOption[] {
-  const userScenes = listUserScenes();
-  const seedSlugs = new Set(AR_SCENES.map((s) => s.slug));
+export async function listARSceneOptions(): Promise<ARSceneOption[]> {
+  const [mine, published] = await Promise.all([
+    listUserScenes().catch(() => [] as ARScene[]),
+    listPublishedARScenes().catch(() => [] as ARScene[]),
+  ]);
   const options: ARSceneOption[] = [];
+  const seen = new Set<string>();
 
-  for (const s of userScenes) {
-    options.push({
-      value: s.slug,
-      label: s.title,
-      owner: "user",
-      type: s.type,
-    });
+  for (const s of mine) {
+    if (seen.has(s.slug)) continue;
+    seen.add(s.slug);
+    options.push({ value: s.slug, label: s.title, owner: "user", type: s.type });
+  }
+  for (const s of published) {
+    if (seen.has(s.slug)) continue;
+    seen.add(s.slug);
+    options.push({ value: s.slug, label: s.title, owner: "user", type: s.type });
   }
   for (const s of AR_SCENES) {
-    if (userScenes.some((u) => u.slug === s.slug)) continue;
-    options.push({
-      value: s.slug,
-      label: s.title,
-      owner: "seed",
-      type: s.type,
-    });
-    seedSlugs.add(s.slug);
+    if (seen.has(s.slug)) continue;
+    seen.add(s.slug);
+    options.push({ value: s.slug, label: s.title, owner: "seed", type: s.type });
   }
   return options;
 }
 
-/** Dapatkan scene by slug dari gabungan seed + user. */
-export function findARSceneBySlug(slug: string): ARScene | undefined {
-  return listAllARScenes().find((s) => s.slug === slug);
+/** Dapatkan scene by slug: seed dulu (cepat, lokal) → fallback Supabase. */
+export async function findARSceneBySlug(slug: string): Promise<ARScene | undefined> {
+  const seed = findSeedScene(slug);
+  if (seed) return seed;
+  return await getUserScene(slug);
 }

@@ -61,5 +61,6 @@ export interface ARScene {
   /** Instruksi singkat untuk siswa (misal: "Arahkan kamera ke halaman 12 buku") */
   instruction?: string;
 
-  createdAt: string;
+  /** ISO timestamp — di-manage otomatis oleh Supabase (`created_at`). Opsional di client. */
+  createdAt?: string;
 }

@@ -1,177 +1,257 @@
 "use client";
 
 /**
- * AR Storage — penyimpanan scene buatan user.
+ * AR Storage — Supabase-backed (migration V5 required).
  *
- * Fase B: semua data disimpan di browser (offline-first) sampai database
- * VM PostgreSQL siap.
+ * - Scene metadata: tabel public.ar_scenes
+ * - File: bucket storage `ar-assets` (public)
  *
- * - localStorage (`ar_user_scenes_v1`): metadata ARScene tanpa konten file
- * - IndexedDB (`panel-ar-files` / store `files`): blob untuk GLB, gambar marker, audio
+ * Semua scene URL menjadi HTTPS langsung (public bucket), sehingga viewer
+ * tidak perlu resolver khusus.
  *
- * URL pada ARScene (`assets[].src`, `markerImage`, dll) memakai format
- * internal `idb://<fileId>` — resolver mengubahnya menjadi `blob:` URL
- * via `resolveARUrl()` sebelum dirender.
- *
- * Saat database siap, layer ini diganti jadi call ke Supabase Storage /
- * MinIO; konsumer (editor & viewer) tidak perlu berubah.
+ * Seed/demo scenes tetap didefinisikan di frontend (@/lib/ar/seed.ts).
  */
 
 import type { ARScene } from "./types";
+import { createClient } from "@/lib/supabase/client";
 
-const LS_KEY = "ar_user_scenes_v1";
-const DB_NAME = "panel-ar-files";
-const STORE = "files";
-const DB_VERSION = 1;
+const BUCKET = "ar-assets";
+
+/** Kompatibilitas lama — tidak dipakai lagi, tapi ditahan agar import lama tidak pecah. */
 export const IDB_URL_PREFIX = "idb://";
 
-// ----------------- IndexedDB wrapper -----------------
+// ----------------- Row <-> ARScene mapping -----------------
 
-function openDB(): Promise<IDBDatabase> {
-  return new Promise((resolve, reject) => {
-    const req = indexedDB.open(DB_NAME, DB_VERSION);
-    req.onupgradeneeded = () => {
-      const db = req.result;
-      if (!db.objectStoreNames.contains(STORE)) {
-        db.createObjectStore(STORE);
-      }
-    };
-    req.onsuccess = () => resolve(req.result);
-    req.onerror = () => reject(req.error);
-  });
+interface ARSceneRow {
+  id: string;
+  slug: string;
+  title: string;
+  description: string;
+  subject: string;
+  level: string;
+  type: ARScene["type"];
+  cover_image: string | null;
+  marker_image: string | null;
+  marker_mind_file: string | null;
+  instruction: string | null;
+  assets: ARScene["assets"];
+  author_id: string | null;
+  status: "draft" | "published";
+  visibility: "public" | "private";
+  created_at: string;
+  updated_at: string;
 }
 
-async function idbPut(key: string, blob: Blob): Promise<void> {
-  const db = await openDB();
-  await new Promise<void>((resolve, reject) => {
-    const tx = db.transaction(STORE, "readwrite");
-    tx.objectStore(STORE).put(blob, key);
-    tx.oncomplete = () => resolve();
-    tx.onerror = () => reject(tx.error);
-  });
-  db.close();
+function rowToScene(row: ARSceneRow): ARScene {
+  return {
+    id: row.id,
+    slug: row.slug,
+    title: row.title,
+    description: row.description,
+    subject: row.subject as ARScene["subject"],
+    level: row.level as ARScene["level"],
+    type: row.type,
+    coverImage: row.cover_image ?? "",
+    markerImage: row.marker_image ?? undefined,
+    markerMindFile: row.marker_mind_file ?? undefined,
+    instruction: row.instruction ?? undefined,
+    assets: (row.assets as ARScene["assets"]) ?? [],
+    createdAt: row.created_at,
+  };
 }
 
-async function idbGet(key: string): Promise<Blob | null> {
-  const db = await openDB();
-  const blob = await new Promise<Blob | null>((resolve, reject) => {
-    const tx = db.transaction(STORE, "readonly");
-    const req = tx.objectStore(STORE).get(key);
-    req.onsuccess = () => resolve((req.result as Blob | undefined) ?? null);
-    req.onerror = () => reject(req.error);
-  });
-  db.close();
-  return blob;
+function sceneToRowPayload(scene: ARScene, authorId: string | null) {
+  return {
+    id: scene.id,
+    slug: scene.slug,
+    title: scene.title,
+    description: scene.description ?? "",
+    subject: scene.subject ?? "lainnya",
+    level: scene.level ?? "SD",
+    type: scene.type,
+    cover_image: scene.coverImage || null,
+    marker_image: scene.markerImage || null,
+    marker_mind_file: scene.markerMindFile || null,
+    instruction: scene.instruction || null,
+    assets: scene.assets ?? [],
+    author_id: authorId,
+  };
 }
 
-async function idbDelete(key: string): Promise<void> {
-  const db = await openDB();
-  await new Promise<void>((resolve, reject) => {
-    const tx = db.transaction(STORE, "readwrite");
-    tx.objectStore(STORE).delete(key);
-    tx.oncomplete = () => resolve();
-    tx.onerror = () => reject(tx.error);
-  });
-  db.close();
-}
+// ----------------- File API (Supabase Storage) -----------------
 
-// ----------------- Public file API -----------------
-
-/** Simpan file dari File/Blob ke IndexedDB, return URL internal `idb://<id>` */
+/**
+ * Upload file ke bucket `ar-assets` dan return public HTTPS URL.
+ * Path: `<userId>/<timestamp>-<hintName>`
+ */
 export async function saveARFile(file: Blob, hintName?: string): Promise<string> {
-  const id = `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}${
-    hintName ? "-" + hintName.replace(/[^a-z0-9_.-]/gi, "_").slice(-40) : ""
-  }`;
-  await idbPut(id, file);
-  return IDB_URL_PREFIX + id;
+  const supabase = createClient();
+  const { data: userData } = await supabase.auth.getUser();
+  const userId = userData.user?.id ?? "anon";
+
+  const safeName = (hintName || "file").replace(/[^a-z0-9_.-]/gi, "_").slice(-80);
+  const key = `${userId}/${Date.now().toString(36)}-${Math.random()
+    .toString(36)
+    .slice(2, 8)}-${safeName}`;
+
+  const { error } = await supabase.storage.from(BUCKET).upload(key, file, {
+    cacheControl: "31536000",
+    upsert: false,
+    contentType: file.type || undefined,
+  });
+  if (error) {
+    console.error("[AR] upload failed", error);
+    throw new Error("Upload gagal: " + error.message);
+  }
+
+  const { data } = supabase.storage.from(BUCKET).getPublicUrl(key);
+  return data.publicUrl;
 }
 
-export async function deleteARFile(idbUrl: string): Promise<void> {
-  if (!idbUrl.startsWith(IDB_URL_PREFIX)) return;
-  const id = idbUrl.slice(IDB_URL_PREFIX.length);
-  try {
-    await idbDelete(id);
-  } catch {
-    // ignore
+/** Ekstrak object key dari public URL Supabase Storage. */
+function extractStorageKey(url: string): string | null {
+  // Format: https://<project>.supabase.co/storage/v1/object/public/ar-assets/<key>
+  const marker = `/storage/v1/object/public/${BUCKET}/`;
+  const idx = url.indexOf(marker);
+  if (idx < 0) return null;
+  return decodeURIComponent(url.slice(idx + marker.length));
+}
+
+export async function deleteARFile(url: string | undefined | null): Promise<void> {
+  if (!url) return;
+  // Handle sisa legacy idb:// dari klien lama — tidak ada aksi
+  if (url.startsWith(IDB_URL_PREFIX)) return;
+  const key = extractStorageKey(url);
+  if (!key) return;
+  const supabase = createClient();
+  const { error } = await supabase.storage.from(BUCKET).remove([key]);
+  if (error) {
+    // Tidak fatal — bisa saja file sudah terhapus
+    console.warn("[AR] delete file warn", error.message);
   }
 }
 
 /**
- * Resolve URL internal `idb://<id>` menjadi blob URL yang dapat dipakai
- * <img>, <audio>, GLTFLoader, dll. URL non-idb dikembalikan apa adanya.
- *
- * Catatan: blob URL yang dikembalikan harus di-`URL.revokeObjectURL()`
- * oleh konsumer saat komponen unmount untuk menghindari memory leak.
+ * Kompatibilitas lama. Sekarang URL sudah HTTPS langsung, jadi cukup
+ * dikembalikan apa adanya. Dipertahankan agar kode lama tidak rusak.
  */
-export async function resolveARUrl(url: string | undefined): Promise<string | undefined> {
-  if (!url) return undefined;
-  if (!url.startsWith(IDB_URL_PREFIX)) return url;
-  const id = url.slice(IDB_URL_PREFIX.length);
-  const blob = await idbGet(id);
-  if (!blob) return undefined;
-  return URL.createObjectURL(blob);
+export async function resolveARUrl(
+  url: string | undefined
+): Promise<string | undefined> {
+  return url || undefined;
 }
 
-// ----------------- Scene metadata (localStorage) -----------------
+// ----------------- Scene metadata API (Supabase table) -----------------
 
-function readUserScenes(): ARScene[] {
-  if (typeof window === "undefined") return [];
-  try {
-    const raw = localStorage.getItem(LS_KEY);
-    if (!raw) return [];
-    return JSON.parse(raw) as ARScene[];
-  } catch {
+export async function listUserScenes(): Promise<ARScene[]> {
+  const supabase = createClient();
+  const { data: userData } = await supabase.auth.getUser();
+  const uid = userData.user?.id;
+  if (!uid) return [];
+
+  const { data, error } = await supabase
+    .from("ar_scenes")
+    .select("*")
+    .eq("author_id", uid)
+    .order("updated_at", { ascending: false });
+
+  if (error) {
+    console.error("[AR] listUserScenes", error);
     return [];
   }
+  return (data as ARSceneRow[]).map(rowToScene);
 }
 
-function writeUserScenes(scenes: ARScene[]): void {
-  if (typeof window === "undefined") return;
-  localStorage.setItem(LS_KEY, JSON.stringify(scenes));
-}
+/** List all published + public AR scenes (untuk gallery umum). */
+export async function listPublishedARScenes(): Promise<ARScene[]> {
+  const supabase = createClient();
+  const { data, error } = await supabase
+    .from("ar_scenes")
+    .select("*")
+    .eq("status", "published")
+    .eq("visibility", "public")
+    .order("updated_at", { ascending: false });
 
-export function listUserScenes(): ARScene[] {
-  return readUserScenes();
-}
-
-export function getUserScene(idOrSlug: string): ARScene | undefined {
-  return readUserScenes().find((s) => s.id === idOrSlug || s.slug === idOrSlug);
-}
-
-export function saveUserScene(scene: ARScene): void {
-  const scenes = readUserScenes();
-  const idx = scenes.findIndex((s) => s.id === scene.id);
-  if (idx >= 0) {
-    scenes[idx] = scene;
-  } else {
-    scenes.push(scene);
+  if (error) {
+    console.error("[AR] listPublishedARScenes", error);
+    return [];
   }
-  writeUserScenes(scenes);
+  return (data as ARSceneRow[]).map(rowToScene);
+}
+
+export async function getUserScene(idOrSlug: string): Promise<ARScene | undefined> {
+  const supabase = createClient();
+  // Coba by slug dulu (lebih umum dari URL), fallback id
+  const { data, error } = await supabase
+    .from("ar_scenes")
+    .select("*")
+    .or(`slug.eq.${idOrSlug},id.eq.${idOrSlug}`)
+    .maybeSingle();
+  if (error) {
+    console.error("[AR] getUserScene", error);
+    return undefined;
+  }
+  if (!data) return undefined;
+  return rowToScene(data as ARSceneRow);
+}
+
+export async function saveUserScene(scene: ARScene): Promise<void> {
+  const supabase = createClient();
+  const { data: userData } = await supabase.auth.getUser();
+  const uid = userData.user?.id ?? null;
+  if (!uid) throw new Error("Belum login. Silakan login sebagai guru untuk menyimpan scene AR.");
+
+  const payload = sceneToRowPayload(scene, uid);
+  const { error } = await supabase.from("ar_scenes").upsert(payload, { onConflict: "id" });
+  if (error) {
+    console.error("[AR] saveUserScene", error);
+    throw new Error("Gagal menyimpan scene: " + error.message);
+  }
 }
 
 export async function deleteUserScene(id: string): Promise<void> {
-  const scenes = readUserScenes();
-  const target = scenes.find((s) => s.id === id);
-  if (!target) return;
-  // Clean up IndexedDB files owned by this scene
-  const urls: (string | undefined)[] = [
-    target.coverImage,
-    target.markerImage,
-    target.markerMindFile,
-    ...target.assets.flatMap((a) => [a.src, a.audioUrl]),
-  ];
-  await Promise.all(
-    urls
-      .filter((u): u is string => !!u && u.startsWith(IDB_URL_PREFIX))
-      .map((u) => deleteARFile(u))
-  );
-  writeUserScenes(scenes.filter((s) => s.id !== id));
+  const supabase = createClient();
+  // Ambil scene dulu agar bisa hapus file storage-nya
+  const { data: target } = await supabase
+    .from("ar_scenes")
+    .select("*")
+    .eq("id", id)
+    .maybeSingle();
+
+  if (target) {
+    const scene = rowToScene(target as ARSceneRow);
+    const urls: (string | undefined)[] = [
+      scene.coverImage,
+      scene.markerImage,
+      scene.markerMindFile,
+      ...scene.assets.flatMap((a) => [a.src, a.audioUrl]),
+    ];
+    await Promise.all(urls.map((u) => deleteARFile(u)));
+  }
+
+  const { error } = await supabase.from("ar_scenes").delete().eq("id", id);
+  if (error) {
+    console.error("[AR] deleteUserScene", error);
+    throw new Error("Gagal menghapus scene: " + error.message);
+  }
 }
 
 // ----------------- Helpers -----------------
 
 export function generateSceneId(): string {
-  return `scene_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 8)}`;
+  // Gunakan UUID client-side agar aman dipakai sebagai primary key Supabase.
+  // Supabase tabel punya default uuid_generate_v4(), tapi karena kita upsert
+  // dengan id dari klien (untuk konsistensi editor → DB), kita buat di sini.
+  return (globalThis.crypto as Crypto | undefined)?.randomUUID?.() ?? fallbackUuid();
+}
+
+function fallbackUuid(): string {
+  // RFC4122-ish fallback tanpa dependency
+  const hex = (n: number) =>
+    Math.floor(Math.random() * 16 ** n)
+      .toString(16)
+      .padStart(n, "0");
+  return `${hex(8)}-${hex(4)}-4${hex(3)}-${((Math.random() * 4) | 8).toString(16)}${hex(3)}-${hex(12)}`;
 }
 
 export function generateAssetId(): string {
@@ -179,10 +259,12 @@ export function generateAssetId(): string {
 }
 
 export function slugify(text: string): string {
-  return text
-    .toLowerCase()
-    .trim()
-    .replace(/[^a-z0-9]+/g, "-")
-    .replace(/^-+|-+$/g, "")
-    .slice(0, 64) || "scene-baru";
+  return (
+    text
+      .toLowerCase()
+      .trim()
+      .replace(/[^a-z0-9]+/g, "-")
+      .replace(/^-+|-+$/g, "")
+      .slice(0, 64) || "scene-baru"
+  );
 }

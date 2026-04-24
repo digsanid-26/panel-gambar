@@ -7,7 +7,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { AR_SCENES } from "@/lib/ar/seed";
-import { listUserScenes } from "@/lib/ar/storage";
+import { listPublishedARScenes, listUserScenes } from "@/lib/ar/storage";
 import type { ARScene } from "@/lib/ar/types";
 import { Box, Camera, Filter, PlusCircle, Search, Sparkles, User as UserIcon } from "lucide-react";
 
@@ -30,13 +30,43 @@ export default function ARGalleryPage() {
   const [search, setSearch] = useState("");
   const [subject, setSubject] = useState("");
   const [userScenes, setUserScenes] = useState<ARScene[]>([]);
+  const [publishedScenes, setPublishedScenes] = useState<ARScene[]>([]);
+  const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    setUserScenes(listUserScenes());
+    let cancelled = false;
+    (async () => {
+      try {
+        const [mine, pub] = await Promise.all([
+          listUserScenes(),
+          listPublishedARScenes(),
+        ]);
+        if (cancelled) return;
+        setUserScenes(mine);
+        setPublishedScenes(pub);
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   const userSceneIds = new Set(userScenes.map((s) => s.id));
-  const allScenes = [...userScenes, ...AR_SCENES];
+
+  // Merge: user's own scenes first, then published public scenes, then seed demos.
+  // Dedup by slug so a scene doesn't appear twice.
+  const allScenes: ARScene[] = (() => {
+    const seen = new Set<string>();
+    const out: ARScene[] = [];
+    for (const s of [...userScenes, ...publishedScenes, ...AR_SCENES]) {
+      if (seen.has(s.slug)) continue;
+      seen.add(s.slug);
+      out.push(s);
+    }
+    return out;
+  })();
 
   const filtered = allScenes.filter((s) => {
     if (subject && s.subject !== subject) return false;
@@ -106,7 +136,12 @@ export default function ARGalleryPage() {
         </div>
 
         {/* Grid */}
-        {filtered.length === 0 ? (
+        {loading ? (
+          <div className="text-center py-16 text-muted">
+            <div className="inline-block w-6 h-6 border-2 border-primary/30 border-t-primary rounded-full animate-spin mb-3" />
+            <p className="text-sm">Memuat scene AR...</p>
+          </div>
+        ) : filtered.length === 0 ? (
           <div className="text-center py-16 text-muted">
             <Box className="w-12 h-12 mx-auto mb-3 opacity-40" />
             <p className="text-sm">Tidak ada scene AR yang cocok.</p>
@@ -120,7 +155,8 @@ export default function ARGalleryPage() {
                 className="group rounded-2xl overflow-hidden bg-surface-card border border-border hover:border-primary/40 hover:shadow-lg transition-all"
               >
                 <div className="aspect-video bg-gradient-to-br from-primary/20 to-secondary/20 relative overflow-hidden">
-                  <ResolvingImage
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  <img
                     src={scene.coverImage}
                     alt={scene.title}
                     className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
@@ -168,8 +204,8 @@ export default function ARGalleryPage() {
           <p>
             Panel AR adalah perluasan dari Panel Cerita yang memungkinkan pembelajaran
             dengan objek 3D dan Augmented Reality. Scene buatan guru disimpan di
-            perangkat ini (browser). Saat database VM PostgreSQL tersedia, konten
-            akan disinkronkan ke server dan dapat dibagikan ke kelas.
+            Supabase dan dapat dibagikan ke kelas. File model GLB, marker, audio,
+            dan cover tersimpan di bucket storage "ar-assets".
           </p>
         </div>
       </main>
@@ -177,42 +213,3 @@ export default function ARGalleryPage() {
   );
 }
 
-/**
- * Image wrapper yang resolve URL `idb://...` ke blob URL.
- * Untuk URL http(s) standar, langsung di-render tanpa delay.
- */
-function ResolvingImage({
-  src,
-  alt,
-  className,
-}: {
-  src: string;
-  alt: string;
-  className?: string;
-}) {
-  const [resolved, setResolved] = useState<string>(src.startsWith("idb://") ? "" : src);
-
-  useEffect(() => {
-    if (!src) { setResolved(""); return; }
-    if (!src.startsWith("idb://")) { setResolved(src); return; }
-    let cancelled = false;
-    let blob: string | null = null;
-    import("@/lib/ar/storage").then(({ resolveARUrl }) => {
-      resolveARUrl(src).then((u) => {
-        if (cancelled || !u) return;
-        if (u.startsWith("blob:")) blob = u;
-        setResolved(u);
-      });
-    });
-    return () => {
-      cancelled = true;
-      if (blob) URL.revokeObjectURL(blob);
-    };
-  }, [src]);
-
-  if (!resolved) {
-    return <div className={className} style={{ background: "linear-gradient(135deg, rgba(69,248,130,0.15), rgba(99,102,241,0.15))" }} />;
-  }
-  // eslint-disable-next-line @next/next/no-img-element
-  return <img src={resolved} alt={alt} className={className} />;
-}

@@ -34,13 +34,20 @@ export default function ARSceneDetailPage() {
       setIsUserScene(false);
       return;
     }
-    const user = getUserScene(slug);
-    if (user) {
-      setScene(user);
-      setIsUserScene(true);
-    } else {
-      setScene(null);
-    }
+    let cancelled = false;
+    (async () => {
+      const user = await getUserScene(slug);
+      if (cancelled) return;
+      if (user) {
+        setScene(user);
+        setIsUserScene(true);
+      } else {
+        setScene(null);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
   }, [slug]);
 
   if (scene === "loading") {

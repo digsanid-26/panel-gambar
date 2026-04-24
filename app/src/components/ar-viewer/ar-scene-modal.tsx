@@ -26,9 +26,12 @@ export function ARSceneModal({ slug, onClose }: ARSceneModalProps) {
   useEffect(() => {
     if (!slug) return;
     setScene("loading");
-    // Slight delay to let localStorage read complete
-    const s = findARSceneBySlug(slug);
-    setScene(s ?? null);
+    let cancelled = false;
+    (async () => {
+      const s = await findARSceneBySlug(slug);
+      if (!cancelled) setScene(s ?? null);
+    })();
+    return () => { cancelled = true; };
   }, [slug]);
 
   // Close on Escape

@@ -177,9 +177,11 @@ export function ARSceneEditor({ initialScene }: ARSceneEditorProps) {
   async function handleSave() {
     setSaving(true);
     try {
-      saveUserScene(scene);
+      await saveUserScene(scene);
       setSavedMark(true);
       setTimeout(() => setSavedMark(false), 1500);
+    } catch (err) {
+      alert(err instanceof Error ? err.message : "Gagal menyimpan.");
     } finally {
       setSaving(false);
     }

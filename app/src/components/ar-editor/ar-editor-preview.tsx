@@ -21,14 +21,9 @@ import {
 } from "@react-three/drei";
 import type { Group } from "three";
 import type { ARAsset, ARTransform } from "@/lib/ar/types";
-import { IDB_URL_PREFIX, resolveARUrl } from "@/lib/ar/storage";
 import { Loader2 } from "lucide-react";
 
 type TransformMode = "translate" | "rotate" | "scale";
-
-interface ARAssetWithUrl extends ARAsset {
-  resolvedSrc?: string;
-}
 
 interface ARPreviewProps {
   assets: ARAsset[];
@@ -45,14 +40,14 @@ function EditableModel({
   onSelect,
   onTransformChange,
 }: {
-  asset: ARAssetWithUrl;
+  asset: ARAsset;
   isSelected: boolean;
   transformMode: TransformMode;
   onSelect: (id: string) => void;
   onTransformChange: (id: string, transform: ARTransform) => void;
 }) {
   const groupRef = useRef<Group>(null);
-  const src = asset.resolvedSrc || asset.src;
+  const src = asset.src;
   const { scene, animations } = useGLTF(src);
   const { actions, names } = useAnimations(animations, groupRef);
 
@@ -130,32 +125,7 @@ export function ARPreview({
   onSelect,
   onTransformChange,
 }: ARPreviewProps) {
-  const [resolvedAssets, setResolvedAssets] = useState<ARAssetWithUrl[]>([]);
-
-  // Resolve idb:// URLs to blob URLs (async)
-  useEffect(() => {
-    let cancelled = false;
-    const blobUrls: string[] = [];
-
-    (async () => {
-      const resolved = await Promise.all(
-        assets.map(async (a) => {
-          if (a.src.startsWith(IDB_URL_PREFIX)) {
-            const url = await resolveARUrl(a.src);
-            if (url) blobUrls.push(url);
-            return { ...a, resolvedSrc: url ?? a.src } as ARAssetWithUrl;
-          }
-          return { ...a, resolvedSrc: a.src } as ARAssetWithUrl;
-        })
-      );
-      if (!cancelled) setResolvedAssets(resolved);
-    })();
-
-    return () => {
-      cancelled = true;
-      blobUrls.forEach((u) => URL.revokeObjectURL(u));
-    };
-  }, [assets]);
+  const resolvedAssets = assets;
 
   return (
     <div className="relative w-full h-full bg-[#0a0a1a] rounded-xl overflow-hidden">
@@ -184,7 +154,7 @@ export function ARPreview({
         <Suspense fallback={<LoadingFallback />}>
           {resolvedAssets.map((asset) => (
             <EditableModel
-              key={asset.id + "|" + (asset.resolvedSrc ?? "")}
+              key={asset.id}
               asset={asset}
               isSelected={selectedId === asset.id}
               transformMode={transformMode}

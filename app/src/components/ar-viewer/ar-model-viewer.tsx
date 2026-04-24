@@ -18,7 +18,6 @@ import {
 } from "@react-three/drei";
 import type { Group } from "three";
 import type { ARAsset } from "@/lib/ar/types";
-import { IDB_URL_PREFIX, resolveARUrl } from "@/lib/ar/storage";
 import { Loader2 } from "lucide-react";
 
 interface ARModelViewerProps {
@@ -79,31 +78,6 @@ export function ARModelViewer({
   background = "#0a0a1a",
 }: ARModelViewerProps) {
   const [isPaused, setIsPaused] = useState(false);
-  const [resolvedAssets, setResolvedAssets] = useState<ARAsset[]>([]);
-
-  useEffect(() => {
-    let cancelled = false;
-    const blobUrls: string[] = [];
-
-    (async () => {
-      const resolved = await Promise.all(
-        assets.map(async (a) => {
-          if (a.src.startsWith(IDB_URL_PREFIX)) {
-            const url = await resolveARUrl(a.src);
-            if (url) blobUrls.push(url);
-            return { ...a, src: url ?? a.src };
-          }
-          return a;
-        })
-      );
-      if (!cancelled) setResolvedAssets(resolved);
-    })();
-
-    return () => {
-      cancelled = true;
-      blobUrls.forEach((u) => URL.revokeObjectURL(u));
-    };
-  }, [assets]);
 
   return (
     <div
@@ -123,8 +97,8 @@ export function ARModelViewer({
         <directionalLight position={[-5, 3, -5]} intensity={0.4} />
 
         <Suspense fallback={<LoadingFallback />}>
-          {resolvedAssets.map((asset) => (
-            <Model key={asset.id + "|" + asset.src} asset={asset} />
+          {assets.map((asset) => (
+            <Model key={asset.id} asset={asset} />
           ))}
           <Environment preset="studio" />
         </Suspense>

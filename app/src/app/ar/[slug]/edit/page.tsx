@@ -23,13 +23,18 @@ export default function EditARScenePage() {
       setStatus("seed");
       return;
     }
-    const s = getUserScene(slug);
-    if (s) {
-      setScene(s);
-      setStatus("ok");
-    } else {
-      setStatus("missing");
-    }
+    let cancelled = false;
+    (async () => {
+      const s = await getUserScene(slug);
+      if (cancelled) return;
+      if (s) {
+        setScene(s);
+        setStatus("ok");
+      } else {
+        setStatus("missing");
+      }
+    })();
+    return () => { cancelled = true; };
   }, [slug]);
 
   return (

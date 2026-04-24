@@ -74,7 +74,7 @@ export function CanvasEditor({ canvasData, onSave, onUploadImage, dialogs = [], 
   // AR scene options (load once on mount)
   const [arSceneOptions, setArSceneOptions] = useState<ARSceneOption[]>([]);
   useEffect(() => {
-    setArSceneOptions(listARSceneOptions());
+    listARSceneOptions().then((opts) => setArSceneOptions(opts));
   }, []);
 
   // Auto-fit scale

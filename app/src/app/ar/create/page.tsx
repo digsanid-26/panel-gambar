@@ -49,10 +49,13 @@ export default function CreateARScenePage() {
   const [level, setLevel] = useState<ARScene["level"]>("dasar");
   const [submitting, setSubmitting] = useState(false);
 
-  function handleSubmit(e: React.FormEvent) {
+  const [error, setError] = useState<string | null>(null);
+
+  async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     if (!title.trim()) return;
     setSubmitting(true);
+    setError(null);
 
     const id = generateSceneId();
     const slug = slugify(title);
@@ -68,11 +71,15 @@ export default function CreateARScenePage() {
       coverImage: "",
       assets: [],
       instruction: "",
-      createdAt: new Date().toISOString(),
     };
 
-    saveUserScene(scene);
-    router.push(`/ar/${slug}/edit`);
+    try {
+      await saveUserScene(scene);
+      router.push(`/ar/${slug}/edit`);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Gagal menyimpan scene.");
+      setSubmitting(false);
+    }
   }
 
   return (
@@ -194,6 +201,12 @@ export default function CreateARScenePage() {
               </select>
             </div>
           </div>
+
+          {error && (
+            <div className="p-3 rounded-xl bg-danger/10 border border-danger/30 text-xs text-danger">
+              {error}
+            </div>
+          )}
 
           {/* Actions */}
           <div className="flex items-center justify-end gap-2 pt-3">
