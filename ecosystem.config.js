@@ -1,8 +1,10 @@
+const path = require('path');
+
 module.exports = {
   apps: [
     {
       name: 'panel-gambar',
-      cwd: './app',
+      cwd: path.resolve(__dirname, 'app'),
       script: 'node_modules/.bin/next',
       args: 'start',
       exec_mode: 'fork',
