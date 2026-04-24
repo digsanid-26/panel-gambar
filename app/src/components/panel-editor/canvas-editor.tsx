@@ -62,9 +62,11 @@ export function CanvasEditor({ canvasData, onSave, onUploadImage, dialogs = [], 
   const [scale, setScale] = useState(1);
   const [loadedImages, setLoadedImages] = useState<Record<string, HTMLImageElement>>({});
   const [shapeBgImages, setShapeBgImages] = useState<Record<string, HTMLImageElement>>({});
+  const [canvasBgImage, setCanvasBgImage] = useState<HTMLImageElement | null>(null);
   const stageRef = useRef<any>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const shapeBgInputRef = useRef<HTMLInputElement>(null);
+  const canvasBgInputRef = useRef<HTMLInputElement>(null);
   const transformerRef = useRef<any>(null);
   const shapeRefs = useRef<Record<string, any>>({});
 
@@ -117,6 +119,19 @@ export function CanvasEditor({ canvasData, onSave, onUploadImage, dialogs = [], 
         img.src = layer.backgroundImage!;
       });
   }, [data.layers]);
+
+  // Load canvas background image
+  useEffect(() => {
+    if (!data.backgroundImage) {
+      setCanvasBgImage(null);
+      return;
+    }
+    if (canvasBgImage?.src === data.backgroundImage) return;
+    const img = new window.Image();
+    img.crossOrigin = "anonymous";
+    img.onload = () => setCanvasBgImage(img);
+    img.src = data.backgroundImage;
+  }, [data.backgroundImage]);
 
   // Attach transformer to selected node
   useEffect(() => {
@@ -364,6 +379,20 @@ export function CanvasEditor({ canvasData, onSave, onUploadImage, dialogs = [], 
     e.target.value = "";
   }
 
+  // Upload canvas background image
+  async function handleCanvasBgFile(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const url = await onUploadImage(file);
+    if (!url) return;
+    const img = new window.Image();
+    img.crossOrigin = "anonymous";
+    img.onload = () => setCanvasBgImage(img);
+    img.src = url;
+    setCanvasBackgroundImage(url);
+    e.target.value = "";
+  }
+
   // Finalize lasso: convert drawn points into a polygon shape layer
   function finalizeLasso() {
     if (lassoPoints.length < 6) {
@@ -434,6 +463,23 @@ export function CanvasEditor({ canvasData, onSave, onUploadImage, dialogs = [], 
     pushHistory({ ...data, height: clamped });
   }
 
+  // Canvas background & border helpers
+  function setCanvasBgColor(color: string) {
+    pushHistory({ ...data, backgroundColor: color });
+  }
+  function setCanvasBackgroundImage(url: string | undefined) {
+    pushHistory({ ...data, backgroundImage: url });
+  }
+  function setCanvasBorder(width: number) {
+    pushHistory({ ...data, borderWidth: Math.max(0, width) });
+  }
+  function setCanvasBorderRadius(radius: number) {
+    pushHistory({ ...data, borderRadius: Math.max(0, radius) });
+  }
+  function setCanvasBorderColor(color: string) {
+    pushHistory({ ...data, borderColor: color });
+  }
+
   const selectedLayer = data.layers.find((l) => l.id === selectedId);
   const sortedLayers = [...data.layers].sort((a, b) => a.zIndex - b.zIndex);
 
@@ -499,6 +545,67 @@ export function CanvasEditor({ canvasData, onSave, onUploadImage, dialogs = [], 
             value={data.height}
             onChange={(e) => setCanvasHeight(Number(e.target.value))}
             className="w-16 text-xs px-1.5 py-0.5 rounded border border-border bg-surface-alt text-foreground"
+          />
+        </div>
+        <div className="w-px h-6 bg-border mx-1" />
+        {/* Background color */}
+        <div className="flex items-center gap-1" title="Warna latar canvas">
+          <input
+            type="color"
+            value={data.backgroundColor || "#f0f0f0"}
+            onChange={(e) => setCanvasBgColor(e.target.value)}
+            className="w-6 h-6 rounded border border-border cursor-pointer"
+          />
+          <label className="text-[10px] text-muted">Latar</label>
+        </div>
+        {/* Background image */}
+        <div className="flex items-center gap-1">
+          {data.backgroundImage ? (
+            <div className="flex items-center gap-1">
+              <img src={data.backgroundImage} alt="bg" className="w-6 h-6 rounded object-cover border border-border" />
+              <button
+                onClick={() => setCanvasBackgroundImage(undefined)}
+                className="text-[10px] text-danger hover:underline"
+                title="Hapus gambar latar"
+              >Hapus</button>
+            </div>
+          ) : (
+            <button
+              onClick={() => canvasBgInputRef.current?.click()}
+              className="text-[10px] px-2 py-1 rounded border border-border bg-surface-alt text-foreground hover:bg-surface-alt/80 flex items-center gap-1"
+              title="Upload gambar latar canvas"
+            >
+              <Upload className="w-3 h-3" /> BG
+            </button>
+          )}
+        </div>
+        {/* Border controls */}
+        <div className="flex items-center gap-1">
+          <label className="text-[10px] text-muted">Bdr:</label>
+          <input
+            type="number" min={0} max={50}
+            value={data.borderWidth ?? 2}
+            onChange={(e) => setCanvasBorder(Number(e.target.value))}
+            className="w-10 text-xs px-1 py-0.5 rounded border border-border bg-surface-alt text-foreground"
+            title="Border width (px). 0 = tanpa border"
+          />
+        </div>
+        <div className="flex items-center gap-1">
+          <label className="text-[10px] text-muted">Rad:</label>
+          <input
+            type="number" min={0} max={200}
+            value={data.borderRadius ?? 16}
+            onChange={(e) => setCanvasBorderRadius(Number(e.target.value))}
+            className="w-10 text-xs px-1 py-0.5 rounded border border-border bg-surface-alt text-foreground"
+            title="Border radius (px). 0 = tanpa rounded"
+          />
+        </div>
+        <div className="flex items-center gap-1" title="Warna border">
+          <input
+            type="color"
+            value={data.borderColor || "#e5e7eb"}
+            onChange={(e) => setCanvasBorderColor(e.target.value)}
+            className="w-6 h-6 rounded border border-border cursor-pointer"
           />
         </div>
         <div className="w-px h-6 bg-border mx-1" />
@@ -574,8 +681,23 @@ export function CanvasEditor({ canvasData, onSave, onUploadImage, dialogs = [], 
             style={{ cursor: lassoActive ? "crosshair" : "default" }}
           >
             <Layer>
-              {/* Background */}
-              <Rect x={0} y={0} width={data.width} height={data.height} fill="#f0f0f0" />
+              {/* Background image */}
+              {canvasBgImage && (
+                <KonvaImage
+                  x={0} y={0}
+                  width={data.width} height={data.height}
+                  image={canvasBgImage}
+                  listening={false}
+                  perfectDrawEnabled={false}
+                />
+              )}
+              {/* Background color */}
+              {(() => {
+                const bgFill = data.backgroundColor || "#f0f0f0";
+                return (
+                  <Rect x={0} y={0} width={data.width} height={data.height} fill={bgFill} />
+                );
+              })()}
 
               {/* Layers */}
               {sortedLayers.filter((l) => l.visible).map((layer) => {
@@ -1401,6 +1523,7 @@ export function CanvasEditor({ canvasData, onSave, onUploadImage, dialogs = [], 
 
       <input ref={fileInputRef} type="file" accept="image/*" className="hidden" onChange={handleImageFile} />
       <input ref={shapeBgInputRef} type="file" accept="image/*" className="hidden" onChange={handleShapeBgFile} />
+      <input ref={canvasBgInputRef} type="file" accept="image/*" className="hidden" onChange={handleCanvasBgFile} />
     </div>
   );
 }

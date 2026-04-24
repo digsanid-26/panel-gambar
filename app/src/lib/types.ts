@@ -119,6 +119,16 @@ export interface CanvasData {
   width: number;
   height: number;
   layers: CanvasLayer[];
+  /** Background color behind all layers */
+  backgroundColor?: string;
+  /** Background image URL behind all layers */
+  backgroundImage?: string;
+  /** Panel border width in px (default 2) */
+  borderWidth?: number;
+  /** Panel border radius in px (default 16) */
+  borderRadius?: number;
+  /** Panel border color */
+  borderColor?: string;
 }
 
 export interface CanvasLayer {

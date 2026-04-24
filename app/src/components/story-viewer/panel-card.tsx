@@ -121,9 +121,16 @@ export function PanelCard({
   return (
     <div className={className}>
       <div
-        className="relative w-full rounded-2xl border-2 border-border overflow-hidden shadow-lg"
+        className="relative w-full overflow-hidden shadow-lg"
         style={{
-          backgroundColor: panel.background_color || "#f0f9ff",
+          backgroundColor: panel.canvas_data?.backgroundColor ?? panel.background_color ?? "#f0f9ff",
+          backgroundImage: panel.canvas_data?.backgroundImage ? `url(${panel.canvas_data.backgroundImage})` : undefined,
+          backgroundSize: "cover",
+          backgroundPosition: "center",
+          borderWidth: panel.canvas_data ? `${panel.canvas_data.borderWidth ?? 2}px` : "2px",
+          borderStyle: (panel.canvas_data?.borderWidth ?? 2) > 0 ? "solid" : "none",
+          borderColor: panel.canvas_data?.borderColor || "#e5e7eb",
+          borderRadius: `${panel.canvas_data?.borderRadius ?? 16}px`,
           minHeight: compact ? "200px" : "400px",
         }}
       >
