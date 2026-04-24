@@ -118,6 +118,12 @@ export function PanelCard({
     return visibility.dialogs.has(dialog.id);
   }
 
+  // Aspect ratio from canvas_data for complete panels, default 3/2 otherwise
+  const hasCanvas = !!panel.canvas_data && panel.panel_type === "complete";
+  const aspectRatio = hasCanvas && panel.canvas_data!.width && panel.canvas_data!.height
+    ? panel.canvas_data!.width / panel.canvas_data!.height
+    : 3 / 2;
+
   return (
     <div className={className}>
       <div
@@ -131,7 +137,8 @@ export function PanelCard({
           borderStyle: (panel.canvas_data?.borderWidth ?? 2) > 0 ? "solid" : "none",
           borderColor: panel.canvas_data?.borderColor || "#e5e7eb",
           borderRadius: `${panel.canvas_data?.borderRadius ?? 16}px`,
-          minHeight: compact ? "200px" : "400px",
+          aspectRatio: `${aspectRatio}`,
+          minHeight: hasCanvas ? undefined : (compact ? "200px" : "400px"),
         }}
       >
         {/* Panel image */}
@@ -139,10 +146,10 @@ export function PanelCard({
           <img
             src={panel.image_url}
             alt={`Panel ${index + 1}`}
-            className="w-full aspect-[3/2] object-cover"
+            className="w-full h-full object-cover"
           />
         ) : (
-          <div className="w-full aspect-[3/2] flex items-center justify-center">
+          <div className="w-full h-full flex items-center justify-center">
             <ImageIcon className="w-20 h-20 text-black/10" />
           </div>
         )}

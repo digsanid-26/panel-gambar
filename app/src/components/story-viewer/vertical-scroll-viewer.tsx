@@ -139,14 +139,6 @@ export function VerticalScrollViewer({ panels, user, onSaveRecording, storyChara
     setInfinityScroll((prev) => !prev);
   }, []);
 
-  // Get panel height from canvas_data if available (complete panels)
-  function getPanelHeight(panel: Panel): string | undefined {
-    if (panel.panel_type === "complete" && panel.canvas_data?.height) {
-      return `${panel.canvas_data.height}px`;
-    }
-    return undefined;
-  }
-
   return (
     <div className="flex-1 flex flex-col relative">
       {/* Scrollable container */}
@@ -158,13 +150,11 @@ export function VerticalScrollViewer({ panels, user, onSaveRecording, storyChara
         {/* Seamless panel container — no gaps for complete panels */}
         <div className="max-w-4xl mx-auto">
           {panels.map((panel, i) => {
-            const canvasHeight = getPanelHeight(panel);
             const isComplete = panel.panel_type === "complete";
             return (
               <div
                 key={panel.id}
                 ref={(el) => { panelRefs.current[i] = el; }}
-                style={canvasHeight ? { minHeight: canvasHeight } : undefined}
                 className={isComplete ? "" : "px-4 sm:px-8 py-4"}
               >
                 <PanelCard
