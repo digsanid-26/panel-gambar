@@ -183,10 +183,11 @@ Pastikan build berhasil tanpa error. Output `standalone` atau `.next` akan muncu
 ## Langkah 7 — Jalankan dengan PM2
 
 ```bash
-cd ~/panel-gambar/app
+cd ~/panel-gambar
 
-# Jalankan Next.js production server di port 3000
-pm2 start npm --name "panel-gambar" -- start
+# Jalankan Next.js production server di port 3000 via ecosystem config
+# (memory limit 512M, fork mode, no watch)
+pm2 start ecosystem.config.js
 
 # Verifikasi
 pm2 status
@@ -335,18 +336,23 @@ nano ~/panel-gambar/deploy.sh
 #!/bin/bash
 set -e
 
+cd ~/panel-gambar
+
 echo "Pulling latest code..."
-cd ~/panel-gambar/app
 git pull origin main
 
 echo "Installing dependencies..."
-npm install
+cd app && npm install
 
 echo "Building..."
 npm run build
 
 echo "Restarting PM2..."
-pm2 restart panel-gambar
+# Kill old process + flush logs (hemat disk)
+pm2 delete panel-gambar 2>/dev/null || true
+pm2 flush panel-gambar 2>/dev/null || true
+# Start dengan ecosystem config (memory limit, fork mode)
+pm2 start ../ecosystem.config.js
 
 echo "Deploy selesai! https://panel-edu.digsan.id"
 ```
