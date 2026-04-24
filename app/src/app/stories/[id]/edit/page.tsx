@@ -62,6 +62,7 @@ export default function EditStoryPage() {
   const [saving, setSaving] = useState(false);
   const [expandedPanel, setExpandedPanel] = useState<string | null>(null);
   const [showDialogForm, setShowDialogForm] = useState<string | null>(null);
+  const [editingDialogId, setEditingDialogId] = useState<string | null>(null);
   const [showNarrationRecorder, setShowNarrationRecorder] = useState<string | null>(null);
   const [showBgAudioRecorder, setShowBgAudioRecorder] = useState<string | null>(null);
   const [showMetadata, setShowMetadata] = useState(false);
@@ -79,7 +80,7 @@ export default function EditStoryPage() {
   const [dialogCharName, setDialogCharName] = useState("Karakter");
   const [dialogCharColor, setDialogCharColor] = useState("#3b82f6");
   const [dialogText, setDialogText] = useState("");
-  const [dialogBubble, setDialogBubble] = useState("kotak");
+  const [dialogBubble, setDialogBubble] = useState<"kotak" | "oval" | "awan" | "ledakan">("kotak");
   const [dialogPosX, setDialogPosX] = useState(50);
   const [dialogPosY, setDialogPosY] = useState(20);
 
@@ -576,6 +577,74 @@ export default function EditStoryPage() {
       setShowDialogForm(null);
     }
     setSaving(false);
+  }
+
+  async function updateDialog(panelId: string) {
+    if (!editingDialogId || !dialogText.trim()) return;
+    setSaving(true);
+
+    const { error } = await supabase
+      .from("dialogs")
+      .update({
+        character_name: dialogCharName,
+        character_color: dialogCharColor,
+        text: dialogText,
+        bubble_style: dialogBubble,
+        position_x: dialogPosX,
+        position_y: dialogPosY,
+      })
+      .eq("id", editingDialogId);
+
+    if (!error) {
+      setPanels(prev =>
+        prev.map((p) =>
+          p.id === panelId
+            ? {
+                ...p,
+                dialogs: (p.dialogs || []).map((d) =>
+                  d.id === editingDialogId
+                    ? {
+                        ...d,
+                        character_name: dialogCharName,
+                        character_color: dialogCharColor,
+                        text: dialogText,
+                        bubble_style: dialogBubble,
+                        position_x: dialogPosX,
+                        position_y: dialogPosY,
+                      }
+                    : d
+                ),
+              }
+            : p
+        )
+      );
+      setEditingDialogId(null);
+      setDialogText("");
+      setShowDialogForm(null);
+    }
+    setSaving(false);
+  }
+
+  function startEditDialog(panelId: string, dialog: Dialog) {
+    setEditingDialogId(dialog.id);
+    setDialogCharName(dialog.character_name);
+    setDialogCharColor(dialog.character_color);
+    setDialogText(dialog.text);
+    setDialogBubble((dialog.bubble_style || "kotak") as "kotak" | "oval" | "awan" | "ledakan");
+    setDialogPosX(dialog.position_x);
+    setDialogPosY(dialog.position_y);
+    setShowDialogForm(panelId);
+  }
+
+  function cancelDialogForm() {
+    setEditingDialogId(null);
+    setDialogText("");
+    setDialogCharName("Karakter");
+    setDialogCharColor("#3b82f6");
+    setDialogBubble("kotak");
+    setDialogPosX(50);
+    setDialogPosY(20);
+    setShowDialogForm(null);
   }
 
   async function updateDialogPosition(dialogId: string, posX: number, posY: number) {
@@ -1341,6 +1410,13 @@ export default function EditStoryPage() {
                               <ChevronDown className="w-3.5 h-3.5" />
                             </button>
                             <button
+                              onClick={() => startEditDialog(panel.id, dialog)}
+                              className="text-muted hover:text-primary p-0.5 rounded transition-colors"
+                              title="Edit dialog"
+                            >
+                              <Pencil className="w-3.5 h-3.5" />
+                            </button>
+                            <button
                               onClick={() => deleteDialog(panel.id, dialog.id)}
                               className="text-muted hover:text-danger p-0.5 rounded transition-colors"
                               title="Hapus dialog"
@@ -1352,10 +1428,12 @@ export default function EditStoryPage() {
                       ))}
                     </div>
 
-                    {/* Add dialog form */}
+                    {/* Add / Edit dialog form */}
                     {showDialogForm === panel.id ? (
                       <div className="p-4 bg-surface-alt rounded-xl border border-border space-y-3">
-                        <h4 className="text-sm font-semibold">Tambah Dialog Baru</h4>
+                        <h4 className="text-sm font-semibold">
+                          {editingDialogId ? "Edit Dialog" : "Tambah Dialog Baru"}
+                        </h4>
 
                         {/* Character selector */}
                         {(story.characters?.length || 0) > 0 ? (
@@ -1420,7 +1498,7 @@ export default function EditStoryPage() {
                             />
                             <Select
                               value={dialogBubble}
-                              onChange={(e) => setDialogBubble(e.target.value)}
+                              onChange={(e) => setDialogBubble(e.target.value as "kotak" | "oval" | "awan" | "ledakan")}
                               options={[
                                 { value: "kotak", label: "Kotak" },
                                 { value: "oval", label: "Oval" },
@@ -1457,16 +1535,16 @@ export default function EditStoryPage() {
                           <Button
                             variant="primary"
                             size="sm"
-                            onClick={() => addDialog(panel.id)}
+                            onClick={() => editingDialogId ? updateDialog(panel.id) : addDialog(panel.id)}
                             disabled={saving || !dialogText.trim()}
                           >
                             {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
-                            Tambah
+                            {editingDialogId ? "Simpan" : "Tambah"}
                           </Button>
                           <Button
                             variant="ghost"
                             size="sm"
-                            onClick={() => setShowDialogForm(null)}
+                            onClick={() => cancelDialogForm()}
                           >
                             Batal
                           </Button>
@@ -1477,6 +1555,7 @@ export default function EditStoryPage() {
                         variant="outline"
                         size="sm"
                         onClick={() => {
+                          setEditingDialogId(null);
                           setShowDialogForm(panel.id);
                           setDialogText("");
                           setDialogCharName("Karakter");
