@@ -133,13 +133,19 @@ export function VerticalScrollViewer({ panels, user, onSaveRecording, storyChara
       const target = getScroller();
       const max = getMaxScroll(target);
       const cur = getScrollTop(target);
-      let next = cur + scrollSpeedRef.current;
       if (max <= 0) {
-        // Nothing to scroll yet
+        // Nothing to scroll yet, wait
         animRef.current = requestAnimationFrame(tick);
         return;
       }
-      if (next >= max) next = 0; // loop to top
+      const next = cur + scrollSpeedRef.current;
+      if (next >= max) {
+        // Reached the end — clamp & stop (no loop)
+        setScrollTop(target, max);
+        updateCurrentFromScroll();
+        setAutoScroll(false);
+        return;
+      }
       setScrollTop(target, next);
       updateCurrentFromScroll();
       animRef.current = requestAnimationFrame(tick);
@@ -153,8 +159,18 @@ export function VerticalScrollViewer({ panels, user, onSaveRecording, storyChara
   }, [autoScroll, getScroller, getScrollTop, setScrollTop, getMaxScroll, updateCurrentFromScroll]);
 
   const togglePlay = useCallback(() => {
-    setAutoScroll((prev) => !prev);
-  }, []);
+    setAutoScroll((prev) => {
+      if (prev) return false;
+      // Starting: if we're already at (or near) the bottom, restart from top
+      const target = getScroller();
+      const max = getMaxScroll(target);
+      const cur = getScrollTop(target);
+      if (max > 0 && cur >= max - 2) {
+        setScrollTop(target, 0);
+      }
+      return true;
+    });
+  }, [getScroller, getScrollTop, setScrollTop, getMaxScroll]);
 
   return (
     <div className="flex-1 flex flex-col relative">
