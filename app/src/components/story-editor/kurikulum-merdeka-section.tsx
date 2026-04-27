@@ -3,6 +3,7 @@
 import type { Story } from "@/lib/types";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
+import { DebouncedInput, DebouncedTextarea } from "@/components/ui/debounced-input";
 import { Select } from "@/components/ui/select";
 import { Button } from "@/components/ui/button";
 import {
@@ -55,12 +56,12 @@ export function KurikulumMerdekaSection({ story, updateStoryField }: Props) {
 
       {/* === KONTEN PEMBELAJARAN === */}
       <SubSection icon={<Target className="w-4 h-4" />} title="Konten Pembelajaran">
-        <Textarea
+        <DebouncedTextarea
           id="km-cp"
           label="Capaian Pembelajaran (CP)"
           placeholder="Tuliskan capaian pembelajaran yang ingin dicapai..."
           value={story.capaian_pembelajaran || ""}
-          onChange={(e) => updateStoryField("capaian_pembelajaran", e.target.value)}
+          onCommit={(v) => updateStoryField("capaian_pembelajaran", v)}
           rows={3}
         />
 
@@ -72,12 +73,12 @@ export function KurikulumMerdekaSection({ story, updateStoryField }: Props) {
           onChange={(arr) => updateStoryField("tujuan_pembelajaran", arr)}
         />
 
-        <Textarea
+        <DebouncedTextarea
           id="km-materi-pokok"
           label="Materi Pokok"
           placeholder="Pokok-pokok materi yang dibahas dalam cerita ini..."
           value={story.materi_pokok || ""}
-          onChange={(e) => updateStoryField("materi_pokok", e.target.value)}
+          onCommit={(v) => updateStoryField("materi_pokok", v)}
           rows={3}
         />
       </SubSection>
@@ -95,20 +96,20 @@ export function KurikulumMerdekaSection({ story, updateStoryField }: Props) {
               ...METODE_OPTIONS.map((m) => ({ value: m, label: m })),
             ]}
           />
-          <Input
+          <DebouncedInput
             id="km-alokasi-waktu"
             label="Alokasi Waktu"
             placeholder="Misal: 2 JP × 35 menit"
             value={story.alokasi_waktu || ""}
-            onChange={(e) => updateStoryField("alokasi_waktu", e.target.value)}
+            onCommit={(v) => updateStoryField("alokasi_waktu", v)}
           />
         </div>
-        <Textarea
+        <DebouncedTextarea
           id="km-pendekatan"
           label="Pendekatan Pembelajaran"
           placeholder="Misal: saintifik, kontekstual, TPACK, dll..."
           value={story.pendekatan_pembelajaran || ""}
-          onChange={(e) => updateStoryField("pendekatan_pembelajaran", e.target.value)}
+          onCommit={(v) => updateStoryField("pendekatan_pembelajaran", v)}
           rows={2}
         />
       </SubSection>
@@ -160,31 +161,31 @@ export function KurikulumMerdekaSection({ story, updateStoryField }: Props) {
           </div>
         </div>
 
-        <Textarea
+        <DebouncedTextarea
           id="km-asesmen-deskripsi"
           label="Deskripsi Asesmen"
           placeholder="Jelaskan instrumen, kriteria, atau bentuk asesmen yang digunakan..."
           value={story.asesmen_deskripsi || ""}
-          onChange={(e) => updateStoryField("asesmen_deskripsi", e.target.value)}
+          onCommit={(v) => updateStoryField("asesmen_deskripsi", v)}
           rows={3}
         />
 
-        <Textarea
+        <DebouncedTextarea
           id="km-evaluasi-guru"
           label="Evaluasi Guru (Rangkuman Proses Belajar)"
           placeholder="Rangkuman / catatan guru terhadap proses belajar mengajar siswa dalam mengikuti materi..."
           value={story.evaluasi_guru || ""}
-          onChange={(e) => updateStoryField("evaluasi_guru", e.target.value)}
+          onCommit={(v) => updateStoryField("evaluasi_guru", v)}
           rows={4}
         />
 
-        <Input
+        <DebouncedInput
           id="km-link-quiz"
           label="Link Quiz / Pelatihan"
           type="url"
           placeholder="https://forms.google.com/... atau https://quizizz.com/..."
           value={story.link_quiz || ""}
-          onChange={(e) => updateStoryField("link_quiz", e.target.value)}
+          onCommit={(v) => updateStoryField("link_quiz", v)}
         />
       </SubSection>
 
@@ -279,12 +280,12 @@ function NumberedListEditor({
             <span className="shrink-0 w-7 h-9 flex items-center justify-center text-sm font-semibold text-muted bg-surface rounded-lg border border-border">
               {idx + 1}.
             </span>
-            <Input
+            <DebouncedInput
               value={item}
               placeholder={`${placeholder} ${idx + 1}...`}
-              onChange={(e) => {
+              onCommit={(v) => {
                 const arr = [...values];
-                arr[idx] = e.target.value;
+                arr[idx] = v;
                 onChange(arr);
               }}
             />
@@ -411,13 +412,13 @@ function ObjectListEditor<T extends Record<string, string>>({
             </span>
             <div className="flex-1 grid grid-cols-1 sm:grid-cols-2 gap-2">
               {fields.map((f) => (
-                <Input
+                <DebouncedInput
                   key={f.key}
                   value={row[f.key] || ""}
                   placeholder={f.placeholder}
-                  onChange={(e) => {
+                  onCommit={(v) => {
                     const arr = [...values];
-                    arr[idx] = { ...arr[idx], [f.key]: e.target.value } as T;
+                    arr[idx] = { ...arr[idx], [f.key]: v } as T;
                     onChange(arr);
                   }}
                 />

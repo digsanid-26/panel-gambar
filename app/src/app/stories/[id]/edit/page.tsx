@@ -9,6 +9,7 @@ import { Navbar } from "@/components/layout/navbar";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
+import { DebouncedInput, DebouncedTextarea } from "@/components/ui/debounced-input";
 import { Select } from "@/components/ui/select";
 import { Badge } from "@/components/ui/badge";
 import { CoverImageUploader } from "@/components/ui/cover-image-uploader";
@@ -962,19 +963,19 @@ export default function EditStoryPage() {
             </div>
 
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-              <Input
+              <DebouncedInput
                 id="edit-kurikulum"
                 label="Kurikulum"
                 placeholder="Misal: Kurikulum Merdeka"
                 value={story.kurikulum || ""}
-                onChange={(e) => updateStoryField("kurikulum", e.target.value)}
+                onCommit={(v) => updateStoryField("kurikulum", v)}
               />
-              <Input
+              <DebouncedInput
                 id="edit-mata-pelajaran"
                 label="Mata Pelajaran"
                 placeholder="Misal: Bahasa Indonesia"
                 value={story.mata_pelajaran || ""}
-                onChange={(e) => updateStoryField("mata_pelajaran", e.target.value)}
+                onCommit={(v) => updateStoryField("mata_pelajaran", v)}
               />
               <Select
                 id="edit-semester"
@@ -1006,21 +1007,21 @@ export default function EditStoryPage() {
                   { value: "Lainnya", label: "Lainnya" },
                 ]}
               />
-              <Input
+              <DebouncedInput
                 id="edit-detail-sumber"
                 label="Detail Sumber"
                 placeholder="Nama buku, film, novel, seri, dll"
                 value={story.detail_sumber || ""}
-                onChange={(e) => updateStoryField("detail_sumber", e.target.value)}
+                onCommit={(v) => updateStoryField("detail_sumber", v)}
               />
             </div>
 
-            <Textarea
+            <DebouncedTextarea
               id="edit-informasi-tambahan"
               label="Informasi Tambahan"
               placeholder="Catatan atau keterangan tambahan tentang cerita ini..."
               value={story.informasi_tambahan || ""}
-              onChange={(e) => updateStoryField("informasi_tambahan", e.target.value)}
+              onCommit={(v) => updateStoryField("informasi_tambahan", v)}
             />
 
             {/* Kurikulum Merdeka */}
@@ -1235,12 +1236,10 @@ export default function EditStoryPage() {
                       <Volume2 className="w-4 h-4 inline mr-1" />
                       Narasi
                     </label>
-                    <Textarea
+                    <DebouncedTextarea
                       placeholder="Tuliskan narasi untuk panel ini..."
                       value={panel.narration_text || ""}
-                      onChange={(e) =>
-                        updatePanelField(panel.id, "narration_text", e.target.value)
-                      }
+                      onCommit={(v) => updatePanelField(panel.id, "narration_text", v)}
                     />
                     <div className="mt-2">
                       {panel.narration_audio_url ? (
