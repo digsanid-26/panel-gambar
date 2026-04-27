@@ -35,6 +35,16 @@ const TYPE_LABELS: Record<string, string> = {
   bubble: "Bubble",
 };
 
+/** Types treated as trigger points on complete panels — ordering matters, duration does not. */
+const TRIGGER_POINT_TYPES: PanelTimelineItem["type"][] = [
+  "dialog",
+  "narration-audio",
+  "background-audio",
+];
+
+/** Pixel width of a trigger-point marker on the timeline (fixed, no duration meaning). */
+const TRIGGER_POINT_PX = 18;
+
 function generateId() {
   return `tl_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`;
 }
@@ -195,6 +205,14 @@ function getAudioDurationFromFile(file: Blob): Promise<number> {
 }
 
 export function PanelTimelineEditor({ panel, timelineData, onChange }: PanelTimelineEditorProps) {
+  const isComplete = panel.panel_type === "complete";
+  /** In complete panels, audio/dialog items are trigger points: only their start
+   * matters (order + appearance); duration is set to 0 and not editable. */
+  const isTriggerPoint = useCallback(
+    (type: PanelTimelineItem["type"]) => isComplete && TRIGGER_POINT_TYPES.includes(type),
+    [isComplete]
+  );
+
   const [items, setItems] = useState<PanelTimelineItem[]>(
     timelineData.length > 0 ? timelineData : buildDefaultTimeline(panel)
   );
@@ -260,8 +278,11 @@ export function PanelTimelineEditor({ panel, timelineData, onChange }: PanelTime
     onChangeRef.current(items);
   }, [items]);
 
-  // Auto-detect audio durations on mount and when panel audio URLs change
+  // Auto-detect audio durations on mount and when panel audio URLs change.
+  // On complete panels we skip this entirely for trigger-point types since
+  // their duration is meaningless — only the appearance order matters.
   useEffect(() => {
+    if (isComplete) return; // complete panels: audio is a trigger point, no duration sync
     let cancelled = false;
     async function detectDurations() {
       const updates: { type: PanelTimelineItem["type"]; duration: number }[] = [];
@@ -316,7 +337,7 @@ export function PanelTimelineEditor({ panel, timelineData, onChange }: PanelTime
     }
     detectDurations();
     return () => { cancelled = true; };
-  }, [panel.narration_audio_url, panel.background_audio_url, panel.dialogs]);
+  }, [panel.narration_audio_url, panel.background_audio_url, panel.dialogs, isComplete]);
 
   // Group items into tracks:
   // - Non-canvas items grouped by type (panel, narration-audio, etc.)
@@ -657,9 +678,45 @@ export function PanelTimelineEditor({ panel, timelineData, onChange }: PanelTime
                 )}
 
                 {track.items.map((item) => {
+                  const isSelected = selectedId === item.id;
+                  const triggerPoint = isTriggerPoint(item.type);
+
+                  if (triggerPoint) {
+                    // Render as a point marker — only start matters; no duration, no resize.
+                    const left = item.start * pps - TRIGGER_POINT_PX / 2;
+                    return (
+                      <div
+                        key={item.id}
+                        className={`absolute top-1/2 -translate-y-1/2 rounded-full flex items-center justify-center cursor-grab select-none ${
+                          isDragging ? "" : "transition-shadow"
+                        } ${
+                          isSelected ? "ring-2 ring-white shadow-lg z-20" : "z-10 hover:shadow-md"
+                        }`}
+                        style={{
+                          left: `${left}px`,
+                          width: `${TRIGGER_POINT_PX}px`,
+                          height: `${TRIGGER_POINT_PX}px`,
+                          backgroundColor: item.color,
+                          border: "2px solid white",
+                          boxShadow: "0 1px 4px rgba(0,0,0,0.25)",
+                        }}
+                        onMouseDown={(e) => handleMouseDown(e, item.id, "move")}
+                        onClick={(e) => { e.stopPropagation(); setSelectedId(item.id); }}
+                        title={`${item.label} @ ${formatTime(item.start)}`}
+                      >
+                        {/* Label outside the dot so it's readable */}
+                        <span
+                          className="absolute left-full ml-1.5 text-[10px] font-medium text-foreground whitespace-nowrap pointer-events-none bg-surface/80 px-1 rounded"
+                          style={{ maxWidth: "180px", overflow: "hidden", textOverflow: "ellipsis" }}
+                        >
+                          {item.label}
+                        </span>
+                      </div>
+                    );
+                  }
+
                   const left = item.start * pps;
                   const width = Math.max(item.duration * pps, 20);
-                  const isSelected = selectedId === item.id;
 
                   return (
                     <div
@@ -714,12 +771,20 @@ export function PanelTimelineEditor({ panel, timelineData, onChange }: PanelTime
               style={{ backgroundColor: selectedItem.color }}
             />
             <span className="font-medium truncate">{selectedItem.label}</span>
-            <span className="text-muted">
-              mulai: {formatTime(selectedItem.start)} · durasi: {formatTime(selectedItem.duration)}
-            </span>
-            <span className="text-muted">
-              total: {formatTime(selectedItem.start + selectedItem.duration)}
-            </span>
+            {isTriggerPoint(selectedItem.type) ? (
+              <span className="text-muted">
+                titik pemicu @ {formatTime(selectedItem.start)} · durasi otomatis dari file audio
+              </span>
+            ) : (
+              <>
+                <span className="text-muted">
+                  mulai: {formatTime(selectedItem.start)} · durasi: {formatTime(selectedItem.duration)}
+                </span>
+                <span className="text-muted">
+                  total: {formatTime(selectedItem.start + selectedItem.duration)}
+                </span>
+              </>
+            )}
             <div className="ml-auto flex items-center gap-1">
               {selectedItem.type !== "panel" && (
                 <button
@@ -736,7 +801,15 @@ export function PanelTimelineEditor({ panel, timelineData, onChange }: PanelTime
       </div>
 
       <p className="text-[10px] text-muted mt-1.5">
-        Drag untuk memindahkan · Tarik tepi kiri/kanan untuk mengubah durasi · Klik item untuk memilih · Gunakan slider zoom atau tombol <strong>Muat Semua</strong> untuk menyesuaikan tampilan
+        {isComplete ? (
+          <>
+            Drag titik pemicu untuk mengatur <strong>urutan kemunculan</strong> · Dialog/audio/narasi pada panel lengkap diputar sampai selesai otomatis, durasi tidak perlu diatur · Tarik tepi kiri/kanan item durasi untuk elemen visual lain
+          </>
+        ) : (
+          <>
+            Drag untuk memindahkan · Tarik tepi kiri/kanan untuk mengubah durasi · Klik item untuk memilih · Gunakan slider zoom atau tombol <strong>Muat Semua</strong> untuk menyesuaikan tampilan
+          </>
+        )}
       </p>
     </div>
   );

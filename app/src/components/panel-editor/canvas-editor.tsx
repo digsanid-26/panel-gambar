@@ -2,7 +2,7 @@
 
 import { useState, useRef, useCallback, useEffect } from "react";
 import { Stage, Layer, Rect, Image as KonvaImage, Text, Group, Circle, Arrow, Line, Transformer } from "react-konva";
-import type { CanvasData, CanvasLayer, Dialog } from "@/lib/types";
+import type { CanvasData, CanvasLayer, Dialog, NarrationOverlay } from "@/lib/types";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { listARSceneOptions, type ARSceneOption } from "@/lib/ar/picker";
@@ -42,6 +42,12 @@ interface CanvasEditorProps {
   dialogs?: Dialog[];
   /** Called when a dialog is dragged to a new position */
   onDialogPositionChange?: (dialogId: string, posX: number, posY: number) => void;
+  /** Panel narration text — displayed as a draggable overlay box */
+  narrationText?: string;
+  /** Current narration overlay position/styling. If omitted, a default is used. */
+  narrationOverlay?: NarrationOverlay;
+  /** Called when the narration overlay is dragged to a new position */
+  onNarrationOverlayChange?: (overlay: NarrationOverlay) => void;
 }
 
 const DEFAULT_CANVAS: CanvasData = {
@@ -54,7 +60,16 @@ function generateId() {
   return `layer_${Date.now()}_${Math.random().toString(36).substr(2, 6)}`;
 }
 
-export function CanvasEditor({ canvasData, onSave, onUploadImage, dialogs = [], onDialogPositionChange }: CanvasEditorProps) {
+export function CanvasEditor({
+  canvasData,
+  onSave,
+  onUploadImage,
+  dialogs = [],
+  onDialogPositionChange,
+  narrationText,
+  narrationOverlay,
+  onNarrationOverlayChange,
+}: CanvasEditorProps) {
   const [data, setData] = useState<CanvasData>(canvasData || DEFAULT_CANVAS);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [history, setHistory] = useState<CanvasData[]>([canvasData || DEFAULT_CANVAS]);
@@ -1077,6 +1092,95 @@ export function CanvasEditor({ canvasData, onSave, onUploadImage, dialogs = [], 
                   </Group>
                 );
               })}
+
+              {/* Narration overlay (fixed box) — draggable */}
+              {narrationText && narrationText.trim() && (() => {
+                const no: NarrationOverlay = narrationOverlay || {
+                  position_x: 50, position_y: 85, font_color: "#ffffff",
+                  bg_color: "#000000", opacity: 0.75, font_size: 14, max_width: 80,
+                };
+                const maxWidthPct = Math.max(20, Math.min(100, no.max_width || 80));
+                const boxW = (data.width * maxWidthPct) / 100;
+                const fontSize = no.font_size || 14;
+                const paddingX = 12;
+                const paddingY = 8;
+                // Approx text height using 1.4 line-height and wrapping by width.
+                const approxCharsPerLine = Math.max(10, Math.floor((boxW - paddingX * 2) / (fontSize * 0.55)));
+                const estLines = Math.max(1, Math.ceil(narrationText.length / approxCharsPerLine));
+                const textH = Math.ceil(fontSize * 1.4 * estLines);
+                const boxH = textH + paddingY * 2;
+                const cx = (no.position_x / 100) * data.width;
+                const cy = (no.position_y / 100) * data.height;
+                return (
+                  <Group
+                    key="narration-overlay-box"
+                    x={cx - boxW / 2}
+                    y={cy - boxH / 2}
+                    draggable={!!onNarrationOverlayChange}
+                    onDragEnd={(e: any) => {
+                      if (!onNarrationOverlayChange) return;
+                      const newX = e.target.x() + boxW / 2;
+                      const newY = e.target.y() + boxH / 2;
+                      const posX = Math.round((newX / data.width) * 100 * 10) / 10;
+                      const posY = Math.round((newY / data.height) * 100 * 10) / 10;
+                      onNarrationOverlayChange({
+                        ...no,
+                        position_x: Math.max(0, Math.min(100, posX)),
+                        position_y: Math.max(0, Math.min(100, posY)),
+                      });
+                    }}
+                  >
+                    <Rect
+                      x={0}
+                      y={0}
+                      width={boxW}
+                      height={boxH}
+                      fill={no.bg_color || "#000000"}
+                      opacity={no.opacity ?? 0.75}
+                      cornerRadius={8}
+                      stroke="#fde047"
+                      strokeWidth={1}
+                      dash={[4, 3]}
+                      shadowColor="rgba(0,0,0,0.3)"
+                      shadowBlur={6}
+                      shadowOpacity={0.4}
+                    />
+                    <Text
+                      x={paddingX}
+                      y={paddingY}
+                      width={boxW - paddingX * 2}
+                      text={narrationText}
+                      fontSize={fontSize}
+                      fontFamily="Arial"
+                      fill={no.font_color || "#ffffff"}
+                      lineHeight={1.4}
+                      align="center"
+                      listening={false}
+                    />
+                    {/* Badge to indicate this is the narration overlay */}
+                    <Rect
+                      x={6}
+                      y={-10}
+                      width={60}
+                      height={16}
+                      fill="#fde047"
+                      cornerRadius={8}
+                      listening={false}
+                    />
+                    <Text
+                      x={6}
+                      y={-7}
+                      width={60}
+                      text="NARASI"
+                      fontSize={9}
+                      fontStyle="bold"
+                      fill="#713f12"
+                      align="center"
+                      listening={false}
+                    />
+                  </Group>
+                );
+              })()}
 
               {/* Lasso preview */}
               {lassoActive && lassoPoints.length >= 2 && (
