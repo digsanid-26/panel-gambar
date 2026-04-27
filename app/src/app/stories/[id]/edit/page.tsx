@@ -20,6 +20,7 @@ import { CharacterManager } from "@/components/story-editor/character-manager";
 import { PanelTimelineEditor } from "@/components/story-editor/panel-timeline-editor";
 import { SimplePanelEditor } from "@/components/story-editor/simple-panel-editor";
 import { ElementManager } from "@/components/story-editor/element-manager";
+import { KurikulumMerdekaSection } from "@/components/story-editor/kurikulum-merdeka-section";
 import {
   ArrowLeft,
   ChevronDown,
@@ -186,9 +187,9 @@ export default function EditStoryPage() {
     setUploadingVideo(false);
   }
 
-  async function updateStoryField(field: string, value: string) {
+  async function updateStoryField(field: string, value: unknown) {
     await supabase.from("stories").update({ [field]: value, updated_at: new Date().toISOString() }).eq("id", storyId);
-    setStory((s) => s ? { ...s, [field]: value } : s);
+    setStory((s) => s ? { ...s, [field]: value } as Story : s);
   }
 
   async function saveCharacters(chars: StoryCharacter[]) {
@@ -1021,6 +1022,9 @@ export default function EditStoryPage() {
               value={story.informasi_tambahan || ""}
               onChange={(e) => updateStoryField("informasi_tambahan", e.target.value)}
             />
+
+            {/* Kurikulum Merdeka */}
+            <KurikulumMerdekaSection story={story} updateStoryField={updateStoryField} />
 
             {/* Display Mode Selector */}
             <div>

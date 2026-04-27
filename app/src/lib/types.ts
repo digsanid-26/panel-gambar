@@ -38,6 +38,38 @@ export interface Story {
   detail_sumber?: string;
   /** Additional information (free text) */
   informasi_tambahan?: string;
+  /** Capaian Pembelajaran (CP) — free text */
+  capaian_pembelajaran?: string;
+  /** Tujuan Pembelajaran (TP) — numbered list */
+  tujuan_pembelajaran?: string[];
+  /** Pertanyaan Pemantik — numbered list */
+  pertanyaan_pemantik?: string[];
+  /** Alokasi Waktu (e.g. "2 JP x 35 menit") */
+  alokasi_waktu?: string;
+  /** Kata Kunci — tag list */
+  kata_kunci?: string[];
+  /** Jenis Asesmen — Diagnostik/Formatif/Sumatif (multi) */
+  asesmen_jenis?: string[];
+  /** Deskripsi asesmen */
+  asesmen_deskripsi?: string;
+  /** Refleksi Siswa — list of questions */
+  refleksi_siswa?: string[];
+  /** Refleksi Guru — list of questions */
+  refleksi_guru?: string[];
+  /** Sumber Belajar Tambahan */
+  sumber_belajar?: { judul: string; url: string }[];
+  /** Glosarium istilah */
+  glosarium?: { istilah: string; definisi: string }[];
+  /** Metode/Model Pembelajaran */
+  metode_pembelajaran?: string;
+  /** Materi Pokok */
+  materi_pokok?: string;
+  /** Pendekatan Pembelajaran */
+  pendekatan_pembelajaran?: string;
+  /** Rangkuman / evaluasi guru terhadap proses belajar */
+  evaluasi_guru?: string;
+  /** URL eksternal quiz/pelatihan */
+  link_quiz?: string;
   status: "draft" | "published" | "archived";
   visibility?: "public" | "private";
   author_id: string;

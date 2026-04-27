@@ -5,11 +5,16 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
   BookOpen,
+  Clock,
   Film,
   GraduationCap,
   Layers,
+  Lightbulb,
+  Link2,
+  MessageSquare,
   Play,
   School,
+  Tag,
   User,
 } from "lucide-react";
 
@@ -54,6 +59,12 @@ export function StoryCoverPage({ story, onPlay, onShowTrailer }: StoryCoverPageP
       ? `${story.sumber_cerita} — ${story.detail_sumber}`
       : story.sumber_cerita;
     infoItems.push({ icon: <BookOpen className="w-4 h-4" />, label: "Sumber Cerita", value: srcText });
+  }
+  if (story.alokasi_waktu) {
+    infoItems.push({ icon: <Clock className="w-4 h-4" />, label: "Alokasi Waktu", value: story.alokasi_waktu });
+  }
+  if (story.metode_pembelajaran) {
+    infoItems.push({ icon: <Layers className="w-4 h-4" />, label: "Metode Pembelajaran", value: story.metode_pembelajaran });
   }
 
   return (
@@ -125,6 +136,206 @@ export function StoryCoverPage({ story, onPlay, onShowTrailer }: StoryCoverPageP
               {infoItems.map((item, i) => (
                 <InfoRow key={i} icon={item.icon} label={item.label} value={item.value} />
               ))}
+            </div>
+          )}
+
+          {/* Capaian Pembelajaran */}
+          {story.capaian_pembelajaran && (
+            <div className="pt-2 border-t border-border">
+              <p className="text-xs text-muted mb-1 flex items-center gap-1.5">
+                <GraduationCap className="w-3.5 h-3.5" />
+                Capaian Pembelajaran
+              </p>
+              <p className="text-sm leading-relaxed whitespace-pre-line">{story.capaian_pembelajaran}</p>
+            </div>
+          )}
+
+          {/* Tujuan Pembelajaran */}
+          {story.tujuan_pembelajaran && story.tujuan_pembelajaran.filter(Boolean).length > 0 && (
+            <div className="pt-2 border-t border-border">
+              <p className="text-xs text-muted mb-1.5 flex items-center gap-1.5">
+                <GraduationCap className="w-3.5 h-3.5" />
+                Tujuan Pembelajaran
+              </p>
+              <ol className="text-sm leading-relaxed list-decimal list-inside space-y-0.5 marker:text-primary marker:font-semibold">
+                {story.tujuan_pembelajaran.filter(Boolean).map((t, i) => (
+                  <li key={i}>{t}</li>
+                ))}
+              </ol>
+            </div>
+          )}
+
+          {/* Materi Pokok */}
+          {story.materi_pokok && (
+            <div className="pt-2 border-t border-border">
+              <p className="text-xs text-muted mb-1">Materi Pokok</p>
+              <p className="text-sm leading-relaxed whitespace-pre-line">{story.materi_pokok}</p>
+            </div>
+          )}
+
+          {/* Pendekatan Pembelajaran */}
+          {story.pendekatan_pembelajaran && (
+            <div className="pt-2 border-t border-border">
+              <p className="text-xs text-muted mb-1">Pendekatan Pembelajaran</p>
+              <p className="text-sm leading-relaxed whitespace-pre-line">{story.pendekatan_pembelajaran}</p>
+            </div>
+          )}
+
+          {/* Pertanyaan Pemantik */}
+          {story.pertanyaan_pemantik && story.pertanyaan_pemantik.filter(Boolean).length > 0 && (
+            <div className="pt-2 border-t border-border">
+              <p className="text-xs text-muted mb-1.5 flex items-center gap-1.5">
+                <Lightbulb className="w-3.5 h-3.5" />
+                Pertanyaan Pemantik
+              </p>
+              <ol className="text-sm leading-relaxed list-decimal list-inside space-y-0.5 marker:text-primary marker:font-semibold">
+                {story.pertanyaan_pemantik.filter(Boolean).map((t, i) => (
+                  <li key={i}>{t}</li>
+                ))}
+              </ol>
+            </div>
+          )}
+
+          {/* Kata Kunci */}
+          {story.kata_kunci && story.kata_kunci.filter(Boolean).length > 0 && (
+            <div className="pt-2 border-t border-border">
+              <p className="text-xs text-muted mb-1.5 flex items-center gap-1.5">
+                <Tag className="w-3.5 h-3.5" />
+                Kata Kunci
+              </p>
+              <div className="flex flex-wrap gap-1.5">
+                {story.kata_kunci.filter(Boolean).map((k, i) => (
+                  <span
+                    key={i}
+                    className="px-2 py-0.5 rounded-full bg-primary/10 text-primary text-xs font-medium border border-primary/20"
+                  >
+                    {k}
+                  </span>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* Asesmen */}
+          {(story.asesmen_jenis?.length || story.asesmen_deskripsi) && (
+            <div className="pt-2 border-t border-border">
+              <p className="text-xs text-muted mb-1.5">Asesmen</p>
+              {story.asesmen_jenis && story.asesmen_jenis.length > 0 && (
+                <div className="flex flex-wrap gap-1.5 mb-1.5">
+                  {story.asesmen_jenis.map((j, i) => (
+                    <span
+                      key={i}
+                      className="px-2 py-0.5 rounded-full bg-surface text-foreground text-xs font-medium border border-border"
+                    >
+                      {j}
+                    </span>
+                  ))}
+                </div>
+              )}
+              {story.asesmen_deskripsi && (
+                <p className="text-sm leading-relaxed whitespace-pre-line">{story.asesmen_deskripsi}</p>
+              )}
+            </div>
+          )}
+
+          {/* Link Quiz */}
+          {story.link_quiz && (
+            <div className="pt-2 border-t border-border">
+              <p className="text-xs text-muted mb-1 flex items-center gap-1.5">
+                <Link2 className="w-3.5 h-3.5" />
+                Link Quiz / Pelatihan
+              </p>
+              <a
+                href={story.link_quiz}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="text-sm text-primary hover:underline break-all"
+              >
+                {story.link_quiz}
+              </a>
+            </div>
+          )}
+
+          {/* Evaluasi Guru */}
+          {story.evaluasi_guru && (
+            <div className="pt-2 border-t border-border">
+              <p className="text-xs text-muted mb-1">Evaluasi Guru</p>
+              <p className="text-sm leading-relaxed whitespace-pre-line">{story.evaluasi_guru}</p>
+            </div>
+          )}
+
+          {/* Refleksi Siswa */}
+          {story.refleksi_siswa && story.refleksi_siswa.filter(Boolean).length > 0 && (
+            <div className="pt-2 border-t border-border">
+              <p className="text-xs text-muted mb-1.5 flex items-center gap-1.5">
+                <MessageSquare className="w-3.5 h-3.5" />
+                Refleksi Siswa
+              </p>
+              <ol className="text-sm leading-relaxed list-decimal list-inside space-y-0.5 marker:text-primary marker:font-semibold">
+                {story.refleksi_siswa.filter(Boolean).map((t, i) => (
+                  <li key={i}>{t}</li>
+                ))}
+              </ol>
+            </div>
+          )}
+
+          {/* Refleksi Guru */}
+          {story.refleksi_guru && story.refleksi_guru.filter(Boolean).length > 0 && (
+            <div className="pt-2 border-t border-border">
+              <p className="text-xs text-muted mb-1.5 flex items-center gap-1.5">
+                <MessageSquare className="w-3.5 h-3.5" />
+                Refleksi Guru
+              </p>
+              <ol className="text-sm leading-relaxed list-decimal list-inside space-y-0.5 marker:text-primary marker:font-semibold">
+                {story.refleksi_guru.filter(Boolean).map((t, i) => (
+                  <li key={i}>{t}</li>
+                ))}
+              </ol>
+            </div>
+          )}
+
+          {/* Sumber Belajar Tambahan */}
+          {story.sumber_belajar && story.sumber_belajar.filter((s) => s.judul || s.url).length > 0 && (
+            <div className="pt-2 border-t border-border">
+              <p className="text-xs text-muted mb-1.5">Sumber Belajar Tambahan</p>
+              <ul className="text-sm space-y-1">
+                {story.sumber_belajar
+                  .filter((s) => s.judul || s.url)
+                  .map((s, i) => (
+                    <li key={i} className="flex items-start gap-2">
+                      <span className="text-primary font-semibold">•</span>
+                      {s.url ? (
+                        <a
+                          href={s.url}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="text-primary hover:underline break-all"
+                        >
+                          {s.judul || s.url}
+                        </a>
+                      ) : (
+                        <span>{s.judul}</span>
+                      )}
+                    </li>
+                  ))}
+              </ul>
+            </div>
+          )}
+
+          {/* Glosarium */}
+          {story.glosarium && story.glosarium.filter((g) => g.istilah).length > 0 && (
+            <div className="pt-2 border-t border-border">
+              <p className="text-xs text-muted mb-1.5">Glosarium</p>
+              <dl className="text-sm space-y-1">
+                {story.glosarium
+                  .filter((g) => g.istilah)
+                  .map((g, i) => (
+                    <div key={i} className="flex flex-wrap gap-1.5">
+                      <dt className="font-semibold text-primary">{g.istilah}:</dt>
+                      <dd>{g.definisi}</dd>
+                    </div>
+                  ))}
+              </dl>
             </div>
           )}
 
