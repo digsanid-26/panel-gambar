@@ -3,8 +3,8 @@
 import { useState, useRef, useEffect, useCallback } from "react";
 import type { Panel, UserProfile, StoryCharacter } from "@/lib/types";
 import { PanelCard } from "./panel-card";
-import { StoryProgressBar } from "./story-progress-bar";
-import { ArrowDown, Infinity } from "lucide-react";
+import { ScrollSpeedDial } from "./scroll-speed-dial";
+import { ArrowDown } from "lucide-react";
 
 interface VerticalScrollViewerProps {
   panels: Panel[];
@@ -14,16 +14,16 @@ interface VerticalScrollViewerProps {
   managedStudentId?: string;
 }
 
-const AUTO_SCROLL_SPEED = 1.5; // px per frame
+const DEFAULT_SCROLL_SPEED = 1.5; // px per frame
 const FLYBOX_HIDE_DELAY = 3000; // ms
 
 export function VerticalScrollViewer({ panels, user, onSaveRecording, storyCharacters, managedStudentId }: VerticalScrollViewerProps) {
   const [currentIndex, setCurrentIndex] = useState(0);
-  const [isPlaying, setIsPlaying] = useState(false);
   const [flyboxVisible, setFlyboxVisible] = useState(true);
-  const [infinityScroll, setInfinityScroll] = useState(false);
-  const [panelTime, setPanelTime] = useState(0);
-  const [pausedDialogId, setPausedDialogId] = useState<string | null>(null);
+  const [autoScroll, setAutoScroll] = useState(false);
+  const [scrollSpeed, setScrollSpeed] = useState(DEFAULT_SCROLL_SPEED);
+  const scrollSpeedRef = useRef(scrollSpeed);
+  useEffect(() => { scrollSpeedRef.current = scrollSpeed; }, [scrollSpeed]);
 
   const containerRef = useRef<HTMLDivElement>(null);
   const hideTimerRef = useRef<NodeJS.Timeout | null>(null);
@@ -88,9 +88,9 @@ export function VerticalScrollViewer({ panels, user, onSaveRecording, storyChara
     return () => container.removeEventListener("scroll", onScroll);
   }, [updateCurrentFromScroll]);
 
-  // Infinity scroll auto-animation (top to bottom)
+  // Auto-scroll animation (top to bottom, looping)
   useEffect(() => {
-    if (!infinityScroll || !containerRef.current) {
+    if (!autoScroll || !containerRef.current) {
       if (animRef.current) cancelAnimationFrame(animRef.current);
       return;
     }
@@ -100,7 +100,7 @@ export function VerticalScrollViewer({ panels, user, onSaveRecording, storyChara
       if (!container) return;
 
       const maxScroll = container.scrollHeight - container.clientHeight;
-      container.scrollTop += AUTO_SCROLL_SPEED;
+      container.scrollTop += scrollSpeedRef.current;
 
       if (container.scrollTop >= maxScroll) {
         // Loop back to top
@@ -116,27 +116,10 @@ export function VerticalScrollViewer({ panels, user, onSaveRecording, storyChara
     return () => {
       if (animRef.current) cancelAnimationFrame(animRef.current);
     };
-  }, [infinityScroll, updateCurrentFromScroll]);
+  }, [autoScroll, updateCurrentFromScroll]);
 
-  const handleIndexChange = useCallback((index: number) => {
-    const el = panelRefs.current[index];
-    if (el) {
-      el.scrollIntoView({ behavior: "smooth", block: "start" });
-    }
-    setCurrentIndex(index);
-  }, []);
-
-  const handleStop = useCallback(() => {
-    setIsPlaying(false);
-    setInfinityScroll(false);
-    setPanelTime(0);
-    setPausedDialogId(null);
-    if (containerRef.current) containerRef.current.scrollTop = 0;
-    setCurrentIndex(0);
-  }, []);
-
-  const toggleInfinity = useCallback(() => {
-    setInfinityScroll((prev) => !prev);
+  const togglePlay = useCallback(() => {
+    setAutoScroll((prev) => !prev);
   }, []);
 
   return (
@@ -144,8 +127,8 @@ export function VerticalScrollViewer({ panels, user, onSaveRecording, storyChara
       {/* Scrollable container */}
       <div
         ref={containerRef}
-        className="flex-1 overflow-y-auto scroll-smooth"
-        style={{ scrollBehavior: infinityScroll ? "auto" : "smooth" }}
+        className="flex-1 overflow-y-auto"
+        style={{ scrollBehavior: autoScroll ? "auto" : "smooth" }}
       >
         {/* Seamless panel container — no gaps for complete panels */}
         <div className="max-w-4xl mx-auto">
@@ -165,13 +148,6 @@ export function VerticalScrollViewer({ panels, user, onSaveRecording, storyChara
                   storyCharacters={storyCharacters}
                   managedStudentId={managedStudentId}
                   className={isComplete ? "!rounded-none !border-x-0 !shadow-none" : ""}
-                  currentTime={isPlaying || pausedDialogId ? panelTime : undefined}
-                  isPlaying={isPlaying}
-                  pausedDialogId={currentIndex === i ? pausedDialogId : null}
-                  onDialogPlay={() => {
-                    setPausedDialogId(null);
-                    setIsPlaying(true);
-                  }}
                 />
               </div>
             );
@@ -185,35 +161,14 @@ export function VerticalScrollViewer({ panels, user, onSaveRecording, storyChara
         </div>
       </div>
 
-      {/* Flybox controls */}
-      <StoryProgressBar
-        panels={panels}
-        currentIndex={currentIndex}
-        onIndexChange={(idx) => { handleIndexChange(idx); setPausedDialogId(null); }}
-        isPlaying={isPlaying}
-        onPlayPause={() => setIsPlaying(!isPlaying)}
-        onStop={handleStop}
-        flybox
-        visible={flyboxVisible}
-        onPanelTimeUpdate={setPanelTime}
-        onDialogPause={(dialogId) => {
-          setIsPlaying(false);
-          setPausedDialogId(dialogId);
-        }}
+      {/* Floating auto-scroll dial (play + circular speed slider) */}
+      <ScrollSpeedDial
+        isPlaying={autoScroll}
+        onTogglePlay={togglePlay}
+        speed={scrollSpeed}
+        onSpeedChange={setScrollSpeed}
+        visible={flyboxVisible || autoScroll}
       />
-
-      {/* Infinity scroll toggle button */}
-      <button
-        onClick={toggleInfinity}
-        className={`fixed bottom-20 right-4 z-50 p-3 rounded-full shadow-lg transition-all ${
-          infinityScroll
-            ? "bg-primary text-white"
-            : "bg-surface-card text-muted border border-border hover:text-foreground"
-        } ${flyboxVisible ? "opacity-100" : "opacity-0 pointer-events-none"} transition-opacity duration-300`}
-        title={infinityScroll ? "Stop Infinity Scroll" : "Infinity Scroll"}
-      >
-        <Infinity className="w-5 h-5" />
-      </button>
     </div>
   );
 }
