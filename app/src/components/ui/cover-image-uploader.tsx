@@ -1,14 +1,18 @@
 "use client";
 
 import { useState, useRef, useCallback } from "react";
-import { Upload, X, ImageIcon } from "lucide-react";
+import { Upload, X, ImageIcon, FolderOpen } from "lucide-react";
 import { Button } from "./button";
+import { AssetPickerModal } from "@/components/asset-library/asset-picker-modal";
+import type { Asset } from "@/lib/types";
 
 interface CoverImageUploaderProps {
   currentUrl?: string;
   onUpload: (file: File) => Promise<void>;
   onRemove?: () => void;
   uploading?: boolean;
+  /** When provided, shows a "Pilih dari Galeri" button that opens the AssetPickerModal. Receives the picked asset's URL. */
+  onPickFromLibrary?: (url: string, asset: Asset) => Promise<void> | void;
 }
 
 export function CoverImageUploader({
@@ -16,9 +20,11 @@ export function CoverImageUploader({
   onUpload,
   onRemove,
   uploading = false,
+  onPickFromLibrary,
 }: CoverImageUploaderProps) {
   const [dragOver, setDragOver] = useState(false);
   const [preview, setPreview] = useState<string | null>(null);
+  const [pickerOpen, setPickerOpen] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
 
   const handleFile = useCallback(
@@ -89,6 +95,18 @@ export function CoverImageUploader({
                 }}
               />
             </label>
+            {onPickFromLibrary && (
+              <Button
+                variant="outline"
+                size="sm"
+                type="button"
+                className="bg-surface-card border-border-light text-foreground"
+                onClick={() => setPickerOpen(true)}
+              >
+                <FolderOpen className="w-4 h-4" />
+                Galeri
+              </Button>
+            )}
             {onRemove && (
               <Button
                 variant="danger"
@@ -131,6 +149,15 @@ export function CoverImageUploader({
               <span className="text-xs text-muted mt-1">
                 atau klik untuk pilih file · JPG, PNG, WebP · Max 5MB
               </span>
+              {onPickFromLibrary && (
+                <button
+                  type="button"
+                  onClick={(e) => { e.stopPropagation(); setPickerOpen(true); }}
+                  className="mt-3 inline-flex items-center gap-1.5 text-xs font-semibold text-primary hover:underline"
+                >
+                  <FolderOpen className="w-3.5 h-3.5" /> atau pilih dari Galeri
+                </button>
+              )}
             </>
           )}
           <input
@@ -144,6 +171,20 @@ export function CoverImageUploader({
             }}
           />
         </div>
+      )}
+
+      {onPickFromLibrary && (
+        <AssetPickerModal
+          open={pickerOpen}
+          onClose={() => setPickerOpen(false)}
+          type={["image", "avatar"]}
+          onPick={async (asset) => {
+            setPickerOpen(false);
+            setPreview(asset.url);
+            await onPickFromLibrary(asset.url, asset);
+          }}
+          title="Pilih Gambar dari Galeri"
+        />
       )}
     </div>
   );

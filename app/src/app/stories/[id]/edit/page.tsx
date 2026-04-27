@@ -915,6 +915,10 @@ export default function EditStoryPage() {
                   setStory((s) => s ? { ...s, cover_image_url: undefined } : s);
                 }}
                 uploading={uploadingCover}
+                onPickFromLibrary={async (url) => {
+                  await supabase.from("stories").update({ cover_image_url: url }).eq("id", storyId);
+                  setStory((s) => s ? { ...s, cover_image_url: url } : s);
+                }}
               />
               <VideoTrailerUploader
                 currentUrl={story.video_trailer_url}

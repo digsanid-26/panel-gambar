@@ -11,6 +11,7 @@ import {
   BookOpen,
   Building2,
   ChevronDown,
+  FolderOpen,
   LayoutDashboard,
   List,
   LogOut,
@@ -101,7 +102,10 @@ export function Navbar() {
         { href: "/live", label: "Sesi Live", icon: Radio },
         { href: "/ar", label: "Panel AR", icon: Sparkles },
         ...(isGuru
-          ? [{ href: "/stories/create", label: "Buat Cerita", icon: PlusCircle }]
+          ? [
+              { href: "/stories/create", label: "Buat Cerita", icon: PlusCircle },
+              { href: "/stories/assets", label: "Source Manager", icon: FolderOpen },
+            ]
           : []),
       ]
     : [

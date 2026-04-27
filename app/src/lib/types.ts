@@ -13,6 +13,31 @@ export interface UserProfile {
 
 export type RecordingMode = "auto" | "manual";
 
+// === Source Manager (Asset Library) ===
+export type AssetType = "avatar" | "image" | "video" | "audio" | "model_3d" | "document" | "other";
+export type AssetVisibility = "private" | "public";
+
+export interface Asset {
+  id: string;
+  owner_id: string;
+  name: string;
+  type: AssetType;
+  url: string;
+  storage_path?: string;
+  storage_bucket?: string;
+  thumbnail_url?: string;
+  mime_type?: string;
+  size_bytes?: number;
+  visibility: AssetVisibility;
+  tags?: string[];
+  description?: string;
+  metadata?: Record<string, unknown>;
+  created_at: string;
+  updated_at: string;
+  /** Owner display name (denormalized via join in some queries) */
+  owner_name?: string;
+}
+
 export interface Story {
   id: string;
   title: string;
