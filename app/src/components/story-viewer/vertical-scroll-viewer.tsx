@@ -30,24 +30,56 @@ export function VerticalScrollViewer({ panels, user, onSaveRecording, storyChara
   const animRef = useRef<number | null>(null);
   const panelRefs = useRef<(HTMLDivElement | null)[]>([]);
 
+  /** Returns the element that actually scrolls. Falls back to window if the inner container isn't a scroll container. */
+  const getScroller = useCallback((): HTMLElement | Window => {
+    const c = containerRef.current;
+    if (c && c.scrollHeight > c.clientHeight + 2) return c;
+    return typeof window !== "undefined" ? window : (c as HTMLElement);
+  }, []);
+
+  const getScrollTop = useCallback((target: HTMLElement | Window) => {
+    if (target instanceof Window) return target.scrollY || document.documentElement.scrollTop;
+    return target.scrollTop;
+  }, []);
+
+  const setScrollTop = useCallback((target: HTMLElement | Window, value: number) => {
+    if (target instanceof Window) target.scrollTo({ top: value, behavior: "instant" as ScrollBehavior });
+    else target.scrollTop = value;
+  }, []);
+
+  const getMaxScroll = useCallback((target: HTMLElement | Window) => {
+    if (target instanceof Window) {
+      const doc = document.documentElement;
+      return (doc.scrollHeight || document.body.scrollHeight) - window.innerHeight;
+    }
+    return target.scrollHeight - target.clientHeight;
+  }, []);
+
   // Track current panel based on scroll position
   const updateCurrentFromScroll = useCallback(() => {
-    if (!containerRef.current) return;
-    const containerTop = containerRef.current.scrollTop;
-    const containerHeight = containerRef.current.clientHeight;
-    const center = containerTop + containerHeight / 2;
+    const target = getScroller();
+    const top = getScrollTop(target);
+    const height = target instanceof Window ? window.innerHeight : target.clientHeight;
+    const center = top + height / 2;
 
     for (let i = panelRefs.current.length - 1; i >= 0; i--) {
       const el = panelRefs.current[i];
-      if (el && el.offsetTop <= center) {
-        setCurrentIndex(i);
-        return;
+      if (el) {
+        // Use absolute top relative to document when scrolling window
+        const elTop =
+          target instanceof Window
+            ? el.getBoundingClientRect().top + window.scrollY
+            : el.offsetTop;
+        if (elTop <= center) {
+          setCurrentIndex(i);
+          return;
+        }
       }
     }
     setCurrentIndex(0);
-  }, []);
+  }, [getScroller, getScrollTop]);
 
-  // Show/hide flybox on mouse activity
+  // Show/hide flybox on mouse / scroll activity
   useEffect(() => {
     function showFlybox() {
       setFlyboxVisible(true);
@@ -57,56 +89,58 @@ export function VerticalScrollViewer({ panels, user, onSaveRecording, storyChara
       }, FLYBOX_HIDE_DELAY);
     }
 
+    window.addEventListener("mousemove", showFlybox);
+    window.addEventListener("scroll", showFlybox, { passive: true });
+    window.addEventListener("touchstart", showFlybox, { passive: true });
     const container = containerRef.current;
-    if (!container) return;
+    if (container) {
+      container.addEventListener("scroll", showFlybox, { passive: true });
+    }
 
-    container.addEventListener("mousemove", showFlybox);
-    container.addEventListener("scroll", showFlybox);
-    container.addEventListener("touchstart", showFlybox);
-
-    // Initial show
     showFlybox();
 
     return () => {
-      container.removeEventListener("mousemove", showFlybox);
-      container.removeEventListener("scroll", showFlybox);
-      container.removeEventListener("touchstart", showFlybox);
+      window.removeEventListener("mousemove", showFlybox);
+      window.removeEventListener("scroll", showFlybox);
+      window.removeEventListener("touchstart", showFlybox);
+      if (container) container.removeEventListener("scroll", showFlybox);
       if (hideTimerRef.current) clearTimeout(hideTimerRef.current);
     };
   }, []);
 
-  // Track scroll position for current index
+  // Track scroll position for current index (listen on both window & container)
   useEffect(() => {
-    const container = containerRef.current;
-    if (!container) return;
-
     function onScroll() {
       updateCurrentFromScroll();
     }
-
-    container.addEventListener("scroll", onScroll, { passive: true });
-    return () => container.removeEventListener("scroll", onScroll);
+    window.addEventListener("scroll", onScroll, { passive: true });
+    const container = containerRef.current;
+    if (container) container.addEventListener("scroll", onScroll, { passive: true });
+    return () => {
+      window.removeEventListener("scroll", onScroll);
+      if (container) container.removeEventListener("scroll", onScroll);
+    };
   }, [updateCurrentFromScroll]);
 
   // Auto-scroll animation (top to bottom, looping)
   useEffect(() => {
-    if (!autoScroll || !containerRef.current) {
+    if (!autoScroll) {
       if (animRef.current) cancelAnimationFrame(animRef.current);
       return;
     }
 
     function tick() {
-      const container = containerRef.current;
-      if (!container) return;
-
-      const maxScroll = container.scrollHeight - container.clientHeight;
-      container.scrollTop += scrollSpeedRef.current;
-
-      if (container.scrollTop >= maxScroll) {
-        // Loop back to top
-        container.scrollTop = 0;
+      const target = getScroller();
+      const max = getMaxScroll(target);
+      const cur = getScrollTop(target);
+      let next = cur + scrollSpeedRef.current;
+      if (max <= 0) {
+        // Nothing to scroll yet
+        animRef.current = requestAnimationFrame(tick);
+        return;
       }
-
+      if (next >= max) next = 0; // loop to top
+      setScrollTop(target, next);
       updateCurrentFromScroll();
       animRef.current = requestAnimationFrame(tick);
     }
@@ -116,7 +150,7 @@ export function VerticalScrollViewer({ panels, user, onSaveRecording, storyChara
     return () => {
       if (animRef.current) cancelAnimationFrame(animRef.current);
     };
-  }, [autoScroll, updateCurrentFromScroll]);
+  }, [autoScroll, getScroller, getScrollTop, setScrollTop, getMaxScroll, updateCurrentFromScroll]);
 
   const togglePlay = useCallback(() => {
     setAutoScroll((prev) => !prev);
