@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useMemo } from "react";
+import { useState, useMemo, useRef, useEffect } from "react";
 import type { Panel, Dialog, UserProfile, PanelTimelineItem, NarrationOverlay, StoryCharacter } from "@/lib/types";
 import { AudioPlayer } from "@/components/audio/audio-player";
 import { AudioRecorder } from "@/components/audio/audio-recorder";
@@ -72,6 +72,41 @@ export function PanelCard({
   const [showRecorder, setShowRecorder] = useState<string | null>(null);
   const [playingDialogAudio, setPlayingDialogAudio] = useState<string | null>(null);
 
+  // Fade-in: when this panel becomes visible in the viewport, fade visual
+  // elements in. Audio controls are intentionally excluded so they remain
+  // immediately tappable.
+  const containerRef = useRef<HTMLDivElement>(null);
+  const [loaded, setLoaded] = useState(false);
+  useEffect(() => {
+    const el = containerRef.current;
+    if (!el) return;
+    if (typeof IntersectionObserver === "undefined") {
+      setLoaded(true);
+      return;
+    }
+    const obs = new IntersectionObserver(
+      (entries) => {
+        for (const e of entries) {
+          if (e.isIntersecting && e.intersectionRatio >= 0.15) {
+            setLoaded(true);
+            obs.disconnect();
+            break;
+          }
+        }
+      },
+      { threshold: [0, 0.15, 0.5] }
+    );
+    obs.observe(el);
+    return () => obs.disconnect();
+  }, []);
+
+  /** Common fade-in style for visual elements; applied to image, canvas
+   * overlays, narration text, and AR triggers — skipped for audio buttons. */
+  const fadeStyle: React.CSSProperties = {
+    opacity: loaded ? 1 : 0,
+    transition: "opacity 600ms ease-out",
+  };
+
   const tl = panel.timeline_data || [];
   const hasTimeline = tl.length > 0;
   const useTimeline = hasTimeline && currentTime !== undefined;
@@ -127,6 +162,7 @@ export function PanelCard({
   return (
     <div className={className}>
       <div
+        ref={containerRef}
         className="relative w-full overflow-hidden shadow-lg"
         style={{
           backgroundColor: panel.canvas_data?.backgroundColor ?? panel.background_color ?? "#f0f9ff",
@@ -147,24 +183,31 @@ export function PanelCard({
             src={panel.image_url}
             alt={`Panel ${index + 1}`}
             className="w-full h-full object-cover"
+            style={fadeStyle}
           />
         ) : (
-          <div className="w-full h-full flex items-center justify-center">
+          <div className="w-full h-full flex items-center justify-center" style={fadeStyle}>
             <ImageIcon className="w-20 h-20 text-black/10" />
           </div>
         )}
 
-        {/* Canvas layers (images, text, shapes, speech bubbles) */}
+        {/* Canvas layers (images, text, shapes, speech bubbles) — fade in */}
         {panel.canvas_data && (
-          <PanelCanvasOverlay canvasData={panel.canvas_data} />
+          <div className="absolute inset-0" style={fadeStyle}>
+            <PanelCanvasOverlay canvasData={panel.canvas_data} />
+          </div>
         )}
 
-        {/* AR Trigger overlays from canvas_data */}
-        <PanelARTriggerOverlay
-          panel={panel}
-          visibleRefIds={visibility.arTriggers}
-          useTimelineFilter={useTimeline}
-        />
+        {/* AR Trigger overlays from canvas_data — fade in */}
+        <div className="absolute inset-0 pointer-events-none" style={fadeStyle}>
+          <div className="absolute inset-0 pointer-events-auto">
+            <PanelARTriggerOverlay
+              panel={panel}
+              visibleRefIds={visibility.arTriggers}
+              useTimelineFilter={useTimeline}
+            />
+          </div>
+        </div>
 
         {/* Narration overlay (inside panel) — timeline-aware */}
         {panel.narration_text && visibility.narration && (() => {
@@ -174,14 +217,15 @@ export function PanelCard({
           };
           return (
             <div
-              className="absolute z-10 rounded-lg px-3 py-2 transition-all duration-300"
+              className="absolute z-10 rounded-lg px-3 py-2"
               style={{
                 left: `${no.position_x}%`,
                 top: `${no.position_y}%`,
                 transform: "translate(-50%, -50%)",
                 color: no.font_color,
                 backgroundColor: no.bg_color,
-                opacity: no.opacity,
+                opacity: loaded ? no.opacity : 0,
+                transition: "opacity 600ms ease-out",
                 fontSize: `${no.font_size || 14}px`,
                 maxWidth: `${no.max_width || 80}%`,
               }}
@@ -228,13 +272,15 @@ export function PanelCard({
             <div
               key={dialog.id}
               className={`absolute ${getBubbleClass(dialog.bubble_style)} bg-white shadow-md border-2 px-4 py-3 max-w-[200px] transition-all duration-300 ${
-                visible ? "opacity-100 scale-100" : "opacity-0 scale-90 pointer-events-none"
+                visible && loaded ? "scale-100" : "scale-90 pointer-events-none"
               } ${isPausedDialog ? "ring-2 ring-primary ring-offset-2 z-30" : ""}`}
               style={{
                 left: `${dialog.position_x}%`,
                 top: `${dialog.position_y}%`,
                 borderColor: dialog.character_color,
                 transform: "translate(-50%, -50%)",
+                opacity: visible && loaded ? 1 : 0,
+                transition: "opacity 600ms ease-out, transform 300ms ease-out",
               }}
             >
               <p className="text-xs font-bold mb-1" style={{ color: dialog.character_color }}>

@@ -339,6 +339,47 @@ export function PanelTimelineEditor({ panel, timelineData, onChange }: PanelTime
     return () => { cancelled = true; };
   }, [panel.narration_audio_url, panel.background_audio_url, panel.dialogs, isComplete]);
 
+  // Normalize timeline items for complete panels:
+  // - Visual canvas-layer items always span 0..totalDuration (always visible).
+  // - Background-audio is locked at start=0 (auto-play on panel load) and
+  //   spans the full panel duration so its loop covers the whole panel.
+  // Trigger points (dialog, narration-audio) are left untouched — user controls them.
+  useEffect(() => {
+    if (!isComplete) return;
+    if (isDraggingRef.current) return;
+
+    setItems((prev) => {
+      const panelItem = prev.find((it) => it.type === "panel");
+      const targetDur = Math.max(
+        5,
+        panelItem?.duration ?? 5,
+        ...prev.map((it) => it.start + it.duration)
+      );
+      let changed = false;
+      const next = prev.map((item) => {
+        const isCanvasVisual =
+          item.ref_id?.startsWith("cl_") &&
+          (item.type === "image" ||
+            item.type === "bubble" ||
+            item.type === "ar-trigger");
+        const isBg = item.type === "background-audio";
+        if (isCanvasVisual) {
+          if (item.start !== 0 || Math.abs(item.duration - targetDur) > 0.1) {
+            changed = true;
+            return { ...item, start: 0, duration: targetDur };
+          }
+        } else if (isBg) {
+          if (item.start !== 0 || Math.abs(item.duration - targetDur) > 0.1) {
+            changed = true;
+            return { ...item, start: 0, duration: targetDur };
+          }
+        }
+        return item;
+      });
+      return changed ? next : prev;
+    });
+  }, [isComplete, items.length, panel.canvas_data?.layers?.length]);
+
   // Group items into tracks:
   // - Non-canvas items grouped by type (panel, narration-audio, etc.)
   // - Canvas layer items (ref_id starting with "cl_") each get their own row
@@ -649,16 +690,44 @@ export function PanelTimelineEditor({ panel, timelineData, onChange }: PanelTime
                 <span className="text-[9px] text-muted ml-1 select-none">{i}s</span>
               </div>
             ))}
+            {/* Load indicator marker (where the player's playhead enters) */}
+            {isComplete && (
+              <div
+                className="absolute top-0 bottom-0 z-20 pointer-events-none flex items-center"
+                style={{ left: "0px" }}
+                title="Indikator: titik kemunculan panel di player"
+              >
+                <div
+                  className="rounded-full flex items-center justify-center shadow-md"
+                  style={{
+                    width: "14px",
+                    height: "14px",
+                    background: "linear-gradient(135deg, #ef4444, #dc2626)",
+                    border: "1.5px solid white",
+                    marginLeft: "-7px",
+                  }}
+                >
+                  <Play className="w-2 h-2 text-white" />
+                </div>
+              </div>
+            )}
           </div>
         </div>
 
         {/* Tracks */}
         <div
           ref={(el) => { containerRef.current = el; trackAreaRef.current = el; }}
-          className="overflow-x-auto"
+          className="overflow-x-auto relative"
           style={{ cursor: isDragging ? (dragMode === "move" ? "grabbing" : "col-resize") : "default" }}
         >
-          <div style={{ width: `${timelineWidth}px`, minWidth: "100%" }}>
+          <div className="relative" style={{ width: `${timelineWidth}px`, minWidth: "100%" }}>
+            {/* Vertical indicator line at t=0 for complete panels */}
+            {isComplete && (
+              <div
+                className="absolute top-0 bottom-0 z-30 pointer-events-none"
+                style={{ left: "0px", width: "2px", background: "linear-gradient(to bottom, rgba(239,68,68,0.85), rgba(220,38,38,0.85))", boxShadow: "0 0 4px rgba(239,68,68,0.5)" }}
+              />
+            )}
             {tracks.map((track) => (
               <div key={track.key} className="relative border-b border-border last:border-b-0" style={{ height: "40px" }}>
                 {/* Track label */}
@@ -680,6 +749,71 @@ export function PanelTimelineEditor({ panel, timelineData, onChange }: PanelTime
                 {track.items.map((item) => {
                   const isSelected = selectedId === item.id;
                   const triggerPoint = isTriggerPoint(item.type);
+                  // For complete panels: visual canvas-layer items are auto-positioned
+                  // before the indicator and span the full timeline (always visible).
+                  const isVisualCanvasLayer =
+                    isComplete && item.ref_id?.startsWith("cl_");
+                  // Background-audio on complete panels is locked at t=0 — auto-plays
+                  // when panel + visuals finish loading.
+                  const isLockedBgAudio =
+                    isComplete && item.type === "background-audio";
+
+                  if (isVisualCanvasLayer) {
+                    // Always-visible bar spanning the entire timeline; not editable.
+                    return (
+                      <div
+                        key={item.id}
+                        className={`absolute top-1 bottom-1 rounded-lg flex items-center overflow-hidden select-none cursor-pointer ${
+                          isSelected ? "ring-2 ring-white shadow-lg z-20" : "z-10 hover:shadow-md"
+                        }`}
+                        style={{
+                          left: "0px",
+                          width: `${timelineWidth}px`,
+                          background: `repeating-linear-gradient(45deg, ${item.color}cc 0 8px, ${item.color}99 8px 16px)`,
+                          opacity: 0.75,
+                        }}
+                        onClick={(e) => { e.stopPropagation(); setSelectedId(item.id); }}
+                        title={`${item.label} — selalu tampil sepanjang timeline`}
+                      >
+                        <div className="flex-1 px-2 min-w-0">
+                          <p className="text-[10px] text-white font-semibold truncate leading-tight drop-shadow">
+                            {item.label}
+                          </p>
+                          <p className="text-[8px] text-white/90 leading-tight drop-shadow">
+                            selalu tampil
+                          </p>
+                        </div>
+                      </div>
+                    );
+                  }
+
+                  if (isLockedBgAudio) {
+                    // Locked dot at t=0 — auto-play on load
+                    return (
+                      <div
+                        key={item.id}
+                        className={`absolute top-1/2 -translate-y-1/2 rounded-md flex items-center justify-center select-none cursor-pointer ${
+                          isSelected ? "ring-2 ring-white shadow-lg z-20" : "z-10 hover:shadow-md"
+                        }`}
+                        style={{
+                          left: `0px`,
+                          height: `${TRIGGER_POINT_PX + 4}px`,
+                          paddingLeft: "6px",
+                          paddingRight: "8px",
+                          backgroundColor: item.color,
+                          border: "2px solid white",
+                          boxShadow: "0 1px 4px rgba(0,0,0,0.25)",
+                        }}
+                        onClick={(e) => { e.stopPropagation(); setSelectedId(item.id); }}
+                        title={`${item.label} — diputar saat panel terload`}
+                      >
+                        <Play className="w-2.5 h-2.5 text-white mr-1" />
+                        <span className="text-[9px] font-semibold text-white whitespace-nowrap">
+                          auto-play
+                        </span>
+                      </div>
+                    );
+                  }
 
                   if (triggerPoint) {
                     // Render as a point marker — only start matters; no duration, no resize.

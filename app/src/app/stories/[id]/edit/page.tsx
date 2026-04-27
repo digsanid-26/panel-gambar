@@ -793,6 +793,57 @@ export default function EditStoryPage() {
     setSaving(false);
   }
 
+  /** Remove a panel's narration or background audio and its timeline entry. */
+  async function clearPanelAudio(panelId: string, type: "narration" | "background") {
+    if (!confirm(`Hapus ${type === "narration" ? "Audio Narasi" : "Suara Latar"} yang sudah diset?`)) return;
+    setSaving(true);
+    const field = type === "narration" ? "narration_audio_url" : "background_audio_url";
+    await supabase.from("panels").update({ [field]: null }).eq("id", panelId);
+    setPanels(prev => prev.map((p) => (p.id === panelId ? { ...p, [field]: undefined } : p)));
+
+    // Remove the matching timeline entry
+    const panel = panelsRef.current.find((p) => p.id === panelId);
+    if (panel) {
+      const tlType = type === "narration" ? "narration-audio" : "background-audio";
+      const existing = (panel.timeline_data as PanelTimelineItem[] | undefined) || [];
+      const updated = existing.filter((it) => it.type !== tlType);
+      if (updated.length !== existing.length) {
+        await saveTimelineData(panelId, updated);
+      }
+    }
+    setSaving(false);
+  }
+
+  /** Remove a dialog's audio and its timeline entry. */
+  async function clearDialogAudio(dialogId: string, panelId: string) {
+    if (!confirm("Hapus audio dialog yang sudah diset?")) return;
+    setSaving(true);
+    await supabase.from("dialogs").update({ audio_url: null }).eq("id", dialogId);
+    setPanels(prev =>
+      prev.map((p) =>
+        p.id === panelId
+          ? {
+              ...p,
+              dialogs: (p.dialogs || []).map((d) =>
+                d.id === dialogId ? { ...d, audio_url: undefined } : d
+              ),
+            }
+          : p
+      )
+    );
+
+    // Remove dialog timeline entry too (the trigger marker)
+    const panel = panelsRef.current.find((p) => p.id === panelId);
+    if (panel) {
+      const existing = (panel.timeline_data as PanelTimelineItem[] | undefined) || [];
+      const updated = existing.filter((it) => !(it.type === "dialog" && it.ref_id === dialogId));
+      if (updated.length !== existing.length) {
+        await saveTimelineData(panelId, updated);
+      }
+    }
+    setSaving(false);
+  }
+
   async function publishStory() {
     if (!confirm("Terbitkan cerita ini? Siswa akan bisa membacanya.")) return;
     setSaving(true);
@@ -1264,6 +1315,16 @@ export default function EditStoryPage() {
                             label="Ganti File"
                             onUpload={(file) => uploadAudioFile(panel.id, file, "narration")}
                           />
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() => clearPanelAudio(panel.id, "narration")}
+                            title="Kosongkan audio narasi"
+                            className="!text-danger hover:!bg-danger/10"
+                          >
+                            <Trash2 className="w-4 h-4" />
+                            Kosongkan
+                          </Button>
                         </div>
                       ) : (
                         <div className="flex items-center gap-2">
@@ -1317,6 +1378,16 @@ export default function EditStoryPage() {
                           label="Ganti File"
                           onUpload={(file) => uploadAudioFile(panel.id, file, "background")}
                         />
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => clearPanelAudio(panel.id, "background")}
+                          title="Kosongkan suara latar"
+                          className="!text-danger hover:!bg-danger/10"
+                        >
+                          <Trash2 className="w-4 h-4" />
+                          Kosongkan
+                        </Button>
                       </div>
                     ) : (
                       <div className="flex items-center gap-2">
@@ -1386,6 +1457,15 @@ export default function EditStoryPage() {
                                     label="Ganti"
                                     onUpload={(file) => uploadDialogAudioFile(dialog.id, panel.id, file)}
                                   />
+                                  <button
+                                    type="button"
+                                    onClick={() => clearDialogAudio(dialog.id, panel.id)}
+                                    title="Kosongkan audio dialog"
+                                    className="inline-flex items-center gap-1 px-2 py-1 text-xs font-medium rounded-lg border border-border text-danger hover:bg-danger/10 transition-colors"
+                                  >
+                                    <Trash2 className="w-3 h-3" />
+                                    Kosongkan
+                                  </button>
                                 </div>
                               ) : (
                                 <div className="flex items-center gap-1">
