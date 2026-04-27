@@ -1,10 +1,12 @@
 "use client";
 
 import { useState, useRef, useEffect, useCallback } from "react";
-import type { Panel, UserProfile, StoryCharacter } from "@/lib/types";
-import { PanelCard } from "./panel-card";
+import type { Panel, UserProfile, StoryCharacter, PanelTimelineItem } from "@/lib/types";
+import { PanelCard, getPanelDuration } from "./panel-card";
 import { ScrollSpeedDial } from "./scroll-speed-dial";
-import { ArrowDown } from "lucide-react";
+import { PanelTimelineOverlay, PAUSING_TRIGGER_TYPES } from "./panel-timeline-overlay";
+import { PlayheadIndicator } from "./playhead-indicator";
+import { ArrowDown, Play as PlayIcon } from "lucide-react";
 
 interface VerticalScrollViewerProps {
   panels: Panel[];
@@ -16,6 +18,15 @@ interface VerticalScrollViewerProps {
 
 const DEFAULT_SCROLL_SPEED = 1.5; // px per frame
 const FLYBOX_HIDE_DELAY = 3000; // ms
+
+interface FiringTrigger {
+  panelId: string;
+  triggerId: string;
+  type: PanelTimelineItem["type"];
+  label: string;
+  /** True when scroll/auto-scroll is paused waiting for user/audio */
+  pausing: boolean;
+}
 
 export function VerticalScrollViewer({ panels, user, onSaveRecording, storyCharacters, managedStudentId }: VerticalScrollViewerProps) {
   const [currentIndex, setCurrentIndex] = useState(0);
@@ -29,6 +40,19 @@ export function VerticalScrollViewer({ panels, user, onSaveRecording, storyChara
   const hideTimerRef = useRef<NodeJS.Timeout | null>(null);
   const animRef = useRef<number | null>(null);
   const panelRefs = useRef<(HTMLDivElement | null)[]>([]);
+
+  // Playhead-trigger system
+  const [firing, setFiring] = useState<FiringTrigger | null>(null);
+  // For each panel: last known playhead time, set of fired trigger ids
+  const playheadTimesRef = useRef<Record<string, number>>({});
+  const firedRef = useRef<Record<string, Set<string>>>({});
+  // Audio element used for trigger playback (pausing kind)
+  const triggerAudioRef = useRef<HTMLAudioElement | null>(null);
+  // Audio element for background-audio (non-pausing)
+  const bgAudioRef = useRef<HTMLAudioElement | null>(null);
+  const bgAudioPanelRef = useRef<string | null>(null);
+  // Whether autoScroll was active before pausing (to know if we should resume)
+  const wasAutoScrollingRef = useRef(false);
 
   /** Returns the element that actually scrolls. Falls back to window if the inner container isn't a scroll container. */
   const getScroller = useCallback((): HTMLElement | Window => {
@@ -65,7 +89,6 @@ export function VerticalScrollViewer({ panels, user, onSaveRecording, storyChara
     for (let i = panelRefs.current.length - 1; i >= 0; i--) {
       const el = panelRefs.current[i];
       if (el) {
-        // Use absolute top relative to document when scrolling window
         const elTop =
           target instanceof Window
             ? el.getBoundingClientRect().top + window.scrollY
@@ -78,6 +101,176 @@ export function VerticalScrollViewer({ panels, user, onSaveRecording, storyChara
     }
     setCurrentIndex(0);
   }, [getScroller, getScrollTop]);
+
+  // Resolve a trigger's audio source URL
+  function resolveTriggerAudio(panel: Panel, item: PanelTimelineItem): string | null {
+    if (item.type === "narration-audio") return panel.narration_audio_url || null;
+    if (item.type === "background-audio") return panel.background_audio_url || null;
+    if (item.type === "dialog" && item.ref_id) {
+      const dialog = panel.dialogs?.find((d) => d.id === item.ref_id);
+      return dialog?.audio_url || null;
+    }
+    return null;
+  }
+
+  // Fire a trigger: pause scroll if pausing, play audio, resume on ended
+  const fireTrigger = useCallback((panel: Panel, item: PanelTimelineItem) => {
+    const audioUrl = resolveTriggerAudio(panel, item);
+    const isPausing = PAUSING_TRIGGER_TYPES.includes(item.type);
+
+    // Background audio: just (re)start playback in the dedicated bg slot
+    if (item.type === "background-audio") {
+      if (audioUrl) {
+        if (bgAudioRef.current) {
+          bgAudioRef.current.pause();
+        }
+        const a = new Audio(audioUrl);
+        a.loop = true;
+        a.volume = 0.5;
+        a.play().catch(() => {});
+        bgAudioRef.current = a;
+        bgAudioPanelRef.current = panel.id;
+      }
+      return;
+    }
+
+    if (!isPausing) return;
+
+    // Pause auto-scroll while element plays
+    if (autoScroll) {
+      wasAutoScrollingRef.current = true;
+      setAutoScroll(false);
+    }
+
+    setFiring({
+      panelId: panel.id,
+      triggerId: item.id,
+      type: item.type,
+      label: item.label,
+      pausing: true,
+    });
+
+    // Play audio if available; resume scroll on ended
+    if (audioUrl) {
+      // Stop any previous trigger audio
+      if (triggerAudioRef.current) {
+        triggerAudioRef.current.pause();
+      }
+      const a = new Audio(audioUrl);
+      a.onended = () => {
+        triggerAudioRef.current = null;
+        setFiring(null);
+        if (wasAutoScrollingRef.current) {
+          wasAutoScrollingRef.current = false;
+          setAutoScroll(true);
+        }
+      };
+      a.onerror = () => {
+        triggerAudioRef.current = null;
+        setFiring(null);
+        if (wasAutoScrollingRef.current) {
+          wasAutoScrollingRef.current = false;
+          setAutoScroll(true);
+        }
+      };
+      a.play().catch(() => {
+        // Autoplay might be blocked; keep paused, user can click resume
+      });
+      triggerAudioRef.current = a;
+    }
+    // For ar-trigger or items without audio: stay paused until user clicks resume
+  }, [autoScroll]);
+
+  /** Manually resume after a paused trigger (user clicked play/skip) */
+  const resumeFromTrigger = useCallback(() => {
+    if (triggerAudioRef.current) {
+      triggerAudioRef.current.pause();
+      triggerAudioRef.current = null;
+    }
+    setFiring(null);
+    if (wasAutoScrollingRef.current) {
+      wasAutoScrollingRef.current = false;
+      setAutoScroll(true);
+    }
+  }, []);
+
+  /** Scan all panels and fire any newly-crossed triggers based on viewport playhead at 50vh. */
+  const scanTriggers = useCallback(() => {
+    if (firing?.pausing) return; // don't fire while already paused
+
+    const playheadY = window.innerHeight / 2;
+    let activeBgPanelId: string | null = null;
+
+    for (let i = 0; i < panels.length; i++) {
+      const panel = panels[i];
+      const el = panelRefs.current[i];
+      if (!el) continue;
+
+      const rect = el.getBoundingClientRect();
+      // Skip panels not yet near viewport
+      if (rect.bottom < -100 || rect.top > window.innerHeight + 100) {
+        // If we left this panel in the playhead sense, reset its fired set so
+        // re-entering will fire triggers again.
+        if (rect.top > window.innerHeight) {
+          delete firedRef.current[panel.id];
+          delete playheadTimesRef.current[panel.id];
+        }
+        continue;
+      }
+
+      const tl = (panel.timeline_data as PanelTimelineItem[] | undefined) || [];
+      if (tl.length === 0) continue;
+
+      const dur = getPanelDuration(panel);
+      const height = rect.height;
+      if (height <= 0 || dur <= 0) continue;
+
+      // Where is the playhead inside this panel? (in panel-local px)
+      const yInside = playheadY - rect.top;
+      // Convert to panel-time
+      const tNow = Math.max(-0.5, Math.min(dur + 0.5, (yInside / height) * dur));
+
+      const prevT = playheadTimesRef.current[panel.id];
+      const fired = firedRef.current[panel.id] || new Set<string>();
+
+      // Determine which panel currently owns the bg-audio slot — the topmost
+      // visible panel whose bg-audio is past start.
+      const bgItem = tl.find((it) => it.type === "background-audio");
+      if (bgItem && tNow >= bgItem.start && tNow <= bgItem.start + bgItem.duration) {
+        activeBgPanelId = panel.id;
+      }
+
+      // Forward crossing detection: for each trigger, fire if prev < t.start <= now
+      // and not already fired.
+      if (typeof prevT === "number" && tNow > prevT) {
+        for (const item of tl) {
+          if (item.type === "panel") continue;
+          if (fired.has(item.id)) continue;
+          if (item.start > prevT && item.start <= tNow) {
+            // Fire!
+            fired.add(item.id);
+            firedRef.current[panel.id] = fired;
+            // Manage bg-audio specially — don't pause
+            fireTrigger(panel, item);
+            if (PAUSING_TRIGGER_TYPES.includes(item.type)) {
+              // Stop scanning further: a pause has been requested
+              playheadTimesRef.current[panel.id] = tNow;
+              return;
+            }
+          }
+        }
+      }
+
+      playheadTimesRef.current[panel.id] = tNow;
+    }
+
+    // Stop bg audio if nobody's panel owns it anymore
+    if (bgAudioRef.current && bgAudioPanelRef.current && bgAudioPanelRef.current !== activeBgPanelId) {
+      bgAudioRef.current.pause();
+      bgAudioRef.current = null;
+      bgAudioPanelRef.current = null;
+    }
+  }, [panels, firing, fireTrigger]);
 
   // Show/hide flybox on mouse / scroll activity
   useEffect(() => {
@@ -108,10 +301,11 @@ export function VerticalScrollViewer({ panels, user, onSaveRecording, storyChara
     };
   }, []);
 
-  // Track scroll position for current index (listen on both window & container)
+  // Track scroll position for current index + scan triggers
   useEffect(() => {
     function onScroll() {
       updateCurrentFromScroll();
+      scanTriggers();
     }
     window.addEventListener("scroll", onScroll, { passive: true });
     const container = containerRef.current;
@@ -120,9 +314,9 @@ export function VerticalScrollViewer({ panels, user, onSaveRecording, storyChara
       window.removeEventListener("scroll", onScroll);
       if (container) container.removeEventListener("scroll", onScroll);
     };
-  }, [updateCurrentFromScroll]);
+  }, [updateCurrentFromScroll, scanTriggers]);
 
-  // Auto-scroll animation (top to bottom, looping)
+  // Auto-scroll animation (top to bottom, stops at end)
   useEffect(() => {
     if (!autoScroll) {
       if (animRef.current) cancelAnimationFrame(animRef.current);
@@ -134,20 +328,20 @@ export function VerticalScrollViewer({ panels, user, onSaveRecording, storyChara
       const max = getMaxScroll(target);
       const cur = getScrollTop(target);
       if (max <= 0) {
-        // Nothing to scroll yet, wait
         animRef.current = requestAnimationFrame(tick);
         return;
       }
       const next = cur + scrollSpeedRef.current;
       if (next >= max) {
-        // Reached the end — clamp & stop (no loop)
         setScrollTop(target, max);
         updateCurrentFromScroll();
+        scanTriggers();
         setAutoScroll(false);
         return;
       }
       setScrollTop(target, next);
       updateCurrentFromScroll();
+      scanTriggers();
       animRef.current = requestAnimationFrame(tick);
     }
 
@@ -156,17 +350,27 @@ export function VerticalScrollViewer({ panels, user, onSaveRecording, storyChara
     return () => {
       if (animRef.current) cancelAnimationFrame(animRef.current);
     };
-  }, [autoScroll, getScroller, getScrollTop, setScrollTop, getMaxScroll, updateCurrentFromScroll]);
+  }, [autoScroll, getScroller, getScrollTop, setScrollTop, getMaxScroll, updateCurrentFromScroll, scanTriggers]);
+
+  // Cleanup audios on unmount
+  useEffect(() => {
+    return () => {
+      triggerAudioRef.current?.pause();
+      bgAudioRef.current?.pause();
+    };
+  }, []);
 
   const togglePlay = useCallback(() => {
     setAutoScroll((prev) => {
       if (prev) return false;
-      // Starting: if we're already at (or near) the bottom, restart from top
       const target = getScroller();
       const max = getMaxScroll(target);
       const cur = getScrollTop(target);
       if (max > 0 && cur >= max - 2) {
         setScrollTop(target, 0);
+        // Reset all fired triggers since we're starting over
+        firedRef.current = {};
+        playheadTimesRef.current = {};
       }
       return true;
     });
@@ -184,11 +388,14 @@ export function VerticalScrollViewer({ panels, user, onSaveRecording, storyChara
         <div className="max-w-4xl mx-auto">
           {panels.map((panel, i) => {
             const isComplete = panel.panel_type === "complete";
+            const dur = getPanelDuration(panel);
+            const playedSet = firedRef.current[panel.id];
+            const firingForThisPanel = firing?.panelId === panel.id ? firing.triggerId : null;
             return (
               <div
                 key={panel.id}
                 ref={(el) => { panelRefs.current[i] = el; }}
-                className={isComplete ? "" : "px-4 sm:px-8 py-4"}
+                className={`relative ${isComplete ? "" : "px-4 sm:px-8 py-4"}`}
               >
                 <PanelCard
                   panel={panel}
@@ -199,6 +406,14 @@ export function VerticalScrollViewer({ panels, user, onSaveRecording, storyChara
                   managedStudentId={managedStudentId}
                   className={isComplete ? "!rounded-none !border-x-0 !shadow-none" : ""}
                 />
+                {isComplete && (
+                  <PanelTimelineOverlay
+                    panel={panel}
+                    panelDurationSec={dur}
+                    firingTriggerId={firingForThisPanel}
+                    playedTriggerIds={playedSet}
+                  />
+                )}
               </div>
             );
           })}
@@ -210,6 +425,25 @@ export function VerticalScrollViewer({ panels, user, onSaveRecording, storyChara
           </div>
         </div>
       </div>
+
+      {/* Global red playhead indicator — fixed at viewport 50vh */}
+      <PlayheadIndicator
+        paused={!!firing?.pausing}
+        label={firing?.pausing ? firing.label : undefined}
+      />
+
+      {/* Resume button when paused waiting on a trigger */}
+      {firing?.pausing && (
+        <div className="fixed left-1/2 -translate-x-1/2 z-50" style={{ top: "calc(50vh + 32px)" }}>
+          <button
+            onClick={resumeFromTrigger}
+            className="inline-flex items-center gap-1.5 px-4 py-2 rounded-full bg-primary text-white text-sm font-semibold shadow-2xl hover:bg-primary-dark transition-colors"
+          >
+            <PlayIcon className="w-4 h-4" />
+            Lanjutkan
+          </button>
+        </div>
+      )}
 
       {/* Floating auto-scroll dial (play + circular speed slider) */}
       <ScrollSpeedDial
