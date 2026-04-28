@@ -4,7 +4,8 @@ import { useEffect, useState, useCallback, useRef } from "react";
 import { useParams, useRouter } from "next/navigation";
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/client";
-import type { Story, Panel, Dialog, Theme, Level, TargetClass, PanelType, DisplayMode, StoryCharacter, PanelTimelineItem, NarrationOverlay, ManagedStudent } from "@/lib/types";
+import type { Story, Panel, Dialog, Theme, Level, TargetClass, PanelType, DisplayMode, StoryCharacter, PanelTimelineItem, NarrationOverlay, ManagedStudent, Asset } from "@/lib/types";
+import { AssetPickerModal } from "@/components/asset-library/asset-picker-modal";
 import { Navbar } from "@/components/layout/navbar";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -28,6 +29,7 @@ import {
   ChevronUp,
   Eye,
   Film,
+  FolderOpen,
   Globe,
   GripVertical,
   Image as ImageIcon,
@@ -67,6 +69,13 @@ export default function EditStoryPage() {
   const [editingDialogId, setEditingDialogId] = useState<string | null>(null);
   const [showNarrationRecorder, setShowNarrationRecorder] = useState<string | null>(null);
   const [showBgAudioRecorder, setShowBgAudioRecorder] = useState<string | null>(null);
+  /** Audio asset picker target. When set, opens the asset library modal so the
+   * user can pick an existing audio asset for narration / background / dialog. */
+  const [audioPickerTarget, setAudioPickerTarget] = useState<
+    | { kind: "panel"; panelId: string; type: "narration" | "background" }
+    | { kind: "dialog"; panelId: string; dialogId: string }
+    | null
+  >(null);
   const [showMetadata, setShowMetadata] = useState(false);
   const [showPanelTypeMenu, setShowPanelTypeMenu] = useState(false);
   const [uploadingCover, setUploadingCover] = useState(false);
@@ -228,6 +237,25 @@ export default function EditStoryPage() {
       const audio = new Audio();
       audio.preload = "metadata";
       const cleanup = () => { audio.src = ""; audio.remove(); URL.revokeObjectURL(url); };
+      audio.addEventListener("loadedmetadata", () => {
+        const dur = audio.duration;
+        cleanup();
+        resolve(Number.isFinite(dur) ? dur : 0);
+      });
+      audio.addEventListener("error", () => { cleanup(); resolve(0); });
+      setTimeout(() => { cleanup(); resolve(0); }, 8000);
+      audio.src = url;
+    });
+  }
+
+  /** Probe a remote URL and return audio duration in seconds. Used when
+   * picking from the asset library so we don't need to re-download the blob. */
+  function getAudioDurationFromUrl(url: string): Promise<number> {
+    return new Promise((resolve) => {
+      const audio = new Audio();
+      audio.preload = "metadata";
+      audio.crossOrigin = "anonymous";
+      const cleanup = () => { audio.src = ""; audio.remove(); };
       audio.addEventListener("loadedmetadata", () => {
         const dur = audio.duration;
         cleanup();
@@ -844,6 +872,45 @@ export default function EditStoryPage() {
     setSaving(false);
   }
 
+  /** Apply a picked audio Asset to whichever target is currently active.
+   * Reuses the asset's existing public URL (no re-upload) and creates the
+   * matching timeline entry just like the file-upload flow. */
+  async function applyAudioAssetToTarget(asset: Asset) {
+    const target = audioPickerTarget;
+    if (!target || asset.type !== "audio" || !asset.url) {
+      setAudioPickerTarget(null);
+      return;
+    }
+    setSaving(true);
+    try {
+      if (target.kind === "panel") {
+        const field = target.type === "narration" ? "narration_audio_url" : "background_audio_url";
+        await updatePanelField(target.panelId, field, asset.url);
+        const dur = await getAudioDurationFromUrl(asset.url);
+        await ensureTimelineAudioEntry(target.panelId, target.type, dur > 0 ? dur : undefined);
+      } else {
+        await supabase.from("dialogs").update({ audio_url: asset.url }).eq("id", target.dialogId);
+        setPanels(prev =>
+          prev.map((p) =>
+            p.id === target.panelId
+              ? {
+                  ...p,
+                  dialogs: (p.dialogs || []).map((d) =>
+                    d.id === target.dialogId ? { ...d, audio_url: asset.url } : d
+                  ),
+                }
+              : p
+          )
+        );
+        const dur = await getAudioDurationFromUrl(asset.url);
+        await ensureTimelineDialogEntry(target.panelId, target.dialogId, dur > 0 ? dur : undefined);
+      }
+    } finally {
+      setSaving(false);
+      setAudioPickerTarget(null);
+    }
+  }
+
   async function publishStory() {
     if (!confirm("Terbitkan cerita ini? Siswa akan bisa membacanya.")) return;
     setSaving(true);
@@ -1318,6 +1385,15 @@ export default function EditStoryPage() {
                           <Button
                             variant="outline"
                             size="sm"
+                            onClick={() => setAudioPickerTarget({ kind: "panel", panelId: panel.id, type: "narration" })}
+                            title="Ambil audio narasi dari Source Manager"
+                          >
+                            <FolderOpen className="w-4 h-4" />
+                            Ambil dari aset
+                          </Button>
+                          <Button
+                            variant="outline"
+                            size="sm"
                             onClick={() => clearPanelAudio(panel.id, "narration")}
                             title="Kosongkan audio narasi"
                             className="!text-danger hover:!bg-danger/10"
@@ -1344,6 +1420,15 @@ export default function EditStoryPage() {
                             label="Upload File"
                             onUpload={(file) => uploadAudioFile(panel.id, file, "narration")}
                           />
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() => setAudioPickerTarget({ kind: "panel", panelId: panel.id, type: "narration" })}
+                            title="Ambil audio narasi dari Source Manager"
+                          >
+                            <FolderOpen className="w-4 h-4" />
+                            Ambil dari aset
+                          </Button>
                         </div>
                       )}
                       {showNarrationRecorder === panel.id && (
@@ -1381,6 +1466,15 @@ export default function EditStoryPage() {
                         <Button
                           variant="outline"
                           size="sm"
+                          onClick={() => setAudioPickerTarget({ kind: "panel", panelId: panel.id, type: "background" })}
+                          title="Ambil suara latar dari Source Manager"
+                        >
+                          <FolderOpen className="w-4 h-4" />
+                          Ambil dari aset
+                        </Button>
+                        <Button
+                          variant="outline"
+                          size="sm"
                           onClick={() => clearPanelAudio(panel.id, "background")}
                           title="Kosongkan suara latar"
                           className="!text-danger hover:!bg-danger/10"
@@ -1407,6 +1501,15 @@ export default function EditStoryPage() {
                           label="Upload File"
                           onUpload={(file) => uploadAudioFile(panel.id, file, "background")}
                         />
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => setAudioPickerTarget({ kind: "panel", panelId: panel.id, type: "background" })}
+                          title="Ambil suara latar dari Source Manager"
+                        >
+                          <FolderOpen className="w-4 h-4" />
+                          Ambil dari aset
+                        </Button>
                       </div>
                     )}
                     {showBgAudioRecorder === panel.id && (
@@ -1459,6 +1562,15 @@ export default function EditStoryPage() {
                                   />
                                   <button
                                     type="button"
+                                    onClick={() => setAudioPickerTarget({ kind: "dialog", panelId: panel.id, dialogId: dialog.id })}
+                                    title="Ambil audio dialog dari Source Manager"
+                                    className="inline-flex items-center gap-1 px-2 py-1 text-xs font-medium rounded-lg border border-border text-muted hover:text-foreground hover:bg-surface-alt transition-colors"
+                                  >
+                                    <FolderOpen className="w-3 h-3" />
+                                    Aset
+                                  </button>
+                                  <button
+                                    type="button"
                                     onClick={() => clearDialogAudio(dialog.id, panel.id)}
                                     title="Kosongkan audio dialog"
                                     className="inline-flex items-center gap-1 px-2 py-1 text-xs font-medium rounded-lg border border-border text-danger hover:bg-danger/10 transition-colors"
@@ -1478,6 +1590,15 @@ export default function EditStoryPage() {
                                     label="Upload"
                                     onUpload={(file) => uploadDialogAudioFile(dialog.id, panel.id, file)}
                                   />
+                                  <button
+                                    type="button"
+                                    onClick={() => setAudioPickerTarget({ kind: "dialog", panelId: panel.id, dialogId: dialog.id })}
+                                    title="Ambil audio dialog dari Source Manager"
+                                    className="inline-flex items-center gap-1 px-2 py-1 text-xs font-medium rounded-lg border border-border text-muted hover:text-foreground hover:bg-surface-alt transition-colors"
+                                  >
+                                    <FolderOpen className="w-3 h-3" />
+                                    Aset
+                                  </button>
                                 </div>
                               )}
                             </div>
@@ -1733,6 +1854,23 @@ export default function EditStoryPage() {
           </div>
         </div>
       </main>
+
+      {/* Asset library picker for narration / background / dialog audio */}
+      <AssetPickerModal
+        open={!!audioPickerTarget}
+        onClose={() => setAudioPickerTarget(null)}
+        onPick={(asset) => applyAudioAssetToTarget(asset)}
+        type="audio"
+        title={
+          audioPickerTarget?.kind === "panel" && audioPickerTarget.type === "narration"
+            ? "Pilih Audio Narasi"
+            : audioPickerTarget?.kind === "panel" && audioPickerTarget.type === "background"
+              ? "Pilih Suara Latar"
+              : audioPickerTarget?.kind === "dialog"
+                ? "Pilih Audio Dialog"
+                : "Pilih Audio dari Galeri"
+        }
+      />
     </div>
   );
 }
