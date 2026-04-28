@@ -95,44 +95,104 @@ export function PanelCanvasOverlay({
             );
 
           case "shape": {
-            const isCircle = layer.shapeType === "circle";
-            const isPolygon = layer.shapeType === "polygon";
-            const borderRadius =
-              isCircle
-                ? "50%"
-                : typeof layer.borderRadius === "number"
-                ? `${layer.borderRadius}px`
-                : "0px";
+            // Render shapes as SVG so circle/ellipse and polygon render exactly
+            // like the Konva editor. Using a viewBox sized to the layer's
+            // natural pixel dimensions keeps strokes/points/borderRadius in
+            // the same units the editor stored them in.
+            const shapeType = layer.shapeType || "rect";
+            const w = Math.max(1, layer.width);
+            const h = Math.max(1, layer.height);
+            const fill = layer.backgroundImage
+              ? `url(#bg-${layer.id})`
+              : (layer.fill || "#45f882");
+            const stroke = layer.stroke || "none";
+            const strokeWidth = layer.stroke ? (layer.strokeWidth ?? 2) : 0;
+            const bgPreserve =
+              layer.bgSize === "fill" ? "none"
+              : layer.bgSize === "contain" ? "xMidYMid meet"
+              : "xMidYMid slice"; // default cover
 
-            const clipPath = isPolygon && layer.points
-              ? `polygon(${layer.points.reduce((acc, p, i, arr) => {
-                  const isX = i % 2 === 0;
-                  return acc + (i > 0 ? ", " : "") + (isX ? `${p}%` : `${p}%`);
-                }, "")})`
-              : undefined;
+            // Skew applied via inline transform on the SVG wrapper. Konva
+            // doesn't render skew live for shapes either, so this matches
+            // best-effort.
+            const skewTransform =
+              (layer.skewX ? ` skewX(${layer.skewX}deg)` : "") +
+              (layer.skewY ? ` skewY(${layer.skewY}deg)` : "");
 
             return (
-              <div
+              <svg
                 key={layer.id}
-                className="overflow-hidden"
+                viewBox={`0 0 ${w} ${h}`}
+                preserveAspectRatio="none"
                 style={{
                   ...getScaleStyle(layer),
-                  backgroundColor: layer.fill || "#45f882",
-                  borderRadius,
-                  border: layer.stroke
-                    ? `${layer.strokeWidth ?? 2}px solid ${layer.stroke}`
-                    : undefined,
-                  clipPath,
-                  transform: getScaleStyle(layer).transform +
-                    (layer.skewX ? ` skewX(${layer.skewX}deg)` : "") +
-                    (layer.skewY ? ` skewY(${layer.skewY}deg)` : ""),
-                  backgroundImage: layer.backgroundImage
-                    ? `url(${layer.backgroundImage})`
-                    : undefined,
-                  backgroundSize: layer.bgSize || "cover",
-                  backgroundPosition: "center",
+                  transform: getScaleStyle(layer).transform + skewTransform,
+                  overflow: "visible",
                 }}
-              />
+                aria-hidden="true"
+              >
+                {layer.backgroundImage && (
+                  <defs>
+                    <pattern
+                      id={`bg-${layer.id}`}
+                      patternUnits="userSpaceOnUse"
+                      x={0}
+                      y={0}
+                      width={w}
+                      height={h}
+                    >
+                      <image
+                        href={layer.backgroundImage}
+                        x={0}
+                        y={0}
+                        width={w}
+                        height={h}
+                        preserveAspectRatio={bgPreserve}
+                      />
+                    </pattern>
+                  </defs>
+                )}
+
+                {shapeType === "circle" ? (
+                  <ellipse
+                    cx={w / 2}
+                    cy={h / 2}
+                    rx={Math.max(0, w / 2 - strokeWidth / 2)}
+                    ry={Math.max(0, h / 2 - strokeWidth / 2)}
+                    fill={fill}
+                    stroke={stroke}
+                    strokeWidth={strokeWidth}
+                  />
+                ) : shapeType === "polygon" && layer.points && layer.points.length >= 6 ? (
+                  // points are stored in 0..100 normalised space relative to
+                  // the layer's bounding box; convert to viewBox pixel coords
+                  <polygon
+                    points={layer.points
+                      .reduce<string[]>((acc, v, i) => {
+                        if (i % 2 === 0) acc.push(`${(v / 100) * w}`);
+                        else acc[acc.length - 1] += `,${(v / 100) * h}`;
+                        return acc;
+                      }, [])
+                      .join(" ")}
+                    fill={fill}
+                    stroke={stroke}
+                    strokeWidth={strokeWidth}
+                    strokeLinejoin="round"
+                  />
+                ) : (
+                  <rect
+                    x={strokeWidth / 2}
+                    y={strokeWidth / 2}
+                    width={Math.max(0, w - strokeWidth)}
+                    height={Math.max(0, h - strokeWidth)}
+                    rx={typeof layer.borderRadius === "number" ? layer.borderRadius : 0}
+                    ry={typeof layer.borderRadius === "number" ? layer.borderRadius : 0}
+                    fill={fill}
+                    stroke={stroke}
+                    strokeWidth={strokeWidth}
+                  />
+                )}
+              </svg>
             );
           }
 

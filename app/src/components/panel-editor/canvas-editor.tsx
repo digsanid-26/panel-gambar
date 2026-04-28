@@ -2,10 +2,11 @@
 
 import { useState, useRef, useCallback, useEffect } from "react";
 import { Stage, Layer, Rect, Image as KonvaImage, Text, Group, Circle, Arrow, Line, Transformer } from "react-konva";
-import type { CanvasData, CanvasLayer, Dialog, NarrationOverlay } from "@/lib/types";
+import type { CanvasData, CanvasLayer, Dialog, NarrationOverlay, Asset } from "@/lib/types";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { listARSceneOptions, type ARSceneOption } from "@/lib/ar/picker";
+import { AssetPickerModal } from "@/components/asset-library/asset-picker-modal";
 import {
   ImageIcon,
   Type,
@@ -32,6 +33,7 @@ import {
   ZoomIn,
   ZoomOut,
   Upload,
+  FolderOpen,
 } from "lucide-react";
 
 interface CanvasEditorProps {
@@ -84,6 +86,11 @@ export function CanvasEditor({
   const canvasBgInputRef = useRef<HTMLInputElement>(null);
   const transformerRef = useRef<any>(null);
   const shapeRefs = useRef<Record<string, any>>({});
+
+  /** Which background is currently being picked from the asset library, if
+   * any. 'shape' picks for the selected shape layer's `backgroundImage`,
+   * 'canvas' picks for the canvas-level `backgroundImage`. */
+  const [bgAssetPicker, setBgAssetPicker] = useState<null | "shape" | "canvas">(null);
 
   // Lasso tool state
   const [lassoActive, setLassoActive] = useState(false);
@@ -408,6 +415,32 @@ export function CanvasEditor({
     e.target.value = "";
   }
 
+  /** Apply a picked Asset (image type) as a background image for either the
+   * currently selected shape layer, or the whole canvas. Reuses the asset's
+   * existing public URL — no re-upload. */
+  function handlePickBgAsset(asset: Asset) {
+    if (!asset.url) {
+      setBgAssetPicker(null);
+      return;
+    }
+    if (bgAssetPicker === "shape" && selectedId) {
+      const img = new window.Image();
+      img.crossOrigin = "anonymous";
+      img.onload = () => {
+        setShapeBgImages((prev) => ({ ...prev, [selectedId]: img }));
+      };
+      img.src = asset.url;
+      updateLayer(selectedId, { backgroundImage: asset.url, bgSize: "cover", bgPosition: "center-center" });
+    } else if (bgAssetPicker === "canvas") {
+      const img = new window.Image();
+      img.crossOrigin = "anonymous";
+      img.onload = () => setCanvasBgImage(img);
+      img.src = asset.url;
+      setCanvasBackgroundImage(asset.url);
+    }
+    setBgAssetPicker(null);
+  }
+
   // Finalize lasso: convert drawn points into a polygon shape layer
   function finalizeLasso() {
     if (lassoPoints.length < 6) {
@@ -585,13 +618,22 @@ export function CanvasEditor({
               >Hapus</button>
             </div>
           ) : (
-            <button
-              onClick={() => canvasBgInputRef.current?.click()}
-              className="text-[10px] px-2 py-1 rounded border border-border bg-surface-alt text-foreground hover:bg-surface-alt/80 flex items-center gap-1"
-              title="Upload gambar latar canvas"
-            >
-              <Upload className="w-3 h-3" /> BG
-            </button>
+            <>
+              <button
+                onClick={() => canvasBgInputRef.current?.click()}
+                className="text-[10px] px-2 py-1 rounded border border-border bg-surface-alt text-foreground hover:bg-surface-alt/80 flex items-center gap-1"
+                title="Upload gambar latar canvas"
+              >
+                <Upload className="w-3 h-3" /> BG
+              </button>
+              <button
+                onClick={() => setBgAssetPicker("canvas")}
+                className="text-[10px] px-2 py-1 rounded border border-border bg-surface-alt text-foreground hover:bg-surface-alt/80 flex items-center gap-1"
+                title="Ambil gambar latar canvas dari Source Manager"
+              >
+                <FolderOpen className="w-3 h-3" /> Aset
+              </button>
+            </>
           )}
         </div>
         {/* Border controls */}
@@ -1561,12 +1603,21 @@ export function CanvasEditor({
                         >Hapus</button>
                       </div>
                     ) : (
-                      <button
-                        onClick={() => shapeBgInputRef.current?.click()}
-                        className="text-[10px] px-2 py-1 rounded border border-border bg-surface-alt text-foreground hover:bg-surface-alt/80 flex items-center gap-1"
-                      >
-                        <Upload className="w-3 h-3" /> Upload
-                      </button>
+                      <div className="flex items-center gap-1 flex-wrap">
+                        <button
+                          onClick={() => shapeBgInputRef.current?.click()}
+                          className="text-[10px] px-2 py-1 rounded border border-border bg-surface-alt text-foreground hover:bg-surface-alt/80 flex items-center gap-1"
+                        >
+                          <Upload className="w-3 h-3" /> Upload
+                        </button>
+                        <button
+                          onClick={() => setBgAssetPicker("shape")}
+                          className="text-[10px] px-2 py-1 rounded border border-border bg-surface-alt text-foreground hover:bg-surface-alt/80 flex items-center gap-1"
+                          title="Ambil dari Source Manager"
+                        >
+                          <FolderOpen className="w-3 h-3" /> Ambil dari aset
+                        </button>
+                      </div>
                     )}
                     {selectedLayer.backgroundImage && (
                       <>
@@ -1628,6 +1679,15 @@ export function CanvasEditor({
       <input ref={fileInputRef} type="file" accept="image/*" className="hidden" onChange={handleImageFile} />
       <input ref={shapeBgInputRef} type="file" accept="image/*" className="hidden" onChange={handleShapeBgFile} />
       <input ref={canvasBgInputRef} type="file" accept="image/*" className="hidden" onChange={handleCanvasBgFile} />
+
+      {/* Asset library picker for shape / canvas background images */}
+      <AssetPickerModal
+        open={bgAssetPicker !== null}
+        onClose={() => setBgAssetPicker(null)}
+        onPick={handlePickBgAsset}
+        type="image"
+        title={bgAssetPicker === "canvas" ? "Pilih Gambar Latar Canvas" : "Pilih Gambar Latar Bentuk"}
+      />
     </div>
   );
 }
