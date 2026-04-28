@@ -85,8 +85,11 @@ export function PanelCanvasOverlay({
                   color: layer.fill || "#000000",
                   fontSize: `${layer.fontSize ?? 16}px`,
                   fontFamily: layer.fontFamily || "Arial",
+                  fontWeight: layer.fontWeight ?? undefined,
                   textAlign: (layer.textAlign || "left") as "left" | "center" | "right",
-                  lineHeight: 1.3,
+                  lineHeight: layer.lineHeight ?? 1.3,
+                  letterSpacing:
+                    layer.letterSpacing != null ? `${layer.letterSpacing}px` : undefined,
                   overflow: "hidden",
                 }}
               >
@@ -217,8 +220,11 @@ export function PanelCanvasOverlay({
                   color: layer.fill || "#000000",
                   fontSize: `${layer.fontSize ?? 16}px`,
                   fontFamily: layer.fontFamily || "Arial",
+                  fontWeight: layer.fontWeight ?? undefined,
                   textAlign: (layer.textAlign || "center") as "left" | "center" | "right",
-                  lineHeight: 1.3,
+                  lineHeight: layer.lineHeight ?? 1.3,
+                  letterSpacing:
+                    layer.letterSpacing != null ? `${layer.letterSpacing}px` : undefined,
                   overflow: "hidden",
                 }}
               >

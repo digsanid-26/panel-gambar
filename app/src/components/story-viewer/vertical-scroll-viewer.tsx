@@ -6,7 +6,9 @@ import { PanelCard, getPanelDuration } from "./panel-card";
 import { ScrollSpeedDial } from "./scroll-speed-dial";
 import { PanelTimelineOverlay, PAUSING_TRIGGER_TYPES } from "./panel-timeline-overlay";
 import { PlayheadIndicator } from "./playhead-indicator";
-import { ArrowDown, Play as PlayIcon } from "lucide-react";
+import { ArrowDown, Play as PlayIcon, Music, MusicIcon as _musicAlias, VolumeX } from "lucide-react";
+// Note: Music icon used for the bg-audio toggle next to the playhead.
+void _musicAlias;
 
 interface VerticalScrollViewerProps {
   panels: Panel[];
@@ -53,6 +55,62 @@ export function VerticalScrollViewer({ panels, user, onSaveRecording, storyChara
   const bgAudioPanelRef = useRef<string | null>(null);
   // Whether autoScroll was active before pausing (to know if we should resume)
   const wasAutoScrollingRef = useRef(false);
+
+  /** Surface bg-audio state to the music toggle button next to the playhead. */
+  const [bgPlaying, setBgPlaying] = useState(false);
+  /** When true the user explicitly stopped bg audio and does not want it
+   * auto-restarted on auto-scroll start or panel change. Reset whenever the
+   * user clicks the music button to play again. */
+  const bgManualStopRef = useRef(false);
+
+  /** Play (loop) the background audio of the panel at index `i`. No-op if the
+   * panel has no bg audio. Replaces any currently playing bg audio. */
+  const playBgForPanelIndex = useCallback((i: number) => {
+    const panel = panels[i];
+    if (!panel) return;
+    const url = panel.background_audio_url;
+    if (!url) {
+      // No bg audio for this panel — stop any existing playback.
+      if (bgAudioRef.current) {
+        bgAudioRef.current.pause();
+        bgAudioRef.current = null;
+        bgAudioPanelRef.current = null;
+        setBgPlaying(false);
+      }
+      return;
+    }
+    // If we're already looping the same URL for this panel, do nothing.
+    if (bgAudioRef.current && bgAudioPanelRef.current === panel.id) return;
+
+    if (bgAudioRef.current) bgAudioRef.current.pause();
+    const a = new Audio(url);
+    a.loop = true;
+    a.volume = 0.5;
+    a.play().then(() => setBgPlaying(true)).catch(() => setBgPlaying(false));
+    bgAudioRef.current = a;
+    bgAudioPanelRef.current = panel.id;
+  }, [panels]);
+
+  /** Stop bg audio playback. Does not clear `bgManualStopRef` — caller decides. */
+  const stopBg = useCallback(() => {
+    if (bgAudioRef.current) {
+      bgAudioRef.current.pause();
+      bgAudioRef.current = null;
+      bgAudioPanelRef.current = null;
+    }
+    setBgPlaying(false);
+  }, []);
+
+  /** Manual toggle wired to the music button next to the playhead. */
+  const toggleBgAudio = useCallback(() => {
+    if (bgPlaying) {
+      bgManualStopRef.current = true;
+      stopBg();
+    } else {
+      bgManualStopRef.current = false;
+      playBgForPanelIndex(currentIndex);
+    }
+  }, [bgPlaying, currentIndex, playBgForPanelIndex, stopBg]);
 
   /** Returns the element that actually scrolls. Falls back to window if the inner container isn't a scroll container. */
   const getScroller = useCallback((): HTMLElement | Window => {
@@ -372,9 +430,34 @@ export function VerticalScrollViewer({ panels, user, onSaveRecording, storyChara
         firedRef.current = {};
         playheadTimesRef.current = {};
       }
+      // Starting auto-scroll: if the user hasn't explicitly muted bg audio,
+      // begin looping the current panel's bg audio (per user requirement).
+      if (!bgManualStopRef.current) {
+        playBgForPanelIndex(currentIndex);
+      }
       return true;
     });
-  }, [getScroller, getScrollTop, setScrollTop, getMaxScroll]);
+  }, [getScroller, getScrollTop, setScrollTop, getMaxScroll, playBgForPanelIndex, currentIndex]);
+
+  /** Auto-switch bg audio when the current panel changes — unless the user has
+   * explicitly stopped it. The previous panel's bg audio is paused and the new
+   * one (if any) starts looping. */
+  useEffect(() => {
+    if (bgManualStopRef.current) return;
+    const next = panels[currentIndex];
+    if (!next) return;
+    if (!next.background_audio_url) {
+      stopBg();
+      return;
+    }
+    if (bgAudioPanelRef.current === next.id) return; // already playing it
+    // Only auto-start if either bg is currently playing (panel transition) or
+    // auto-scroll is active. This avoids surprising autoplay before the user
+    // first interacts with the player.
+    if (bgPlaying || autoScroll) {
+      playBgForPanelIndex(currentIndex);
+    }
+  }, [currentIndex, panels, bgPlaying, autoScroll, playBgForPanelIndex, stopBg]);
 
   return (
     <div className="flex-1 flex flex-col relative">
@@ -431,6 +514,24 @@ export function VerticalScrollViewer({ panels, user, onSaveRecording, storyChara
         paused={!!firing?.pausing}
         label={firing?.pausing ? firing.label : undefined}
       />
+
+      {/* Background-audio toggle — sits to the right of the playhead line.
+          Only visible if the current panel has a background audio URL. */}
+      {panels[currentIndex]?.background_audio_url && (
+        <button
+          onClick={toggleBgAudio}
+          aria-label={bgPlaying ? "Hentikan suara latar" : "Putar suara latar"}
+          title={bgPlaying ? "Hentikan suara latar" : "Putar suara latar"}
+          className={`fixed right-4 z-50 flex items-center justify-center w-10 h-10 rounded-full border-2 border-white shadow-2xl transition-all hover:scale-110 active:scale-95 ${
+            bgPlaying
+              ? "bg-gradient-to-br from-emerald-500 to-emerald-600 text-white animate-pulse"
+              : "bg-gradient-to-br from-zinc-700 to-zinc-800 text-zinc-200"
+          }`}
+          style={{ top: "50vh", transform: "translateY(-50%)" }}
+        >
+          {bgPlaying ? <Music className="w-5 h-5" /> : <VolumeX className="w-5 h-5" />}
+        </button>
+      )}
 
       {/* Resume button when paused waiting on a trigger */}
       {firing?.pausing && (

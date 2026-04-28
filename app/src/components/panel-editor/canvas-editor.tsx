@@ -58,8 +58,54 @@ const DEFAULT_CANVAS: CanvasData = {
   layers: [],
 };
 
+/** Font family options shown in typography selectors. Limited to system /
+ * web-safe fonts so they render reliably both in the Konva editor preview and
+ * in the HTML viewer without requiring extra @font-face loads. */
+const FONT_FAMILY_OPTIONS = [
+  "Arial",
+  "Helvetica",
+  "Times New Roman",
+  "Georgia",
+  "Courier New",
+  "Verdana",
+  "Trebuchet MS",
+  "Comic Sans MS",
+  "Impact",
+  "Tahoma",
+  "Palatino",
+  "Garamond",
+  "Inter",
+  "system-ui",
+];
+
+/** Font weight options. Numeric weights map to CSS weights; Konva's Text
+ * fontStyle only supports "normal" / "bold" so weights >= 600 are treated as
+ * bold inside the canvas preview. */
+const FONT_WEIGHT_OPTIONS: { value: string; label: string }[] = [
+  { value: "normal", label: "Normal (400)" },
+  { value: "300", label: "Light (300)" },
+  { value: "500", label: "Medium (500)" },
+  { value: "600", label: "Semibold (600)" },
+  { value: "bold", label: "Bold (700)" },
+  { value: "800", label: "Extra Bold (800)" },
+  { value: "900", label: "Black (900)" },
+];
+
 function generateId() {
   return `layer_${Date.now()}_${Math.random().toString(36).substr(2, 6)}`;
+}
+
+/** Konva's `<Text fontStyle>` only accepts "normal" / "bold" / "italic" /
+ * "italic bold". CSS-style weights like 600/800 must be coerced. We treat any
+ * numeric weight >= 600 (or the keyword "bold") as bold inside the editor
+ * preview; the HTML viewer renders the precise weight. */
+function fontWeightToKonvaStyle(w: number | string | undefined): string {
+  if (w == null) return "normal";
+  if (typeof w === "number") return w >= 600 ? "bold" : "normal";
+  if (w === "bold") return "bold";
+  const n = Number(w);
+  if (Number.isFinite(n)) return n >= 600 ? "bold" : "normal";
+  return "normal";
 }
 
 export function CanvasEditor({
@@ -813,6 +859,9 @@ export function CanvasEditor({
                       text={layer.text || ""}
                       fontSize={layer.fontSize || 24}
                       fontFamily={layer.fontFamily || "Arial"}
+                      fontStyle={fontWeightToKonvaStyle(layer.fontWeight)}
+                      lineHeight={layer.lineHeight ?? 1.3}
+                      letterSpacing={layer.letterSpacing ?? 0}
                       fill={layer.fill || "#000"}
                       align={layer.textAlign || "left"}
                       width={layer.width}
@@ -864,6 +913,9 @@ export function CanvasEditor({
                         text={layer.text || ""}
                         fontSize={layer.fontSize || 16}
                         fontFamily={layer.fontFamily || "Arial"}
+                        fontStyle={fontWeightToKonvaStyle(layer.fontWeight)}
+                        lineHeight={layer.lineHeight ?? 1.3}
+                        letterSpacing={layer.letterSpacing ?? 0}
                         fill={layer.fill || "#000"}
                         width={layer.width - 20}
                         height={layer.height - 20}
@@ -1135,30 +1187,49 @@ export function CanvasEditor({
                 );
               })}
 
-              {/* Narration overlay (fixed box) — draggable */}
+              {/* Narration overlay (fixed box) — draggable + resizable */}
               {narrationText && narrationText.trim() && (() => {
                 const no: NarrationOverlay = narrationOverlay || {
                   position_x: 50, position_y: 85, font_color: "#ffffff",
                   bg_color: "#000000", opacity: 0.75, font_size: 14, max_width: 80,
                 };
-                const maxWidthPct = Math.max(20, Math.min(100, no.max_width || 80));
-                const boxW = (data.width * maxWidthPct) / 100;
+                // Width: prefer explicit box_width; fall back to legacy max_width.
+                const widthPct = Math.max(10, Math.min(100, no.box_width ?? no.max_width ?? 80));
+                const boxW = (data.width * widthPct) / 100;
                 const fontSize = no.font_size || 14;
                 const paddingX = 12;
                 const paddingY = 8;
-                // Approx text height using 1.4 line-height and wrapping by width.
-                const approxCharsPerLine = Math.max(10, Math.floor((boxW - paddingX * 2) / (fontSize * 0.55)));
-                const estLines = Math.max(1, Math.ceil(narrationText.length / approxCharsPerLine));
-                const textH = Math.ceil(fontSize * 1.4 * estLines);
-                const boxH = textH + paddingY * 2;
+                // Height: explicit box_height wins; otherwise auto-fit to text.
+                let boxH: number;
+                if (no.box_height) {
+                  boxH = (data.height * Math.max(5, Math.min(100, no.box_height))) / 100;
+                } else {
+                  const approxCharsPerLine = Math.max(
+                    10,
+                    Math.floor((boxW - paddingX * 2) / (fontSize * 0.55))
+                  );
+                  const estLines = Math.max(
+                    1,
+                    Math.ceil(narrationText.length / approxCharsPerLine)
+                  );
+                  const textH = Math.ceil(fontSize * 1.4 * estLines);
+                  boxH = textH + paddingY * 2;
+                }
                 const cx = (no.position_x / 100) * data.width;
                 const cy = (no.position_y / 100) * data.height;
+                const isSelected = selectedId === "__narration__";
                 return (
                   <Group
                     key="narration-overlay-box"
+                    ref={(node: any) => {
+                      if (node) shapeRefs.current["__narration__"] = node;
+                      else delete shapeRefs.current["__narration__"];
+                    }}
                     x={cx - boxW / 2}
                     y={cy - boxH / 2}
                     draggable={!!onNarrationOverlayChange}
+                    onClick={() => setSelectedId("__narration__")}
+                    onTap={() => setSelectedId("__narration__")}
                     onDragEnd={(e: any) => {
                       if (!onNarrationOverlayChange) return;
                       const newX = e.target.x() + boxW / 2;
@@ -1171,6 +1242,32 @@ export function CanvasEditor({
                         position_y: Math.max(0, Math.min(100, posY)),
                       });
                     }}
+                    onTransformEnd={(e: any) => {
+                      if (!onNarrationOverlayChange) return;
+                      const node = e.target;
+                      const sx = node.scaleX();
+                      const sy = node.scaleY();
+                      node.scaleX(1);
+                      node.scaleY(1);
+                      const newW = Math.max(40, boxW * sx);
+                      const newH = Math.max(24, boxH * sy);
+                      // Recompute center from node position after transform.
+                      const nx = node.x() + newW / 2;
+                      const ny = node.y() + newH / 2;
+                      const posX = Math.round((nx / data.width) * 100 * 10) / 10;
+                      const posY = Math.round((ny / data.height) * 100 * 10) / 10;
+                      const boxWidthPct =
+                        Math.round((newW / data.width) * 100 * 10) / 10;
+                      const boxHeightPct =
+                        Math.round((newH / data.height) * 100 * 10) / 10;
+                      onNarrationOverlayChange({
+                        ...no,
+                        position_x: Math.max(0, Math.min(100, posX)),
+                        position_y: Math.max(0, Math.min(100, posY)),
+                        box_width: Math.max(10, Math.min(100, boxWidthPct)),
+                        box_height: Math.max(5, Math.min(100, boxHeightPct)),
+                      });
+                    }}
                   >
                     <Rect
                       x={0}
@@ -1180,9 +1277,9 @@ export function CanvasEditor({
                       fill={no.bg_color || "#000000"}
                       opacity={no.opacity ?? 0.75}
                       cornerRadius={8}
-                      stroke="#fde047"
-                      strokeWidth={1}
-                      dash={[4, 3]}
+                      stroke={isSelected ? "#fde047" : "#fde047"}
+                      strokeWidth={isSelected ? 2 : 1}
+                      dash={isSelected ? undefined : [4, 3]}
                       shadowColor="rgba(0,0,0,0.3)"
                       shadowBlur={6}
                       shadowOpacity={0.4}
@@ -1191,12 +1288,20 @@ export function CanvasEditor({
                       x={paddingX}
                       y={paddingY}
                       width={boxW - paddingX * 2}
+                      height={boxH - paddingY * 2}
                       text={narrationText}
                       fontSize={fontSize}
-                      fontFamily="Arial"
+                      fontFamily={no.font_family || "Arial"}
+                      fontStyle={
+                        typeof no.font_weight === "number"
+                          ? no.font_weight >= 600 ? "bold" : "normal"
+                          : no.font_weight === "bold" ? "bold" : "normal"
+                      }
                       fill={no.font_color || "#ffffff"}
-                      lineHeight={1.4}
-                      align="center"
+                      lineHeight={no.line_height ?? 1.4}
+                      letterSpacing={no.letter_spacing ?? 0}
+                      align={no.text_align || "center"}
+                      verticalAlign="middle"
                       listening={false}
                     />
                     {/* Badge to indicate this is the narration overlay */}
@@ -1439,6 +1544,59 @@ export function CanvasEditor({
                       ))}
                     </div>
                   </div>
+                  {/* Font Family */}
+                  <div>
+                    <label className="text-[10px] text-muted">Font Family</label>
+                    <select
+                      value={selectedLayer.fontFamily || "Arial"}
+                      onChange={(e) => updateLayer(selectedLayer.id, { fontFamily: e.target.value })}
+                      className="w-full text-xs px-1.5 py-0.5 rounded border border-border bg-surface-alt text-foreground"
+                    >
+                      {FONT_FAMILY_OPTIONS.map((f) => (
+                        <option key={f} value={f} style={{ fontFamily: f }}>{f}</option>
+                      ))}
+                    </select>
+                  </div>
+                  {/* Font Weight + Line Height */}
+                  <div className="grid grid-cols-2 gap-1">
+                    <div>
+                      <label className="text-[10px] text-muted">Font Weight</label>
+                      <select
+                        value={String(selectedLayer.fontWeight ?? "normal")}
+                        onChange={(e) => {
+                          const v = e.target.value;
+                          const num = Number(v);
+                          updateLayer(selectedLayer.id, {
+                            fontWeight: Number.isFinite(num) && String(num) === v ? num : v,
+                          });
+                        }}
+                        className="w-full text-xs px-1.5 py-0.5 rounded border border-border bg-surface-alt text-foreground"
+                      >
+                        {FONT_WEIGHT_OPTIONS.map((w) => (
+                          <option key={w.value} value={w.value}>{w.label}</option>
+                        ))}
+                      </select>
+                    </div>
+                    <div>
+                      <label className="text-[10px] text-muted">Line Height</label>
+                      <input
+                        type="number" step={0.05} min={0.8} max={3}
+                        value={selectedLayer.lineHeight ?? 1.3}
+                        onChange={(e) => updateLayer(selectedLayer.id, { lineHeight: Number(e.target.value) })}
+                        className="w-full text-xs px-1.5 py-0.5 rounded border border-border bg-surface-alt text-foreground"
+                      />
+                    </div>
+                  </div>
+                  {/* Letter Spacing */}
+                  <div>
+                    <label className="text-[10px] text-muted">Letter Spacing (px)</label>
+                    <input
+                      type="number" step={0.1} min={-5} max={20}
+                      value={selectedLayer.letterSpacing ?? 0}
+                      onChange={(e) => updateLayer(selectedLayer.id, { letterSpacing: Number(e.target.value) })}
+                      className="w-full text-xs px-1.5 py-0.5 rounded border border-border bg-surface-alt text-foreground"
+                    />
+                  </div>
                 </>
               )}
               {/* AR Trigger specific properties */}
@@ -1672,6 +1830,170 @@ export function CanvasEditor({
               </div>
             </div>
           )}
+
+          {/* Narration overlay properties — shown when the narration box is
+              selected (selectedId === "__narration__"). Lets the user edit
+              size, colors, opacity, and full typography. */}
+          {selectedId === "__narration__" && narrationText && narrationText.trim() && onNarrationOverlayChange && (() => {
+            const no: NarrationOverlay = narrationOverlay || {
+              position_x: 50, position_y: 85, font_color: "#ffffff",
+              bg_color: "#000000", opacity: 0.75, font_size: 14, max_width: 80,
+            };
+            const update = (patch: Partial<NarrationOverlay>) =>
+              onNarrationOverlayChange({ ...no, ...patch });
+            return (
+              <div className="border-t border-border/50 p-3 space-y-2 overflow-y-auto flex-1 bg-surface-card/60">
+                <p className="text-xs font-semibold text-foreground flex items-center gap-1">
+                  <span className="inline-block w-1.5 h-1.5 rounded-full bg-yellow-400" />
+                  Narasi
+                </p>
+                {/* Box size (% of canvas) */}
+                <div className="grid grid-cols-2 gap-1">
+                  <div>
+                    <label className="text-[10px] text-muted">Lebar (%)</label>
+                    <input
+                      type="number" min={10} max={100} step={1}
+                      value={Math.round(no.box_width ?? no.max_width ?? 80)}
+                      onChange={(e) => update({ box_width: Number(e.target.value) })}
+                      className="w-full text-xs px-1.5 py-0.5 rounded border border-border bg-surface-alt text-foreground"
+                    />
+                  </div>
+                  <div>
+                    <label className="text-[10px] text-muted">Tinggi (%)</label>
+                    <input
+                      type="number" min={5} max={100} step={1}
+                      placeholder="auto"
+                      value={no.box_height ?? ""}
+                      onChange={(e) => {
+                        const v = e.target.value;
+                        update({ box_height: v === "" ? undefined : Number(v) });
+                      }}
+                      className="w-full text-xs px-1.5 py-0.5 rounded border border-border bg-surface-alt text-foreground"
+                    />
+                  </div>
+                </div>
+                {/* Colors + opacity */}
+                <div className="grid grid-cols-3 gap-1">
+                  <div>
+                    <label className="text-[10px] text-muted">Warna Font</label>
+                    <input
+                      type="color"
+                      value={no.font_color || "#ffffff"}
+                      onChange={(e) => update({ font_color: e.target.value })}
+                      className="w-full h-6 rounded border border-border cursor-pointer"
+                    />
+                  </div>
+                  <div>
+                    <label className="text-[10px] text-muted">Warna Latar</label>
+                    <input
+                      type="color"
+                      value={no.bg_color || "#000000"}
+                      onChange={(e) => update({ bg_color: e.target.value })}
+                      className="w-full h-6 rounded border border-border cursor-pointer"
+                    />
+                  </div>
+                  <div>
+                    <label className="text-[10px] text-muted">Opacity</label>
+                    <input
+                      type="range" min={0.1} max={1} step={0.05}
+                      value={no.opacity ?? 0.75}
+                      onChange={(e) => update({ opacity: Number(e.target.value) })}
+                      className="w-full"
+                    />
+                  </div>
+                </div>
+                {/* Font size + family */}
+                <div className="grid grid-cols-2 gap-1">
+                  <div>
+                    <label className="text-[10px] text-muted">Font Size</label>
+                    <input
+                      type="number" min={8} max={72}
+                      value={no.font_size ?? 14}
+                      onChange={(e) => update({ font_size: Number(e.target.value) })}
+                      className="w-full text-xs px-1.5 py-0.5 rounded border border-border bg-surface-alt text-foreground"
+                    />
+                  </div>
+                  <div>
+                    <label className="text-[10px] text-muted">Font Family</label>
+                    <select
+                      value={no.font_family || "Arial"}
+                      onChange={(e) => update({ font_family: e.target.value })}
+                      className="w-full text-xs px-1.5 py-0.5 rounded border border-border bg-surface-alt text-foreground"
+                    >
+                      {FONT_FAMILY_OPTIONS.map((f) => (
+                        <option key={f} value={f} style={{ fontFamily: f }}>{f}</option>
+                      ))}
+                    </select>
+                  </div>
+                </div>
+                {/* Font weight + line height */}
+                <div className="grid grid-cols-2 gap-1">
+                  <div>
+                    <label className="text-[10px] text-muted">Font Weight</label>
+                    <select
+                      value={String(no.font_weight ?? "normal")}
+                      onChange={(e) => {
+                        const v = e.target.value;
+                        const num = Number(v);
+                        update({
+                          font_weight:
+                            Number.isFinite(num) && String(num) === v ? num : v,
+                        });
+                      }}
+                      className="w-full text-xs px-1.5 py-0.5 rounded border border-border bg-surface-alt text-foreground"
+                    >
+                      {FONT_WEIGHT_OPTIONS.map((w) => (
+                        <option key={w.value} value={w.value}>{w.label}</option>
+                      ))}
+                    </select>
+                  </div>
+                  <div>
+                    <label className="text-[10px] text-muted">Line Height</label>
+                    <input
+                      type="number" step={0.05} min={0.8} max={3}
+                      value={no.line_height ?? 1.5}
+                      onChange={(e) => update({ line_height: Number(e.target.value) })}
+                      className="w-full text-xs px-1.5 py-0.5 rounded border border-border bg-surface-alt text-foreground"
+                    />
+                  </div>
+                </div>
+                {/* Letter spacing + text align */}
+                <div className="grid grid-cols-2 gap-1">
+                  <div>
+                    <label className="text-[10px] text-muted">Letter Spacing</label>
+                    <input
+                      type="number" step={0.1} min={-5} max={20}
+                      value={no.letter_spacing ?? 0}
+                      onChange={(e) => update({ letter_spacing: Number(e.target.value) })}
+                      className="w-full text-xs px-1.5 py-0.5 rounded border border-border bg-surface-alt text-foreground"
+                    />
+                  </div>
+                  <div>
+                    <label className="text-[10px] text-muted">Rata Teks</label>
+                    <div className="flex gap-1 mt-0.5">
+                      {(["left", "center", "right"] as const).map((align) => (
+                        <button
+                          key={align}
+                          onClick={() => update({ text_align: align })}
+                          className={`flex-1 text-[10px] py-1 rounded border transition-colors ${
+                            (no.text_align || "center") === align
+                              ? "bg-primary text-white border-primary"
+                              : "bg-surface-alt text-foreground border-border hover:bg-surface"
+                          }`}
+                        >
+                          {align === "left" ? "K" : align === "center" ? "T" : "Kn"}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+                <p className="text-[10px] text-muted leading-snug">
+                  Tarik handle untuk mengubah ukuran kotak narasi. Set Tinggi
+                  kosong untuk auto-fit teks.
+                </p>
+              </div>
+            );
+          })()}
         </div>
         )}
       </div>

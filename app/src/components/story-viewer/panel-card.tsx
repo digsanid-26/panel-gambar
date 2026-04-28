@@ -227,10 +227,18 @@ export function PanelCard({
                 opacity: loaded ? no.opacity : 0,
                 transition: "opacity 600ms ease-out",
                 fontSize: `${no.font_size || 14}px`,
-                maxWidth: `${no.max_width || 80}%`,
+                fontFamily: no.font_family || undefined,
+                fontWeight: no.font_weight ?? undefined,
+                lineHeight: no.line_height ?? 1.5,
+                letterSpacing: no.letter_spacing != null ? `${no.letter_spacing}px` : undefined,
+                textAlign: no.text_align || "left",
+                width: no.box_width ? `${no.box_width}%` : undefined,
+                height: no.box_height ? `${no.box_height}%` : undefined,
+                maxWidth: no.box_width ? undefined : `${no.max_width || 80}%`,
+                overflow: no.box_height ? "auto" : undefined,
               }}
             >
-              <p className="leading-relaxed">{panel.narration_text}</p>
+              <p style={{ margin: 0 }}>{panel.narration_text}</p>
             </div>
           );
         })()}
@@ -286,7 +294,23 @@ export function PanelCard({
               <p className="text-xs font-bold mb-1" style={{ color: dialog.character_color }}>
                 {dialog.character_name}
               </p>
-              <p className="text-sm leading-relaxed">{dialog.text}</p>
+              <p
+                className="leading-relaxed"
+                style={{
+                  fontSize: dialog.text_style?.font_size ? `${dialog.text_style.font_size}px` : undefined,
+                  fontFamily: dialog.text_style?.font_family || undefined,
+                  fontWeight: dialog.text_style?.font_weight ?? undefined,
+                  lineHeight: dialog.text_style?.line_height ?? undefined,
+                  letterSpacing:
+                    dialog.text_style?.letter_spacing != null
+                      ? `${dialog.text_style.letter_spacing}px`
+                      : undefined,
+                  textAlign: dialog.text_style?.text_align || undefined,
+                  margin: 0,
+                }}
+              >
+                {dialog.text}
+              </p>
 
               {/* Auto-pause play overlay */}
               {isPausedDialog && dialog.audio_url && !isPlayingAudio && (
@@ -351,12 +375,8 @@ export function PanelCard({
         })}
       </div>
 
-      {/* Background audio */}
-      {!compact && panel.background_audio_url && visibility.bgAudio && (
-        <div className="mt-3">
-          <AudioPlayer src={panel.background_audio_url} label="Suara Latar" />
-        </div>
-      )}
+      {/* Background audio is rendered centrally in VerticalScrollViewer
+          (music-icon toggle next to the playhead). No inline player here. */}
     </div>
   );
 }

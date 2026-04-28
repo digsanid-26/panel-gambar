@@ -135,7 +135,30 @@ export interface NarrationOverlay {
   bg_color: string;
   opacity: number;
   font_size?: number;
+  /** Legacy width control (% of canvas). Kept for backwards compatibility;
+   * superseded by box_width when present. */
   max_width?: number;
+  /** Explicit box width as % of canvas width. When set, overrides auto-fit. */
+  box_width?: number;
+  /** Explicit box height as % of canvas height. When set, overrides auto-fit. */
+  box_height?: number;
+  /** Typography controls */
+  font_family?: string;
+  font_weight?: number | string;
+  line_height?: number;
+  letter_spacing?: number;
+  text_align?: "left" | "center" | "right";
+}
+
+/** Per-dialog typography overrides. Stored as JSONB `text_style` on the
+ * `dialogs` table. All fields optional so existing rows render with defaults. */
+export interface DialogTextStyle {
+  font_family?: string;
+  font_size?: number;
+  font_weight?: number | string;
+  line_height?: number;
+  letter_spacing?: number;
+  text_align?: "left" | "center" | "right";
 }
 
 export interface Panel {
@@ -210,6 +233,12 @@ export interface CanvasLayer {
   fill?: string;
   /** Text alignment */
   textAlign?: "left" | "center" | "right";
+  /** Font weight (CSS weight number e.g. 400, 700, or keyword) */
+  fontWeight?: number | string;
+  /** Line height multiplier (e.g. 1.4) */
+  lineHeight?: number;
+  /** Letter spacing in px (CSS letter-spacing) */
+  letterSpacing?: number;
   // Speech bubble specific
   bubbleStyle?: "oval" | "cloud" | "jagged" | "rectangle";
   tailX?: number;
@@ -252,6 +281,8 @@ export interface Dialog {
   bubble_style: "oval" | "kotak" | "awan" | "ledakan";
   position_x: number;
   position_y: number;
+  /** Optional typography overrides for the dialog bubble text. */
+  text_style?: DialogTextStyle;
   created_at: string;
 }
 

@@ -94,6 +94,15 @@ export default function EditStoryPage() {
   const [dialogBubble, setDialogBubble] = useState<"kotak" | "oval" | "awan" | "ledakan">("kotak");
   const [dialogPosX, setDialogPosX] = useState(50);
   const [dialogPosY, setDialogPosY] = useState(20);
+  /** Optional per-dialog typography overrides. All fields nullable; an empty
+   * `dialogTextStyle` means "inherit panel/global defaults" and is persisted as
+   * NULL in the `dialogs.text_style` JSONB column. */
+  const [dialogFontFamily, setDialogFontFamily] = useState<string>("");
+  const [dialogFontSize, setDialogFontSize] = useState<string>("");
+  const [dialogFontWeight, setDialogFontWeight] = useState<string>("");
+  const [dialogLineHeight, setDialogLineHeight] = useState<string>("");
+  const [dialogLetterSpacing, setDialogLetterSpacing] = useState<string>("");
+  const [dialogTextAlign, setDialogTextAlign] = useState<"" | "left" | "center" | "right">("");
 
   useEffect(() => {
     loadData();
@@ -580,6 +589,7 @@ export default function EditStoryPage() {
     setSaving(true);
 
     const panel = panels.find((p) => p.id === panelId);
+    const text_style = buildDialogTextStyle();
     const { data, error } = await supabase
       .from("dialogs")
       .insert({
@@ -591,6 +601,7 @@ export default function EditStoryPage() {
         bubble_style: dialogBubble,
         position_x: dialogPosX,
         position_y: dialogPosY,
+        text_style,
       })
       .select()
       .single();
@@ -613,6 +624,7 @@ export default function EditStoryPage() {
     if (!editingDialogId || !dialogText.trim()) return;
     setSaving(true);
 
+    const text_style = buildDialogTextStyle();
     const { error } = await supabase
       .from("dialogs")
       .update({
@@ -622,6 +634,7 @@ export default function EditStoryPage() {
         bubble_style: dialogBubble,
         position_x: dialogPosX,
         position_y: dialogPosY,
+        text_style,
       })
       .eq("id", editingDialogId);
 
@@ -641,6 +654,7 @@ export default function EditStoryPage() {
                         bubble_style: dialogBubble,
                         position_x: dialogPosX,
                         position_y: dialogPosY,
+                        text_style: text_style ?? undefined,
                       }
                     : d
                 ),
@@ -663,7 +677,39 @@ export default function EditStoryPage() {
     setDialogBubble((dialog.bubble_style || "kotak") as "kotak" | "oval" | "awan" | "ledakan");
     setDialogPosX(dialog.position_x);
     setDialogPosY(dialog.position_y);
+    const ts = dialog.text_style;
+    setDialogFontFamily(ts?.font_family ?? "");
+    setDialogFontSize(ts?.font_size != null ? String(ts.font_size) : "");
+    setDialogFontWeight(ts?.font_weight != null ? String(ts.font_weight) : "");
+    setDialogLineHeight(ts?.line_height != null ? String(ts.line_height) : "");
+    setDialogLetterSpacing(ts?.letter_spacing != null ? String(ts.letter_spacing) : "");
+    setDialogTextAlign((ts?.text_align as "" | "left" | "center" | "right") || "");
     setShowDialogForm(panelId);
+  }
+
+  /** Build a `DialogTextStyle` JSON object from the form fields, returning
+   * `null` when no overrides are set so the DB column stays NULL. */
+  function buildDialogTextStyle(): Record<string, unknown> | null {
+    const out: Record<string, unknown> = {};
+    if (dialogFontFamily) out.font_family = dialogFontFamily;
+    if (dialogFontSize) {
+      const n = Number(dialogFontSize);
+      if (Number.isFinite(n)) out.font_size = n;
+    }
+    if (dialogFontWeight) {
+      const n = Number(dialogFontWeight);
+      out.font_weight = Number.isFinite(n) && String(n) === dialogFontWeight ? n : dialogFontWeight;
+    }
+    if (dialogLineHeight) {
+      const n = Number(dialogLineHeight);
+      if (Number.isFinite(n)) out.line_height = n;
+    }
+    if (dialogLetterSpacing) {
+      const n = Number(dialogLetterSpacing);
+      if (Number.isFinite(n)) out.letter_spacing = n;
+    }
+    if (dialogTextAlign) out.text_align = dialogTextAlign;
+    return Object.keys(out).length > 0 ? out : null;
   }
 
   function cancelDialogForm() {
@@ -674,6 +720,12 @@ export default function EditStoryPage() {
     setDialogBubble("kotak");
     setDialogPosX(50);
     setDialogPosY(20);
+    setDialogFontFamily("");
+    setDialogFontSize("");
+    setDialogFontWeight("");
+    setDialogLineHeight("");
+    setDialogLetterSpacing("");
+    setDialogTextAlign("");
     setShowDialogForm(null);
   }
 
@@ -1742,6 +1794,89 @@ export default function EditStoryPage() {
                             onChange={(e) => setDialogPosY(Number(e.target.value))}
                           />
                         </div>
+                        {/* Typography overrides for this dialog. All optional —
+                            empty values inherit defaults. */}
+                        <details className="rounded-lg border border-border bg-surface-alt/40 px-3 py-2">
+                          <summary className="cursor-pointer text-xs font-semibold text-foreground select-none">
+                            Tipografi (opsional)
+                          </summary>
+                          <div className="mt-2 grid grid-cols-2 gap-2">
+                            <div>
+                              <label className="text-[10px] text-muted block mb-0.5">Font Family</label>
+                              <select
+                                value={dialogFontFamily}
+                                onChange={(e) => setDialogFontFamily(e.target.value)}
+                                className="w-full text-xs px-2 py-1 rounded border border-border bg-surface-card text-foreground"
+                              >
+                                <option value="">Default</option>
+                                {[
+                                  "Arial","Helvetica","Times New Roman","Georgia",
+                                  "Courier New","Verdana","Trebuchet MS","Comic Sans MS",
+                                  "Impact","Tahoma","Palatino","Garamond","Inter","system-ui",
+                                ].map((f) => (
+                                  <option key={f} value={f} style={{ fontFamily: f }}>{f}</option>
+                                ))}
+                              </select>
+                            </div>
+                            <div>
+                              <label className="text-[10px] text-muted block mb-0.5">Font Size (px)</label>
+                              <input
+                                type="number" min={8} max={72} placeholder="auto"
+                                value={dialogFontSize}
+                                onChange={(e) => setDialogFontSize(e.target.value)}
+                                className="w-full text-xs px-2 py-1 rounded border border-border bg-surface-card text-foreground"
+                              />
+                            </div>
+                            <div>
+                              <label className="text-[10px] text-muted block mb-0.5">Font Weight</label>
+                              <select
+                                value={dialogFontWeight}
+                                onChange={(e) => setDialogFontWeight(e.target.value)}
+                                className="w-full text-xs px-2 py-1 rounded border border-border bg-surface-card text-foreground"
+                              >
+                                <option value="">Default</option>
+                                <option value="normal">Normal (400)</option>
+                                <option value="300">Light (300)</option>
+                                <option value="500">Medium (500)</option>
+                                <option value="600">Semibold (600)</option>
+                                <option value="bold">Bold (700)</option>
+                                <option value="800">Extra Bold (800)</option>
+                                <option value="900">Black (900)</option>
+                              </select>
+                            </div>
+                            <div>
+                              <label className="text-[10px] text-muted block mb-0.5">Line Height</label>
+                              <input
+                                type="number" step={0.05} min={0.8} max={3} placeholder="auto"
+                                value={dialogLineHeight}
+                                onChange={(e) => setDialogLineHeight(e.target.value)}
+                                className="w-full text-xs px-2 py-1 rounded border border-border bg-surface-card text-foreground"
+                              />
+                            </div>
+                            <div>
+                              <label className="text-[10px] text-muted block mb-0.5">Letter Spacing (px)</label>
+                              <input
+                                type="number" step={0.1} min={-5} max={20} placeholder="0"
+                                value={dialogLetterSpacing}
+                                onChange={(e) => setDialogLetterSpacing(e.target.value)}
+                                className="w-full text-xs px-2 py-1 rounded border border-border bg-surface-card text-foreground"
+                              />
+                            </div>
+                            <div>
+                              <label className="text-[10px] text-muted block mb-0.5">Rata Teks</label>
+                              <select
+                                value={dialogTextAlign}
+                                onChange={(e) => setDialogTextAlign(e.target.value as "" | "left" | "center" | "right")}
+                                className="w-full text-xs px-2 py-1 rounded border border-border bg-surface-card text-foreground"
+                              >
+                                <option value="">Default</option>
+                                <option value="left">Kiri</option>
+                                <option value="center">Tengah</option>
+                                <option value="right">Kanan</option>
+                              </select>
+                            </div>
+                          </div>
+                        </details>
                         <div className="flex items-center gap-2">
                           <Button
                             variant="primary"
@@ -1774,6 +1909,12 @@ export default function EditStoryPage() {
                           setDialogBubble("kotak");
                           setDialogPosX(50);
                           setDialogPosY(20);
+                          setDialogFontFamily("");
+                          setDialogFontSize("");
+                          setDialogFontWeight("");
+                          setDialogLineHeight("");
+                          setDialogLetterSpacing("");
+                          setDialogTextAlign("");
                         }}
                       >
                         <Plus className="w-4 h-4" />
