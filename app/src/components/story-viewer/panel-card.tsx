@@ -209,7 +209,9 @@ export function PanelCard({
           </div>
         </div>
 
-        {/* Narration overlay (inside panel) — timeline-aware */}
+        {/* Narration overlay (inside panel) — timeline-aware. Includes the
+            audio play button as a child so the player visually attaches to the
+            narration text and follows whatever position the user has set. */}
         {panel.narration_text && visibility.narration && (() => {
           const no: NarrationOverlay = panel.narration_overlay || {
             position_x: 50, position_y: 85, font_color: "#ffffff",
@@ -239,28 +241,32 @@ export function PanelCard({
               }}
             >
               <p style={{ margin: 0 }}>{panel.narration_text}</p>
+              {!compact && panel.narration_audio_url && (
+                <div className="mt-1.5 flex justify-end" style={{ opacity: 1 }}>
+                  <AudioPlayer
+                    src={panel.narration_audio_url}
+                    compact
+                    label="Narasi"
+                    className="shadow-md !bg-black/40 !text-white hover:!bg-black/60"
+                  />
+                </div>
+              )}
             </div>
           );
         })()}
 
-        {/* Narration audio controls (inside panel, bottom-left) */}
-        {!compact && (panel.narration_audio_url || (user && user.role === "siswa" && onSaveRecording && panel.narration_text)) && visibility.narration && (
+        {/* Narration recorder (siswa only) — kept at bottom-left so it does
+            not crowd the narration overlay during reading. */}
+        {!compact && user && user.role === "siswa" && onSaveRecording && panel.narration_text && visibility.narration && (
           <div className="absolute bottom-2 left-2 z-20 flex flex-col items-start gap-1">
-            <div className="flex items-center gap-1.5">
-              {panel.narration_audio_url && (
-                <AudioPlayer src={panel.narration_audio_url} compact label="Narasi" className="shadow-md !bg-black/60 !text-white hover:!bg-black/80" />
-              )}
-              {user && user.role === "siswa" && onSaveRecording && panel.narration_text && (
-                <button
-                  onClick={() => setShowRecorder(showRecorder === "narration" ? null : "narration")}
-                  className="inline-flex items-center gap-1 px-3 py-1.5 rounded-full text-xs font-semibold bg-black/60 text-white hover:bg-black/80 transition-colors shadow-md"
-                >
-                  <Mic className="w-3 h-3" />
-                  Rekam Narasi
-                </button>
-              )}
-            </div>
-            {showRecorder === "narration" && onSaveRecording && (
+            <button
+              onClick={() => setShowRecorder(showRecorder === "narration" ? null : "narration")}
+              className="inline-flex items-center gap-1 px-3 py-1.5 rounded-full text-xs font-semibold bg-black/60 text-white hover:bg-black/80 transition-colors shadow-md"
+            >
+              <Mic className="w-3 h-3" />
+              Rekam Narasi
+            </button>
+            {showRecorder === "narration" && (
               <div className="w-64 bg-surface-card/95 backdrop-blur-sm rounded-lg border border-border p-2 shadow-lg">
                 <AudioRecorder
                   onSave={(blob) => { onSaveRecording(blob); setShowRecorder(null); }}

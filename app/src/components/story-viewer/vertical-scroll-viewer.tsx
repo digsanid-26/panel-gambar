@@ -160,8 +160,12 @@ export function VerticalScrollViewer({ panels, user, onSaveRecording, storyChara
     setCurrentIndex(0);
   }, [getScroller, getScrollTop]);
 
+  /** Minimal shape needed to fire a trigger — accepts both real timeline items
+   * and synthesized EffectiveItems. */
+  type TriggerLike = Pick<PanelTimelineItem, "id" | "type" | "label"> & { ref_id?: string };
+
   // Resolve a trigger's audio source URL
-  function resolveTriggerAudio(panel: Panel, item: PanelTimelineItem): string | null {
+  function resolveTriggerAudio(panel: Panel, item: TriggerLike): string | null {
     if (item.type === "narration-audio") return panel.narration_audio_url || null;
     if (item.type === "background-audio") return panel.background_audio_url || null;
     if (item.type === "dialog" && item.ref_id) {
@@ -172,7 +176,7 @@ export function VerticalScrollViewer({ panels, user, onSaveRecording, storyChara
   }
 
   // Fire a trigger: pause scroll if pausing, play audio, resume on ended
-  const fireTrigger = useCallback((panel: Panel, item: PanelTimelineItem) => {
+  const fireTrigger = useCallback((panel: Panel, item: TriggerLike) => {
     const audioUrl = resolveTriggerAudio(panel, item);
     const isPausing = PAUSING_TRIGGER_TYPES.includes(item.type);
 
@@ -252,12 +256,29 @@ export function VerticalScrollViewer({ panels, user, onSaveRecording, storyChara
     }
   }, []);
 
-  /** Scan all panels and fire any newly-crossed triggers based on viewport playhead at 50vh. */
+  /** Scan all panels and fire any newly-crossed triggers based on viewport
+   * playhead at 50vh. Pause-triggers (narration / dialog / ar-trigger) are
+   * anchored to their actual on-screen position inside the panel, not to the
+   * `timeline_data.start` time. This means: place a narration overlay at y=50%
+   * of a panel and it will pause-fire exactly when its center crosses the
+   * playhead, regardless of whether timeline_data has been configured. If the
+   * panel has narration_audio_url or any dialog audio_url, implicit triggers
+   * are synthesized automatically. */
   const scanTriggers = useCallback(() => {
     if (firing?.pausing) return; // don't fire while already paused
 
     const playheadY = window.innerHeight / 2;
     let activeBgPanelId: string | null = null;
+
+    type EffectiveItem = {
+      id: string;
+      type: PanelTimelineItem["type"];
+      label: string;
+      ref_id?: string;
+      /** Effective trigger time in seconds (anchored to visual y for
+       * narration/dialog, or to timeline `start` for everything else). */
+      start: number;
+    };
 
     for (let i = 0; i < panels.length; i++) {
       const panel = panels[i];
@@ -277,41 +298,90 @@ export function VerticalScrollViewer({ panels, user, onSaveRecording, storyChara
       }
 
       const tl = (panel.timeline_data as PanelTimelineItem[] | undefined) || [];
-      if (tl.length === 0) continue;
-
       const dur = getPanelDuration(panel);
       const height = rect.height;
       if (height <= 0 || dur <= 0) continue;
 
-      // Where is the playhead inside this panel? (in panel-local px)
+      // Build effective trigger list. Narration & dialog triggers are anchored
+      // to their visual y position inside the panel; other timeline items are
+      // preserved as-is.
+      const effective: EffectiveItem[] = [];
+
+      // Narration: anchor to overlay position_y. Synthesized if no timeline
+      // entry exists but the panel has narration audio.
+      const narrTimelineItem = tl.find((it) => it.type === "narration-audio");
+      if (panel.narration_audio_url || narrTimelineItem) {
+        const yPct = panel.narration_overlay?.position_y ?? 85;
+        effective.push({
+          id: narrTimelineItem?.id || `__narration__${panel.id}`,
+          type: "narration-audio",
+          label: narrTimelineItem?.label || "Narasi",
+          start: (Math.max(0, Math.min(100, yPct)) / 100) * dur,
+        });
+      }
+
+      // Dialogs: anchor to dialog.position_y. Each dialog with audio_url gets
+      // an effective trigger.
+      for (const dialog of panel.dialogs || []) {
+        if (!dialog.audio_url) continue;
+        const dlgTimelineItem = tl.find((it) => it.type === "dialog" && it.ref_id === dialog.id);
+        const yPct = dialog.position_y ?? 50;
+        effective.push({
+          id: dlgTimelineItem?.id || `__dialog__${dialog.id}`,
+          type: "dialog",
+          label: dlgTimelineItem?.label || `Dialog: ${dialog.character_name}`,
+          ref_id: dialog.id,
+          start: (Math.max(0, Math.min(100, yPct)) / 100) * dur,
+        });
+      }
+
+      // Other timeline items (ar-trigger, background-audio, image, bubble) —
+      // preserve their original start time.
+      for (const item of tl) {
+        if (item.type === "panel") continue;
+        if (item.type === "narration-audio") continue; // handled above
+        if (item.type === "dialog") continue;          // handled above
+        effective.push({
+          id: item.id,
+          type: item.type,
+          label: item.label,
+          ref_id: item.ref_id,
+          start: item.start,
+        });
+      }
+
+      if (effective.length === 0) continue;
+
+      // Where is the playhead inside this panel? (in panel-local px → time)
       const yInside = playheadY - rect.top;
-      // Convert to panel-time
       const tNow = Math.max(-0.5, Math.min(dur + 0.5, (yInside / height) * dur));
 
       const prevT = playheadTimesRef.current[panel.id];
       const fired = firedRef.current[panel.id] || new Set<string>();
 
-      // Determine which panel currently owns the bg-audio slot — the topmost
-      // visible panel whose bg-audio is past start.
-      const bgItem = tl.find((it) => it.type === "background-audio");
-      if (bgItem && tNow >= bgItem.start && tNow <= bgItem.start + bgItem.duration) {
-        activeBgPanelId = panel.id;
+      // Determine which panel currently owns the bg-audio slot.
+      const bgItem = effective.find((it) => it.type === "background-audio");
+      if (bgItem) {
+        const bgTl = tl.find((it) => it.id === bgItem.id);
+        const bgDur = bgTl?.duration ?? dur;
+        if (tNow >= bgItem.start && tNow <= bgItem.start + bgDur) {
+          activeBgPanelId = panel.id;
+        }
       }
 
-      // Forward crossing detection: for each trigger, fire if prev < t.start <= now
-      // and not already fired.
+      // Forward crossing detection: fire any effective items whose `start`
+      // crossed the playhead between prevT and tNow.
       if (typeof prevT === "number" && tNow > prevT) {
-        for (const item of tl) {
-          if (item.type === "panel") continue;
+        // Sort by start to fire in visual order.
+        const sorted = [...effective].sort((a, b) => a.start - b.start);
+        for (const item of sorted) {
           if (fired.has(item.id)) continue;
           if (item.start > prevT && item.start <= tNow) {
-            // Fire!
             fired.add(item.id);
             firedRef.current[panel.id] = fired;
-            // Manage bg-audio specially — don't pause
             fireTrigger(panel, item);
             if (PAUSING_TRIGGER_TYPES.includes(item.type)) {
-              // Stop scanning further: a pause has been requested
+              // A pause was requested — stop scanning until resumed.
               playheadTimesRef.current[panel.id] = tNow;
               return;
             }
