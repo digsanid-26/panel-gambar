@@ -118,15 +118,20 @@ export default function HomePage() {
               Media Pembelajaran Interaktif SD
             </div>
             <h1 className="hero-title text-4xl sm:text-5xl lg:text-7xl font-black text-foreground leading-tight tracking-tight">
-              PANEL GAMBAR{" "}
+              PADU{" "}
               <span className="text-primary relative">
-                BERSUARA
+                — Panel Gambar Edukatif
                 <span className="absolute -bottom-2 left-0 right-0 h-1 bg-primary/40 rounded-full" />
               </span>
             </h1>
             <p className="hero-desc mt-6 text-lg sm:text-xl text-muted leading-relaxed max-w-2xl mx-auto">
               Bangun kecintaan membaca dan menyuarakan Bahasa Indonesia
               melalui cerita bergambar interaktif untuk siswa Sekolah Dasar.
+            </p>
+            <p className="hero-desc mt-4 text-sm sm:text-base text-muted/80 leading-relaxed max-w-2xl mx-auto">
+              Aplikasi ini disusun oleh :<br />
+              1. MARIA ULFAH<br />
+              2. AKBAR AL MASJID
             </p>
             <div className="hero-buttons mt-10 flex flex-col sm:flex-row items-center justify-center gap-4">
               <Link href="/register">

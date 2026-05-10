@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, useCallback } from "react";
+import { useEffect, useState, useCallback, useMemo } from "react";
 import type { Asset, AssetType, AssetVisibility } from "@/lib/types";
 import {
   listAssets,
@@ -71,12 +71,21 @@ export function AssetPickerModal({
   const [activeType, setActiveType] = useState<AssetType | "all">("all");
   const [uploading, setUploading] = useState(false);
 
-  // Determine which type tabs to show
-  const allowedTypes: AssetType[] = Array.isArray(type)
-    ? type
-    : type
-      ? [type]
-      : ["avatar", "image", "video", "audio", "model_3d", "document", "other"];
+  // Determine which type tabs to show. Memoized so the array identity is
+  // stable across renders — otherwise the `reload` useCallback below would get
+  // a new identity on every render, the effect that calls it would re-fire in
+  // an infinite loop, the modal would flicker, and parallel `supabase.auth
+  // .getUser()` calls inside `listAssets` would fight over the auth lock
+  // ("Lock ... was released because another request stole it").
+  const allowedTypes = useMemo<AssetType[]>(
+    () =>
+      Array.isArray(type)
+        ? type
+        : type
+          ? [type]
+          : ["avatar", "image", "video", "audio", "model_3d", "document", "other"],
+    [type]
+  );
 
   const reload = useCallback(async () => {
     if (!open) return;

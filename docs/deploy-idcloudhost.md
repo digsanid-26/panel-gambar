@@ -329,6 +329,18 @@ npm install
 npm run build
 pm2 restart panel-gambar
 
+
+# 2. Deploy
+cd ~/panel-gambar/app
+git pull origin main
+npm run build
+pm2 restart panel-gambar
+
+# Kalau server mati/restart
+cd ~/panel-gambar/app
+pm2 start ../ecosystem.config.js
+pm2 save
+
 ```
 
 Buat script untuk mempermudah:

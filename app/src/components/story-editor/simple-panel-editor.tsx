@@ -41,6 +41,10 @@ export function SimplePanelEditor({
   onNarrationOverlayChange,
 }: SimplePanelEditorProps) {
   const containerRef = useRef<HTMLDivElement>(null);
+  /** File input for the "Ganti" (replace image) button. We trigger it via ref
+   * because wrapping a real <button> inside a <label> doesn't forward the
+   * click to the contained <input type="file"> — the button swallows it. */
+  const replaceInputRef = useRef<HTMLInputElement>(null);
   const [dragging, setDragging] = useState<{
     target: DragTarget;
     startX: number;
@@ -160,12 +164,31 @@ export function SimplePanelEditor({
         {panel.image_url ? (
           <>
             <img src={panel.image_url} alt="Panel" className="w-full h-full object-cover" draggable={false} />
-            <label className="absolute bottom-2 right-2 cursor-pointer z-30">
-              <Button variant="outline" size="sm" className="bg-surface-card/90 backdrop-blur-sm" type="button">
+            <div className="absolute bottom-2 right-2 z-30">
+              <Button
+                variant="outline"
+                size="sm"
+                className="bg-surface-card/90 backdrop-blur-sm"
+                type="button"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  replaceInputRef.current?.click();
+                }}
+              >
                 <Upload className="w-4 h-4" /> Ganti
               </Button>
-              <input type="file" accept="image/*" className="hidden" onChange={(e) => { const f = e.target.files?.[0]; if (f) onUploadImage(f); }} />
-            </label>
+              <input
+                ref={replaceInputRef}
+                type="file"
+                accept="image/*"
+                className="hidden"
+                onChange={(e) => {
+                  const f = e.target.files?.[0];
+                  if (f) onUploadImage(f);
+                  e.target.value = "";
+                }}
+              />
+            </div>
           </>
         ) : (
           <label className="flex flex-col items-center justify-center w-full h-full cursor-pointer hover:bg-primary/5 transition-colors">
