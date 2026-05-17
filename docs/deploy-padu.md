@@ -283,6 +283,7 @@ module.exports = {
       env: {
         NODE_ENV: "production",
         PORT: 3000,
+        UMASK: "0022",
       },
       error_file: "/home/digsanid/.pm2/logs/padu-edu-error.log",
       out_file: "/home/digsanid/.pm2/logs/padu-edu-out.log",

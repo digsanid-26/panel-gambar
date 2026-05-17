@@ -32,10 +32,12 @@ export async function POST(request: NextRequest) {
     const destPath = join(UPLOAD_DIR, bucket, filename.replace(/\//g, "/"));
     const destFile = join(UPLOAD_DIR, bucket, ...filename.split("/"));
 
-    await mkdir(join(UPLOAD_DIR, bucket, ...filename.split("/").slice(0, -1)), { recursive: true });
+    await mkdir(join(UPLOAD_DIR, bucket, ...filename.split("/").slice(0, -1)), { recursive: true, mode: 0o755 });
 
+    const prevUmask = process.umask(0o022);
     const arrayBuffer = await file.arrayBuffer();
-    await writeFile(destFile, Buffer.from(arrayBuffer));
+    await writeFile(destFile, Buffer.from(arrayBuffer), { mode: 0o644 });
+    process.umask(prevUmask);
 
     const publicUrl = `/uploads/${bucket}/${filename}`;
     return NextResponse.json({ url: publicUrl });
