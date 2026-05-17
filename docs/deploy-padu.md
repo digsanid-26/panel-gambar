@@ -149,10 +149,14 @@ docker ps
 
 ## Langkah 5 — Clone Repository & Install
 
+> **Repo private** — gunakan Personal Access Token (PAT) GitHub atau SSH key.
+> Buat PAT di: GitHub → Settings → Developer settings → Personal access tokens → Fine-grained → repo scope.
+
 ```bash
 cd ~
-git clone https://github.com/digsanid-26/panel-gambar.git
-cd panel-gambar/app
+# Gunakan PAT di URL (ganti YOUR_PAT)
+git clone https://YOUR_PAT@github.com/digsanid-26/padu-edu.git
+cd padu-edu/app
 npm install
 ```
 
@@ -161,7 +165,7 @@ npm install
 ## Langkah 6 — Konfigurasi Environment Variables
 
 ```bash
-nano ~/panel-gambar/app/.env
+nano ~/padu-edu/app/.env
 ```
 
 Isi dengan:
@@ -195,7 +199,7 @@ Simpan: `Ctrl+O` → `Enter` → `Ctrl+X`
 Push schema Prisma ke PostgreSQL:
 
 ```bash
-cd ~/panel-gambar/app
+cd ~/padu-edu/app
 npx prisma db push
 ```
 
@@ -217,7 +221,7 @@ npm run build
 ## Langkah 8 — Build Aplikasi
 
 ```bash
-cd ~/panel-gambar/app
+cd ~/padu-edu/app
 npm run build
 ```
 
@@ -230,7 +234,7 @@ Pastikan output menampilkan `✓ Compiled successfully`.
 Buat ecosystem config di root project:
 
 ```bash
-nano ~/panel-gambar/ecosystem.config.js
+nano ~/padu-edu/ecosystem.config.js
 ```
 
 Isi:
@@ -240,7 +244,7 @@ module.exports = {
   apps: [
     {
       name: "panel-gambar",
-      cwd: "/home/digsanid/panel-gambar/app",
+      cwd: "/home/digsanid/padu-edu/app",
       script: "node_modules/.bin/next",
       args: "start -p 3000",
       instances: 1,
@@ -250,8 +254,8 @@ module.exports = {
         NODE_ENV: "production",
         PORT: 3000,
       },
-      error_file: "/home/digsanid/.pm2/logs/panel-gambar-error.log",
-      out_file: "/home/digsanid/.pm2/logs/panel-gambar-out.log",
+      error_file: "/home/digsanid/.pm2/logs/padu-edu-error.log",
+      out_file: "/home/digsanid/.pm2/logs/padu-edu-out.log",
       log_date_format: "YYYY-MM-DD HH:mm:ss",
     },
   ],
@@ -261,7 +265,7 @@ module.exports = {
 Jalankan:
 
 ```bash
-cd ~/panel-gambar
+cd ~/padu-edu
 pm2 start ecosystem.config.js
 
 # Verifikasi
@@ -302,7 +306,7 @@ server {
 
     # Static uploads dari disk lokal
     location /uploads/ {
-        alias /home/digsanid/panel-gambar/app/public/uploads/;
+        alias /home/digsanid/padu-edu/app/public/uploads/;
         expires 30d;
         add_header Cache-Control "public, immutable";
     }
@@ -405,7 +409,7 @@ Akun demo yang dibuat:
 Buat script untuk update/redeploy:
 
 ```bash
-nano ~/panel-gambar/deploy.sh
+nano ~/padu-edu/deploy.sh
 ```
 
 Isi:
@@ -414,7 +418,7 @@ Isi:
 #!/bin/bash
 set -e
 
-APP_DIR="/home/digsanid/panel-gambar"
+APP_DIR="/home/digsanid/padu-edu"
 
 echo "==> Pulling latest code..."
 cd "$APP_DIR"
@@ -439,13 +443,13 @@ echo "✅ Deploy selesai! https://padu.digsan.id"
 ```
 
 ```bash
-chmod +x ~/panel-gambar/deploy.sh
+chmod +x ~/padu-edu/deploy.sh
 ```
 
 Jalankan deploy:
 
 ```bash
-~/panel-gambar/deploy.sh
+~/padu-edu/deploy.sh
 ```
 
 ---
@@ -470,7 +474,7 @@ docker logs panel_postgres
 
 # Disk usage
 df -h
-du -sh ~/panel-gambar/app/public/uploads/
+du -sh ~/padu-edu/app/public/uploads/
 ```
 
 ---
@@ -532,8 +536,8 @@ docker exec panel_postgres psql -U postgres -d panel_gambar -c "\dt"
 
 ```bash
 # Pastikan folder uploads ada dan writable
-mkdir -p ~/panel-gambar/app/public/uploads
-chmod 755 ~/panel-gambar/app/public/uploads
+mkdir -p ~/padu-edu/app/public/uploads
+chmod 755 ~/padu-edu/app/public/uploads
 ```
 
 ### SSL gagal renew
