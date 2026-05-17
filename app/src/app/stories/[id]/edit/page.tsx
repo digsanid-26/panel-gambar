@@ -25,6 +25,7 @@ import { ElementManager } from "@/components/story-editor/element-manager";
 import { KurikulumMerdekaSection } from "@/components/story-editor/kurikulum-merdeka-section";
 import {
   ArrowLeft,
+  Check,
   ChevronDown,
   ChevronUp,
   Eye,
@@ -107,6 +108,8 @@ export default function EditStoryPage() {
   const [showPanelTypeMenu, setShowPanelTypeMenu] = useState(false);
   const [uploadingCover, setUploadingCover] = useState(false);
   const [uploadingVideo, setUploadingVideo] = useState(false);
+  const [autoSaveStatus, setAutoSaveStatus] = useState<"idle" | "saving" | "saved">("idle");
+  const autoSaveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // Dynamic options from DB
   const [themes, setThemes] = useState<Theme[]>([]);
@@ -216,7 +219,17 @@ export default function EditStoryPage() {
     setUploadingVideo(false);
   }
 
+  function triggerAutoSave() {
+    setAutoSaveStatus("saving");
+    if (autoSaveTimerRef.current) clearTimeout(autoSaveTimerRef.current);
+    autoSaveTimerRef.current = setTimeout(() => {
+      setAutoSaveStatus("saved");
+      autoSaveTimerRef.current = setTimeout(() => setAutoSaveStatus("idle"), 3000);
+    }, 800);
+  }
+
   async function updateStoryField(field: string, value: unknown) {
+    triggerAutoSave();
     await fetch(`/api/stories/${storyId}`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ [field]: value }) });
     setStory((s) => s ? { ...s, [field]: value } as Story : s);
   }
@@ -518,6 +531,7 @@ export default function EditStoryPage() {
   }
 
   async function updatePanelField(panelId: string, field: string, value: string) {
+    triggerAutoSave();
     await patchPanel(panelId, { [field]: value });
     setPanels(prev => prev.map((p) => (p.id === panelId ? { ...p, [field]: value } : p)));
   }
@@ -936,7 +950,15 @@ export default function EditStoryPage() {
                   {story.status === "published" ? "Terbit" : "Draft"}
                 </Badge>
               </div>
-              <p className="text-sm text-muted">{panels.length} panel</p>
+              <p className="text-sm text-muted flex items-center gap-1.5">
+                {panels.length} panel
+                {autoSaveStatus === "saving" && (
+                  <span className="flex items-center gap-1 text-muted text-xs"><Loader2 className="w-3 h-3 animate-spin" />Menyimpan...</span>
+                )}
+                {autoSaveStatus === "saved" && (
+                  <span className="flex items-center gap-1 text-success text-xs"><Check className="w-3 h-3" />Tersimpan</span>
+                )}
+              </p>
             </div>
           </div>
           <div className="flex items-center gap-2">
