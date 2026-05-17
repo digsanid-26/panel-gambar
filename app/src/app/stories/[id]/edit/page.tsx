@@ -970,6 +970,22 @@ export default function EditStoryPage() {
         {/* Story Metadata Section */}
         {showMetadata && (
           <div className="bg-surface-card rounded-xl border border-border p-5 mb-6 space-y-5">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <DebouncedInput
+                id="edit-title"
+                label="Judul Cerita"
+                placeholder="Judul cerita..."
+                value={story.title}
+                onCommit={(v) => updateStoryField("title", v)}
+              />
+              <DebouncedInput
+                id="edit-description"
+                label="Deskripsi"
+                placeholder="Deskripsi singkat cerita..."
+                value={story.description}
+                onCommit={(v) => updateStoryField("description", v)}
+              />
+            </div>
             <div className="grid md:grid-cols-2 gap-5">
               <CoverImageUploader
                 currentUrl={story.cover_image_url}
