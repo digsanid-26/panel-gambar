@@ -4,10 +4,11 @@ import Google from "next-auth/providers/google";
 import { PrismaAdapter } from "@auth/prisma-adapter";
 import { prisma } from "@/lib/db";
 import bcrypt from "bcryptjs";
+import { authConfig } from "./auth.config";
 
 export const { handlers, signIn, signOut, auth } = NextAuth({
+  ...authConfig,
   adapter: PrismaAdapter(prisma),
-  session: { strategy: "jwt" },
   providers: [
     Google({
       clientId: process.env.GOOGLE_CLIENT_ID!,
@@ -70,9 +71,5 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
         data: { role: "siswa" },
       });
     },
-  },
-  pages: {
-    signIn: "/login",
-    newUser: "/auth/role-select",
   },
 });
