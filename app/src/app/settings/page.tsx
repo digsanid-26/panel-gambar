@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import { createClient } from "@/lib/supabase/client";
+import { useSession } from "next-auth/react";
 import type { Theme, Level, TargetClass, UserProfile } from "@/lib/types";
 import { Navbar } from "@/components/layout/navbar";
 import { Button } from "@/components/ui/button";
@@ -34,7 +34,7 @@ const emptyForm: ItemForm = { name: "", label: "", description: "" };
 
 export default function SettingsPage() {
   const router = useRouter();
-  const supabase = createClient();
+  const { data: session, status } = useSession();
   const [user, setUser] = useState<UserProfile | null>(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -53,41 +53,31 @@ export default function SettingsPage() {
   const [savingSocial, setSavingSocial] = useState(false);
 
   useEffect(() => {
-    async function load() {
-      const { data: { user: authUser } } = await supabase.auth.getUser();
-      if (!authUser) { router.push("/login"); return; }
+    if (status === "loading") return;
+    if (!session?.user) { router.push("/login"); return; }
 
-      const { data: profile } = await supabase.from("profiles").select("*").eq("id", authUser.id).single();
-      if (!profile || (profile.role !== "guru" && profile.role !== "admin")) {
-        router.push("/dashboard");
-        return;
-      }
+    async function load() {
+      const profileRes = await fetch("/api/profile");
+      if (!profileRes.ok) { router.push("/login"); return; }
+      const profile = await profileRes.json();
+      if (profile.role !== "guru" && profile.role !== "admin") { router.push("/dashboard"); return; }
       setUser(profile as UserProfile);
 
-      const [tRes, lRes, cRes] = await Promise.all([
-        supabase.from("themes").select("*").order("sort_order"),
-        supabase.from("levels").select("*").order("sort_order"),
-        supabase.from("target_classes").select("*").order("sort_order"),
+      const [themes, levels, classes, setting] = await Promise.all([
+        fetch("/api/themes").then((r) => r.json()),
+        fetch("/api/levels").then((r) => r.json()),
+        fetch("/api/target-classes").then((r) => r.json()),
+        fetch("/api/settings?key=google_auth_enabled").then((r) => r.json()),
       ]);
 
-      setThemes((tRes.data || []) as Theme[]);
-      setLevels((lRes.data || []) as Level[]);
-      setTargetClasses((cRes.data || []) as TargetClass[]);
-
-      // Load social connect settings
-      const { data: settings } = await supabase
-        .from("app_settings")
-        .select("value")
-        .eq("key", "google_auth_enabled")
-        .single();
-      if (settings) {
-        setGoogleAuthEnabled(settings.value === "true");
-      }
-
+      setThemes(themes as Theme[]);
+      setLevels(levels as Level[]);
+      setTargetClasses(classes as TargetClass[]);
+      if (setting?.value === "true") setGoogleAuthEnabled(true);
       setLoading(false);
     }
     load();
-  }, []);
+  }, [session, status, router]);
 
   function getTable() {
     return activeTab === "themes" ? "themes" : activeTab === "levels" ? "levels" : "target_classes";
@@ -111,29 +101,24 @@ export default function SettingsPage() {
     const slug = form.name.toLowerCase().replace(/\s+/g, "-").replace(/[^a-z0-9-]/g, "");
 
     if (editingId) {
-      const { error } = await supabase.from(table).update({
-        name: slug,
-        label: form.label,
-        description: form.description || null,
-      }).eq("id", editingId);
-
-      if (!error) {
+      const res = await fetch(`/api/settings/${table}/${editingId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name: slug, label: form.label, description: form.description || null }),
+      });
+      if (res.ok) {
         setItems(items.map((item) =>
-          item.id === editingId
-            ? { ...item, name: slug, label: form.label, description: form.description }
-            : item
+          item.id === editingId ? { ...item, name: slug, label: form.label, description: form.description } : item
         ) as typeof items);
       }
     } else {
-      const { data, error } = await supabase.from(table).insert({
-        name: slug,
-        label: form.label,
-        description: form.description || null,
-        sort_order: items.length,
-        is_active: true,
-      }).select().single();
-
-      if (data && !error) {
+      const res = await fetch(`/api/settings/${table}`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name: slug, label: form.label, description: form.description || null, sort_order: items.length, is_active: true }),
+      });
+      if (res.ok) {
+        const data = await res.json();
         setItems([...items, data] as typeof items);
       }
     }
@@ -147,13 +132,17 @@ export default function SettingsPage() {
   async function handleDelete(id: string) {
     if (!confirm("Hapus item ini?")) return;
     const table = getTable();
-    await supabase.from(table).delete().eq("id", id);
+    await fetch(`/api/settings/${table}/${id}`, { method: "DELETE" });
     setItems(getItems().filter((item) => item.id !== id) as typeof themes);
   }
 
   async function toggleActive(id: string, currentActive: boolean) {
     const table = getTable();
-    await supabase.from(table).update({ is_active: !currentActive }).eq("id", id);
+    await fetch(`/api/settings/${table}/${id}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ is_active: !currentActive }),
+    });
     setItems(getItems().map((item) =>
       item.id === id ? { ...item, is_active: !currentActive } : item
     ) as typeof themes);
@@ -173,7 +162,11 @@ export default function SettingsPage() {
 
     const table = getTable();
     await Promise.all(items.map((item, i) =>
-      supabase.from(table).update({ sort_order: i }).eq("id", item.id)
+      fetch(`/api/settings/${table}/${item.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ sort_order: i }),
+      })
     ));
   }
 
@@ -197,11 +190,11 @@ export default function SettingsPage() {
   async function toggleGoogleAuth() {
     setSavingSocial(true);
     const newVal = !googleAuthEnabled;
-    await supabase.from("app_settings").upsert({
-      key: "google_auth_enabled",
-      value: String(newVal),
-      updated_at: new Date().toISOString(),
-    }, { onConflict: "key" });
+    await fetch("/api/settings", {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ key: "google_auth_enabled", value: String(newVal) }),
+    });
     setGoogleAuthEnabled(newVal);
     setSavingSocial(false);
   }

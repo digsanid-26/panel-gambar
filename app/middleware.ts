@@ -1,12 +1,34 @@
-import { updateSession } from "@/lib/supabase/middleware";
-import { type NextRequest } from "next/server";
+import { auth } from "@/auth";
+import { NextResponse } from "next/server";
 
-export async function middleware(request: NextRequest) {
-  return await updateSession(request);
-}
+export default auth((req) => {
+  const { pathname } = req.nextUrl;
+  const user = req.auth?.user;
+
+  const protectedPaths = ["/dashboard", "/stories/create", "/live/create", "/settings", "/school"];
+  const isProtected = protectedPaths.some((p) => pathname.startsWith(p));
+
+  const storyEditPattern = /^\/stories\/[^/]+\/edit/;
+  const isStoryEdit = storyEditPattern.test(pathname);
+
+  if ((isProtected || isStoryEdit) && !user) {
+    const url = req.nextUrl.clone();
+    url.pathname = "/login";
+    url.searchParams.set("redirect", pathname);
+    return NextResponse.redirect(url);
+  }
+
+  const authPaths = ["/login", "/register"];
+  const isAuthPath = authPaths.some((p) => pathname.startsWith(p));
+  if (isAuthPath && user) {
+    const url = req.nextUrl.clone();
+    url.pathname = "/dashboard";
+    return NextResponse.redirect(url);
+  }
+
+  return NextResponse.next();
+});
 
 export const config = {
-  matcher: [
-    "/((?!_next/static|_next/image|favicon.ico|.*\\.(?:svg|png|jpg|jpeg|gif|webp)$).*)",
-  ],
+  matcher: ["/((?!_next/static|_next/image|favicon.ico|uploads|.*\\.(?:svg|png|jpg|jpeg|gif|webp)$).*)"],
 };

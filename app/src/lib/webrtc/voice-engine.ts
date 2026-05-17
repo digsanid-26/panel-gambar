@@ -1,17 +1,14 @@
 /**
  * WebRTC Voice Engine for Live Sessions
- * 
+ *
  * Uses a mesh topology: each participant connects directly to every other participant.
- * Supabase Realtime Broadcast is used as the signaling channel (no dedicated server needed).
- * 
- * Flow:
- *  1. User joins a Supabase Realtime channel for the session
- *  2. When a new peer appears (via presence), an RTCPeerConnection is created
- *  3. Offer/answer/ICE candidates are exchanged via broadcast
- *  4. Audio streams flow peer-to-peer
+ * A SignalingChannel (polling-based) is used for offer/answer/ICE exchange.
  */
 
-import type { RealtimeChannel } from "@supabase/supabase-js";
+export interface SignalingChannel {
+  on(type: string, filter: { event: string } | string, handler: (msg: { payload: unknown }) => void): this;
+  send(payload: { type: string; event: string; payload: unknown; to_user_id?: string }): void;
+}
 
 export interface PeerState {
   userId: string;
@@ -36,7 +33,7 @@ const ICE_SERVERS: RTCIceServer[] = [
 ];
 
 export class VoiceEngine {
-  private channel: RealtimeChannel;
+  private channel: SignalingChannel;
   private myUserId: string;
   private myUserName: string;
   private peers: Map<string, PeerState> = new Map();
@@ -47,7 +44,7 @@ export class VoiceEngine {
   private analyserIntervals: Map<string, number> = new Map();
 
   constructor(
-    channel: RealtimeChannel,
+    channel: SignalingChannel,
     myUserId: string,
     myUserName: string,
     callbacks: VoiceEngineCallbacks = {}

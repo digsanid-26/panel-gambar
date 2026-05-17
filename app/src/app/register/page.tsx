@@ -4,7 +4,7 @@ import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import Image from "next/image";
-import { createClient } from "@/lib/supabase/client";
+import { signIn } from "next-auth/react";
 import { Navbar } from "@/components/layout/navbar";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -21,32 +21,16 @@ export default function RegisterPage() {
   const [googleEnabled, setGoogleEnabled] = useState(false);
 
   useEffect(() => {
-    async function checkGoogleAuth() {
-      const supabase = createClient();
-      const { data } = await supabase
-        .from("app_settings")
-        .select("value")
-        .eq("key", "google_auth_enabled")
-        .single();
-      if (data?.value === "true") setGoogleEnabled(true);
-    }
-    checkGoogleAuth();
+    fetch("/api/settings?key=google_auth_enabled")
+      .then((r) => r.json())
+      .then((d) => { if (d.value === "true") setGoogleEnabled(true); })
+      .catch(() => {});
   }, []);
 
   async function handleGoogleRegister() {
     setError("");
     setLoading(true);
-    const supabase = createClient();
-    const { error: oauthError } = await supabase.auth.signInWithOAuth({
-      provider: "google",
-      options: {
-        redirectTo: `${window.location.origin}/auth/callback`,
-      },
-    });
-    if (oauthError) {
-      setError("Gagal mendaftar dengan Google. Silakan coba lagi.");
-      setLoading(false);
-    }
+    await signIn("google", { callbackUrl: "/auth/role-select" });
   }
 
   async function handleRegister(e: React.FormEvent) {
@@ -60,21 +44,23 @@ export default function RegisterPage() {
       return;
     }
 
-    const supabase = createClient();
-    const { error: authError } = await supabase.auth.signUp({
-      email,
-      password,
-      options: {
-        data: { name, role },
-      },
+    const res = await fetch("/api/register", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ name, email, password, role }),
     });
-
-    if (authError) {
-      setError(authError.message);
+    const data = await res.json();
+    if (!res.ok) {
+      setError(data.error ?? "Pendaftaran gagal.");
       setLoading(false);
       return;
     }
 
+    const result = await signIn("credentials", { email, password, redirect: false });
+    if (result?.error) {
+      router.push("/login");
+      return;
+    }
     router.push("/dashboard");
     router.refresh();
   }

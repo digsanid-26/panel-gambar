@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState, useCallback } from "react";
+import { useSession } from "next-auth/react";
 import type { Asset, AssetType, AssetVisibility } from "@/lib/types";
 import {
   listAssets,
@@ -254,14 +255,8 @@ function AssetTile({
   onToggleVisibility: () => void;
   onDelete: () => void;
 }) {
-  const [isOwner, setIsOwner] = useState(false);
-  useEffect(() => {
-    import("@/lib/supabase/client").then(async ({ createClient }) => {
-      const sb = createClient();
-      const { data: { user } } = await sb.auth.getUser();
-      setIsOwner(user?.id === asset.owner_id);
-    });
-  }, [asset.owner_id]);
+  const { data: session } = useSession();
+  const isOwner = session?.user?.id === asset.owner_id;
 
   const isImage = asset.type === "image" || asset.type === "avatar";
   const isVideo = asset.type === "video";

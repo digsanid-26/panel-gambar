@@ -1,6 +1,5 @@
 "use client";
 
-import { createClient } from "@/lib/supabase/client";
 import type { Asset, AssetType, AssetVisibility } from "@/lib/types";
 
 const BUCKET = "assets";
@@ -19,53 +18,23 @@ export interface ListAssetsParams {
 }
 
 export async function listAssets(params: ListAssetsParams = {}): Promise<Asset[]> {
-  const supabase = createClient();
-  const { data: { user } } = await supabase.auth.getUser();
-  if (!user) return [];
-
-  let q = supabase.from("assets").select("*").order("created_at", { ascending: false });
-
+  const qs = new URLSearchParams();
   if (params.type) {
-    if (Array.isArray(params.type)) {
-      q = q.in("type", params.type);
-    } else {
-      q = q.eq("type", params.type);
-    }
+    const types = Array.isArray(params.type) ? params.type : [params.type];
+    types.forEach((t) => qs.append("type", t));
   }
+  if (params.scope === "mine") qs.set("visibility", "private");
+  if (params.scope === "public") qs.set("visibility", "public");
+  if (params.query) qs.set("query", params.query);
+  if (params.limit) qs.set("limit", String(params.limit));
 
-  switch (params.scope) {
-    case "mine":
-      q = q.eq("owner_id", user.id);
-      break;
-    case "public":
-      q = q.eq("visibility", "public");
-      break;
-    case "all":
-    default:
-      // RLS already returns mine + public; nothing extra needed
-      break;
-  }
-
-  if (params.query && params.query.trim()) {
-    const term = `%${params.query.trim()}%`;
-    q = q.or(`name.ilike.${term},description.ilike.${term}`);
-  }
-
-  if (params.tags && params.tags.length > 0) {
-    q = q.overlaps("tags", params.tags);
-  }
-
-  if (typeof params.limit === "number") q = q.limit(params.limit);
-  if (typeof params.offset === "number" && typeof params.limit === "number") {
-    q = q.range(params.offset, params.offset + params.limit - 1);
-  }
-
-  const { data, error } = await q;
-  if (error) {
-    console.error("listAssets error", error);
+  try {
+    const res = await fetch(`/api/assets?${qs.toString()}`);
+    if (!res.ok) return [];
+    return await res.json();
+  } catch {
     return [];
   }
-  return (data || []) as Asset[];
 }
 
 export interface UploadAssetInput {
@@ -79,75 +48,58 @@ export interface UploadAssetInput {
 }
 
 export async function uploadAsset(input: UploadAssetInput): Promise<Asset | null> {
-  const supabase = createClient();
-  const { data: { user } } = await supabase.auth.getUser();
-  if (!user) return null;
+  const formData = new FormData();
+  formData.append("file", input.file);
+  formData.append("bucket", BUCKET);
 
-  const safeName = input.file.name.replace(/[^\w.\-]+/g, "_");
-  const path = `${user.id}/${input.type}/${Date.now()}_${safeName}`;
+  try {
+    const uploadRes = await fetch("/api/upload", { method: "POST", body: formData });
+    if (!uploadRes.ok) return null;
+    const { url } = await uploadRes.json();
 
-  const { error: upErr } = await supabase.storage
-    .from(BUCKET)
-    .upload(path, input.file, { contentType: input.file.type, upsert: false });
-
-  if (upErr) {
-    console.error("uploadAsset storage error", upErr);
+    const res = await fetch("/api/assets", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        name: input.name?.trim() || input.file.name,
+        type: input.type,
+        url,
+        storage_path: url,
+        thumbnail_url: input.thumbnailUrl,
+        mime_type: input.file.type,
+        size_bytes: input.file.size,
+        visibility: input.visibility || "private",
+        tags: input.tags || [],
+        description: input.description,
+      }),
+    });
+    if (!res.ok) return null;
+    return await res.json();
+  } catch {
     return null;
   }
-
-  const { data: { publicUrl } } = supabase.storage.from(BUCKET).getPublicUrl(path);
-
-  const { data, error } = await supabase
-    .from("assets")
-    .insert({
-      owner_id: user.id,
-      name: input.name?.trim() || input.file.name,
-      type: input.type,
-      url: publicUrl,
-      storage_path: path,
-      storage_bucket: BUCKET,
-      thumbnail_url: input.thumbnailUrl,
-      mime_type: input.file.type,
-      size_bytes: input.file.size,
-      visibility: input.visibility || "private",
-      tags: input.tags || [],
-      description: input.description,
-    })
-    .select()
-    .single();
-
-  if (error) {
-    console.error("uploadAsset insert error", error);
-    // Best effort cleanup
-    await supabase.storage.from(BUCKET).remove([path]);
-    return null;
-  }
-
-  return data as Asset;
 }
 
 export async function updateAsset(id: string, patch: Partial<Pick<Asset, "name" | "visibility" | "tags" | "description">>): Promise<boolean> {
-  const supabase = createClient();
-  const { error } = await supabase.from("assets").update(patch).eq("id", id);
-  if (error) {
-    console.error("updateAsset error", error);
+  try {
+    const res = await fetch(`/api/assets/${id}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(patch),
+    });
+    return res.ok;
+  } catch {
     return false;
   }
-  return true;
 }
 
 export async function deleteAsset(id: string): Promise<boolean> {
-  const supabase = createClient();
-  const { data: row } = await supabase.from("assets").select("storage_path,storage_bucket").eq("id", id).single();
-  const { error } = await supabase.from("assets").delete().eq("id", id);
-  if (error) {
-    console.error("deleteAsset error", error);
+  try {
+    const res = await fetch(`/api/assets/${id}`, { method: "DELETE" });
+    return res.ok;
+  } catch {
     return false;
   }
-  if (row?.storage_path) {
-    await supabase.storage.from(row.storage_bucket || BUCKET).remove([row.storage_path]);
-  }
-  return true;
 }
 
 export const ASSET_TYPE_LABELS: Record<AssetType, string> = {

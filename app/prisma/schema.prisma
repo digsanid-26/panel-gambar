@@ -1,0 +1,447 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+// ─── AUTH / USERS ────────────────────────────────────────────────────────────
+
+model User {
+  id            String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  email         String    @unique
+  emailVerified DateTime? @map("email_verified")
+  name          String    @default("")
+  image         String?
+  passwordHash  String?   @map("password_hash")
+  role          String    @default("siswa") // guru | siswa | admin
+  avatarUrl     String?   @map("avatar_url")
+  school        String?
+  schoolId      String?   @map("school_id") @db.Uuid
+  createdAt     DateTime  @default(now()) @map("created_at")
+  updatedAt     DateTime  @updatedAt @map("updated_at")
+
+  accounts            Account[]
+  schoolRef           School?               @relation("UserSchool", fields: [schoolId], references: [id])
+  ownedSchools        School[]              @relation("SchoolTeacher")
+  stories             Story[]               @relation("AuthorStories")
+  classrooms          Classroom[]
+  classroomMembers    ClassroomMember[]
+  recordings          Recording[]
+  liveSessions        LiveSession[]
+  sessionParticipants SessionParticipant[]
+  teacherStudents     ManagedStudent[]      @relation("TeacherStudents")
+  studentRecord       ManagedStudent?       @relation("StudentUser")
+  elementAssets       ElementAsset[]
+  arScenes            ArScene[]
+  assets              Asset[]
+
+  @@map("users")
+}
+
+model Account {
+  id                String  @id @default(cuid())
+  userId            String  @map("user_id") @db.Uuid
+  type              String
+  provider          String
+  providerAccountId String  @map("provider_account_id")
+  refreshToken      String? @map("refresh_token") @db.Text
+  accessToken       String? @map("access_token") @db.Text
+  expiresAt         Int?    @map("expires_at")
+  tokenType         String? @map("token_type")
+  scope             String?
+  idToken           String? @map("id_token") @db.Text
+  sessionState      String? @map("session_state")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([provider, providerAccountId])
+  @@map("accounts")
+}
+
+// ─── CLASSROOMS ──────────────────────────────────────────────────────────────
+
+model Classroom {
+  id        String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  name      String
+  code      String   @unique
+  teacherId String   @map("teacher_id") @db.Uuid
+  schoolId  String?  @map("school_id") @db.Uuid
+  createdAt DateTime @default(now()) @map("created_at")
+
+  teacher         User              @relation(fields: [teacherId], references: [id], onDelete: Cascade)
+  school          School?           @relation(fields: [schoolId], references: [id])
+  members         ClassroomMember[]
+  assignments     Assignment[]
+  managedStudents ManagedStudent[]
+
+  @@map("classrooms")
+}
+
+model ClassroomMember {
+  id          String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  classroomId String   @map("classroom_id") @db.Uuid
+  studentId   String   @map("student_id") @db.Uuid
+  joinedAt    DateTime @default(now()) @map("joined_at")
+
+  classroom Classroom @relation(fields: [classroomId], references: [id], onDelete: Cascade)
+  student   User      @relation(fields: [studentId], references: [id], onDelete: Cascade)
+
+  @@unique([classroomId, studentId])
+  @@map("classroom_members")
+}
+
+// ─── SCHOOLS ─────────────────────────────────────────────────────────────────
+
+model School {
+  id          String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  name        String
+  address     String   @default("")
+  city        String?
+  province    String?
+  postalCode  String?  @map("postal_code")
+  phone       String?
+  logoUrl     String?  @map("logo_url")
+  teacherId   String   @map("teacher_id") @db.Uuid
+  createdAt   DateTime @default(now()) @map("created_at")
+
+  teacher    User        @relation("SchoolTeacher", fields: [teacherId], references: [id], onDelete: Cascade)
+  profiles   User[]      @relation("UserSchool")
+  classrooms Classroom[]
+
+  @@map("schools")
+}
+
+// ─── STORIES ─────────────────────────────────────────────────────────────────
+
+model Story {
+  id                     String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  title                  String
+  description            String   @default("")
+  coverImageUrl          String?  @map("cover_image_url")
+  videoTrailerUrl        String?  @map("video_trailer_url")
+  theme                  String   @default("umum")
+  level                  String   @default("dasar")
+  targetClass            String   @default("Kelas 1-2") @map("target_class")
+  status                 String   @default("draft")   // draft | published | archived
+  visibility             String   @default("public")  // public | private
+  displayMode            String   @default("slide")   @map("display_mode")
+  recordingMode          String   @default("manual")  @map("recording_mode")
+  characters             Json     @default("[]")
+  authorId               String   @map("author_id") @db.Uuid
+
+  kurikulum              String?
+  mataPelajaran          String?  @map("mata_pelajaran")
+  semester               String?
+  sumberCerita           String?  @map("sumber_cerita")
+  detailSumber           String?  @map("detail_sumber")
+  informasiTambahan      String?  @map("informasi_tambahan")
+
+  capaianPembelajaran    String?  @map("capaian_pembelajaran")
+  tujuanPembelajaran     String[] @map("tujuan_pembelajaran")
+  pertanyaanPemantik     String[] @map("pertanyaan_pemantik")
+  alokasiWaktu           String?  @map("alokasi_waktu")
+  kataKunci              String[] @map("kata_kunci")
+  asesmenJenis           String[] @map("asesmen_jenis")
+  asesmenDeskripsi       String?  @map("asesmen_deskripsi")
+  refleksiSiswa          String[] @map("refleksi_siswa")
+  refleksiGuru           String[] @map("refleksi_guru")
+  sumberBelajar          Json     @default("[]") @map("sumber_belajar")
+  glosarium              Json     @default("[]")
+  metodePembelajaran     String?  @map("metode_pembelajaran")
+  materiPokok            String?  @map("materi_pokok")
+  pendekatanPembelajaran String?  @map("pendekatan_pembelajaran")
+  evaluasiGuru           String?  @map("evaluasi_guru")
+  linkQuiz               String?  @map("link_quiz")
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  author        User           @relation("AuthorStories", fields: [authorId], references: [id], onDelete: Cascade)
+  panels        Panel[]
+  recordings    Recording[]
+  assignments   Assignment[]
+  liveSessions  LiveSession[]
+  elementAssets ElementAsset[]
+
+  @@map("stories")
+}
+
+// ─── PANELS ──────────────────────────────────────────────────────────────────
+
+model Panel {
+  id                 String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  storyId            String   @map("story_id") @db.Uuid
+  orderIndex         Int      @default(0) @map("order_index")
+  panelType          String   @default("simple") @map("panel_type") // simple | complete
+  imageUrl           String?  @map("image_url")
+  backgroundColor    String   @default("#f0f9ff") @map("background_color")
+  narrationText      String?  @map("narration_text")
+  narrationAudioUrl  String?  @map("narration_audio_url")
+  backgroundAudioUrl String?  @map("background_audio_url")
+  narrationOverlay   Json?    @map("narration_overlay")
+  timelineData       Json     @default("[]") @map("timeline_data")
+  canvasData         Json?    @map("canvas_data")
+  createdAt          DateTime @default(now()) @map("created_at")
+
+  story         Story          @relation(fields: [storyId], references: [id], onDelete: Cascade)
+  dialogs       Dialog[]
+  recordings    Recording[]
+  elementAssets ElementAsset[]
+
+  @@map("panels")
+}
+
+// ─── DIALOGS ─────────────────────────────────────────────────────────────────
+
+model Dialog {
+  id             String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  panelId        String   @map("panel_id") @db.Uuid
+  orderIndex     Int      @default(0) @map("order_index")
+  characterName  String   @default("Karakter") @map("character_name")
+  characterColor String   @default("#3b82f6") @map("character_color")
+  text           String   @default("")
+  audioUrl       String?  @map("audio_url")
+  bubbleStyle    String   @default("oval") @map("bubble_style")
+  positionX      Float    @default(50) @map("position_x")
+  positionY      Float    @default(20) @map("position_y")
+  textStyle      Json?    @map("text_style")
+  createdAt      DateTime @default(now()) @map("created_at")
+
+  panel      Panel        @relation(fields: [panelId], references: [id], onDelete: Cascade)
+  recordings Recording[]
+  elementAssets ElementAsset[]
+
+  @@map("dialogs")
+}
+
+// ─── RECORDINGS ──────────────────────────────────────────────────────────────
+
+model Recording {
+  id            String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  studentId     String   @map("student_id") @db.Uuid
+  storyId       String   @map("story_id") @db.Uuid
+  panelId       String   @map("panel_id") @db.Uuid
+  dialogId      String?  @map("dialog_id") @db.Uuid
+  type          String   @default("dialog") // dialog | narration
+  audioUrl      String   @map("audio_url")
+  feedbackScore Int?     @map("feedback_score")
+  feedbackText  String?  @map("feedback_text")
+  autoActive    Boolean  @default(false) @map("auto_active")
+  status        String   @default("pending")
+  createdAt     DateTime @default(now()) @map("created_at")
+
+  student User   @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  story   Story  @relation(fields: [storyId], references: [id], onDelete: Cascade)
+  panel   Panel  @relation(fields: [panelId], references: [id], onDelete: Cascade)
+  dialog  Dialog? @relation(fields: [dialogId], references: [id], onDelete: SetNull)
+
+  @@map("recordings")
+}
+
+// ─── ASSIGNMENTS ─────────────────────────────────────────────────────────────
+
+model Assignment {
+  id        String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  storyId   String    @map("story_id") @db.Uuid
+  classId   String    @map("class_id") @db.Uuid
+  deadline  DateTime?
+  note      String?
+  createdAt DateTime  @default(now()) @map("created_at")
+
+  story     Story     @relation(fields: [storyId], references: [id], onDelete: Cascade)
+  classroom Classroom @relation(fields: [classId], references: [id], onDelete: Cascade)
+
+  @@map("assignments")
+}
+
+// ─── LIVE SESSIONS ───────────────────────────────────────────────────────────
+
+model LiveSession {
+  id                 String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  code               String    @unique
+  storyId            String    @map("story_id") @db.Uuid
+  hostId             String    @map("host_id") @db.Uuid
+  status             String    @default("waiting") // waiting | active | finished
+  currentPanelIndex  Int       @default(0) @map("current_panel_index")
+  createdAt          DateTime  @default(now()) @map("created_at")
+  endedAt            DateTime? @map("ended_at")
+
+  story        Story                @relation(fields: [storyId], references: [id], onDelete: Cascade)
+  host         User                 @relation(fields: [hostId], references: [id], onDelete: Cascade)
+  participants SessionParticipant[]
+  signals      SessionSignal[]
+
+  @@map("live_sessions")
+}
+
+model SessionParticipant {
+  id                String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  sessionId         String   @map("session_id") @db.Uuid
+  userId            String   @map("user_id") @db.Uuid
+  assignedCharacter String?  @map("assigned_character")
+  assignedColor     String?  @default("#3b82f6") @map("assigned_color")
+  isNarrator        Boolean  @default(false) @map("is_narrator")
+  joinedAt          DateTime @default(now()) @map("joined_at")
+
+  session LiveSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  user    User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([sessionId, userId])
+  @@map("session_participants")
+}
+
+model SessionSignal {
+  id         String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  sessionId  String   @map("session_id") @db.Uuid
+  fromUserId String   @map("from_user_id") @db.Uuid
+  toUserId   String?  @map("to_user_id") @db.Uuid
+  event      String
+  payload    Json
+  createdAt  DateTime @default(now()) @map("created_at")
+
+  session LiveSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+
+  @@map("session_signals")
+}
+
+// ─── LOOKUP TABLES ───────────────────────────────────────────────────────────
+
+model Theme {
+  id          String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  name        String   @unique
+  label       String
+  description String?
+  isActive    Boolean  @default(true) @map("is_active")
+  sortOrder   Int      @default(0) @map("sort_order")
+  createdAt   DateTime @default(now()) @map("created_at")
+
+  @@map("themes")
+}
+
+model Level {
+  id          String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  name        String   @unique
+  label       String
+  description String?
+  isActive    Boolean  @default(true) @map("is_active")
+  sortOrder   Int      @default(0) @map("sort_order")
+  createdAt   DateTime @default(now()) @map("created_at")
+
+  @@map("levels")
+}
+
+model TargetClass {
+  id          String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  name        String   @unique
+  label       String
+  description String?
+  isActive    Boolean  @default(true) @map("is_active")
+  sortOrder   Int      @default(0) @map("sort_order")
+  createdAt   DateTime @default(now()) @map("created_at")
+
+  @@map("target_classes")
+}
+
+model AppSetting {
+  key       String   @id
+  value     String   @default("")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  @@map("app_settings")
+}
+
+// ─── MANAGED STUDENTS ────────────────────────────────────────────────────────
+
+model ManagedStudent {
+  id        String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  name      String
+  username  String
+  email     String?
+  classId   String   @map("class_id") @db.Uuid
+  teacherId String   @map("teacher_id") @db.Uuid
+  userId    String?  @unique @map("user_id") @db.Uuid
+  avatarUrl String?  @map("avatar_url")
+  createdAt DateTime @default(now()) @map("created_at")
+
+  classroom Classroom @relation(fields: [classId], references: [id], onDelete: Cascade)
+  teacher   User      @relation("TeacherStudents", fields: [teacherId], references: [id], onDelete: Cascade)
+  user      User?     @relation("StudentUser", fields: [userId], references: [id], onDelete: SetNull)
+
+  @@unique([teacherId, username])
+  @@map("managed_students")
+}
+
+// ─── ELEMENT ASSETS ──────────────────────────────────────────────────────────
+
+model ElementAsset {
+  id        String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  storyId   String   @map("story_id") @db.Uuid
+  panelId   String?  @map("panel_id") @db.Uuid
+  dialogId  String?  @map("dialog_id") @db.Uuid
+  type      String   @default("file") // image | audio | recording | file
+  label     String   @default("")
+  url       String
+  source    String   @default("upload")
+  createdBy String?  @map("created_by") @db.Uuid
+  metadata  Json     @default("{}")
+  createdAt DateTime @default(now()) @map("created_at")
+
+  story     Story   @relation(fields: [storyId], references: [id], onDelete: Cascade)
+  panel     Panel?  @relation(fields: [panelId], references: [id], onDelete: SetNull)
+  dialog    Dialog? @relation(fields: [dialogId], references: [id], onDelete: SetNull)
+  creator   User?   @relation(fields: [createdBy], references: [id], onDelete: SetNull)
+
+  @@map("element_assets")
+}
+
+// ─── AR SCENES ───────────────────────────────────────────────────────────────
+
+model ArScene {
+  id             String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  slug           String   @unique
+  title          String
+  description    String   @default("")
+  subject        String   @default("lainnya")
+  level          String   @default("SD")
+  type           String   // marker | markerless | model-only
+  coverImage     String?  @map("cover_image")
+  markerImage    String?  @map("marker_image")
+  markerMindFile String?  @map("marker_mind_file")
+  instruction    String?
+  assets         Json     @default("[]")
+  authorId       String?  @map("author_id") @db.Uuid
+  status         String   @default("published") // draft | published
+  visibility     String   @default("public")    // public | private
+  createdAt      DateTime @default(now()) @map("created_at")
+  updatedAt      DateTime @updatedAt @map("updated_at")
+
+  author User? @relation(fields: [authorId], references: [id], onDelete: Cascade)
+
+  @@map("ar_scenes")
+}
+
+// ─── ASSET LIBRARY ───────────────────────────────────────────────────────────
+
+model Asset {
+  id            String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  ownerId       String   @map("owner_id") @db.Uuid
+  name          String
+  type          String   // avatar | image | video | audio | model_3d | document | other
+  url           String
+  storagePath   String?  @map("storage_path")
+  thumbnailUrl  String?  @map("thumbnail_url")
+  mimeType      String?  @map("mime_type")
+  sizeBytes     BigInt?  @map("size_bytes")
+  visibility    String   @default("private") // private | public
+  tags          String[] @default([])
+  description   String?
+  metadata      Json     @default("{}")
+  createdAt     DateTime @default(now()) @map("created_at")
+  updatedAt     DateTime @updatedAt @map("updated_at")
+
+  owner User @relation(fields: [ownerId], references: [id], onDelete: Cascade)
+
+  @@map("assets")
+}

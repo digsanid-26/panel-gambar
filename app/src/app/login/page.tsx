@@ -4,7 +4,7 @@ import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import Image from "next/image";
-import { createClient } from "@/lib/supabase/client";
+import { signIn } from "next-auth/react";
 import { Navbar } from "@/components/layout/navbar";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -19,32 +19,16 @@ export default function LoginPage() {
   const [googleEnabled, setGoogleEnabled] = useState(false);
 
   useEffect(() => {
-    async function checkGoogleAuth() {
-      const supabase = createClient();
-      const { data } = await supabase
-        .from("app_settings")
-        .select("value")
-        .eq("key", "google_auth_enabled")
-        .single();
-      if (data?.value === "true") setGoogleEnabled(true);
-    }
-    checkGoogleAuth();
+    fetch("/api/settings?key=google_auth_enabled")
+      .then((r) => r.json())
+      .then((d) => { if (d.value === "true") setGoogleEnabled(true); })
+      .catch(() => {});
   }, []);
 
   async function handleGoogleLogin() {
     setError("");
     setLoading(true);
-    const supabase = createClient();
-    const { error: oauthError } = await supabase.auth.signInWithOAuth({
-      provider: "google",
-      options: {
-        redirectTo: `${window.location.origin}/auth/callback`,
-      },
-    });
-    if (oauthError) {
-      setError("Gagal masuk dengan Google. Silakan coba lagi.");
-      setLoading(false);
-    }
+    await signIn("google", { callbackUrl: "/dashboard" });
   }
 
   async function handleLogin(e: React.FormEvent) {
@@ -52,46 +36,26 @@ export default function LoginPage() {
     setError("");
     setLoading(true);
 
-    const supabase = createClient();
     let loginEmail = emailOrUsername.trim();
 
-    // If input doesn't look like an email, treat as username
     if (!loginEmail.includes("@")) {
-      // Look up managed_student by username to get user_id, then get auth email
-      const { data: ms } = await supabase
-        .from("managed_students")
-        .select("user_id")
-        .eq("username", loginEmail)
-        .not("user_id", "is", null)
-        .limit(1)
-        .single();
-
-      if (!ms?.user_id) {
-        setError("Username tidak ditemukan atau belum memiliki akun login.");
-        setLoading(false);
-        return;
-      }
-
-      // Fetch the auth email from profiles (we stored it there) or use admin lookup
-      // Since we can't access auth.users from client, use the synthetic email pattern
-      // The API creates emails as: username+timestamp@student.local
-      // We need a server-side lookup. Use a simple API call.
-      const res = await fetch(`/api/students/lookup?user_id=${ms.user_id}`);
+      const res = await fetch(`/api/students/lookup?username=${encodeURIComponent(loginEmail)}`);
       const result = await res.json();
       if (!res.ok || !result.email) {
-        setError("Gagal mencari akun. Silakan hubungi guru.");
+        setError("Username tidak ditemukan atau belum memiliki akun login.");
         setLoading(false);
         return;
       }
       loginEmail = result.email;
     }
 
-    const { error: authError } = await supabase.auth.signInWithPassword({
+    const result = await signIn("credentials", {
       email: loginEmail,
       password,
+      redirect: false,
     });
 
-    if (authError) {
+    if (result?.error) {
       setError("Email/username atau password salah. Silakan coba lagi.");
       setLoading(false);
       return;

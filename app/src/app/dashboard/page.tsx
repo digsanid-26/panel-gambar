@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import { createClient } from "@/lib/supabase/client";
+import { useSession } from "next-auth/react";
 import type { UserProfile, Story, ClassRoom } from "@/lib/types";
 import { Navbar } from "@/components/layout/navbar";
 import { Button } from "@/components/ui/button";
@@ -29,51 +29,33 @@ export default function DashboardPage() {
   const [loading, setLoading] = useState(true);
   const [copiedCode, setCopiedCode] = useState<string | null>(null);
 
-  const supabase = createClient();
+  const { data: session, status } = useSession();
 
   useEffect(() => {
+    if (status === "loading") return;
+    if (!session?.user) { router.push("/login"); return; }
+
     async function load() {
-      const { data: { user: authUser } } = await supabase.auth.getUser();
-      if (!authUser) { router.push("/login"); return; }
-
-      const { data: profile } = await supabase
-        .from("profiles")
-        .select("*")
-        .eq("id", authUser.id)
-        .single();
-
-      if (!profile) { router.push("/login"); return; }
+      const profileRes = await fetch("/api/profile");
+      if (!profileRes.ok) { router.push("/login"); return; }
+      const profile = await profileRes.json();
       setUser(profile as UserProfile);
 
-      if (profile.role === "guru") {
-        const { data: myStories } = await supabase
-          .from("stories")
-          .select("*, panels(count)")
-          .eq("author_id", authUser.id)
-          .order("updated_at", { ascending: false })
-          .limit(5);
-        if (myStories) setStories(myStories as Story[]);
-
-        const { data: myClasses } = await supabase
-          .from("classrooms")
-          .select("*, classroom_members(count)")
-          .eq("teacher_id", authUser.id)
-          .order("created_at", { ascending: false });
-        if (myClasses) setClassrooms(myClasses as ClassRoom[]);
+      if (profile.role === "guru" || profile.role === "admin") {
+        const [storiesRes, classroomsRes] = await Promise.all([
+          fetch(`/api/stories?author_id=${profile.id}&limit=5`),
+          fetch(`/api/classrooms?teacher_id=${profile.id}`),
+        ]);
+        if (storiesRes.ok) setStories(await storiesRes.json());
+        if (classroomsRes.ok) setClassrooms(await classroomsRes.json());
       } else {
-        const { data: published } = await supabase
-          .from("stories")
-          .select("*, profiles!stories_author_id_fkey(name)")
-          .eq("status", "published")
-          .order("created_at", { ascending: false })
-          .limit(10);
-        if (published) setStories(published as Story[]);
+        const storiesRes = await fetch("/api/stories?limit=10");
+        if (storiesRes.ok) setStories(await storiesRes.json());
       }
-
       setLoading(false);
     }
     load();
-  }, []);
+  }, [session, status, router]);
 
   function copyCode(code: string) {
     navigator.clipboard.writeText(code);

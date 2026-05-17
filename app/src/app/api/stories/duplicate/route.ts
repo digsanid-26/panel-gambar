@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
-import { createServerSupabaseClient } from "@/lib/supabase/server";
+import { auth } from "@/auth";
+import { prisma } from "@/lib/db";
 
 /**
  * POST /api/stories/duplicate
@@ -10,154 +11,101 @@ import { createServerSupabaseClient } from "@/lib/supabase/server";
  * Returns: { new_story_id: string }
  */
 export async function POST(request: NextRequest) {
-  const supabase = await createServerSupabaseClient();
+  const session = await auth();
+  if (!session?.user?.id) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
-  // Verify caller
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-
-  if (!user) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  }
-
-  // Check caller is guru/admin
-  const { data: profile } = await supabase
-    .from("profiles")
-    .select("role")
-    .eq("id", user.id)
-    .single();
-
-  if (!profile || (profile.role !== "guru" && profile.role !== "admin")) {
-    return NextResponse.json(
-      { error: "Hanya guru/admin yang bisa menduplikasi cerita" },
-      { status: 403 }
-    );
+  const caller = await prisma.user.findUnique({
+    where: { id: session.user.id },
+    select: { role: true },
+  });
+  if (!caller || (caller.role !== "guru" && caller.role !== "admin")) {
+    return NextResponse.json({ error: "Hanya guru/admin yang bisa menduplikasi cerita" }, { status: 403 });
   }
 
   const body = await request.json();
   const { story_id } = body as { story_id: string };
+  if (!story_id) return NextResponse.json({ error: "story_id required" }, { status: 400 });
 
-  if (!story_id) {
-    return NextResponse.json({ error: "story_id required" }, { status: 400 });
-  }
+  const original = await prisma.story.findUnique({
+    where: { id: story_id },
+    include: { panels: { orderBy: { orderIndex: "asc" }, include: { dialogs: { orderBy: { orderIndex: "asc" } } } } },
+  });
+  if (!original) return NextResponse.json({ error: "Cerita tidak ditemukan" }, { status: 404 });
 
-  // Load original story
-  const { data: original, error: storyErr } = await supabase
-    .from("stories")
-    .select("*")
-    .eq("id", story_id)
-    .single();
-
-  if (storyErr || !original) {
-    return NextResponse.json({ error: "Cerita tidak ditemukan" }, { status: 404 });
-  }
-
-  // Only allow duplicating published stories (or own stories)
-  if (original.status !== "published" && original.author_id !== user.id) {
-    return NextResponse.json(
-      { error: "Hanya cerita yang sudah dipublikasi yang bisa diduplikasi" },
-      { status: 403 }
-    );
+  if (original.status !== "published" && original.authorId !== session.user.id) {
+    return NextResponse.json({ error: "Hanya cerita yang sudah dipublikasi yang bisa diduplikasi" }, { status: 403 });
   }
 
   try {
-    // 1. Create new story (draft, owned by caller)
-    const { data: newStory, error: insertErr } = await supabase
-      .from("stories")
-      .insert({
+    const newStory = await prisma.story.create({
+      data: {
         title: `${original.title} (Salinan)`,
         description: original.description,
-        cover_image_url: original.cover_image_url,
-        video_trailer_url: original.video_trailer_url,
+        coverImageUrl: original.coverImageUrl,
+        videoTrailerUrl: original.videoTrailerUrl,
         theme: original.theme,
         level: original.level,
-        target_class: original.target_class,
-        display_mode: original.display_mode,
-        characters: original.characters,
-        recording_mode: original.recording_mode,
+        targetClass: original.targetClass,
+        displayMode: original.displayMode,
+        characters: original.characters ?? [],
+        recordingMode: original.recordingMode,
         kurikulum: original.kurikulum,
-        mata_pelajaran: original.mata_pelajaran,
+        mataPelajaran: original.mataPelajaran,
         semester: original.semester,
-        sumber_cerita: original.sumber_cerita,
-        detail_sumber: original.detail_sumber,
-        informasi_tambahan: original.informasi_tambahan,
-        capaian_pembelajaran: original.capaian_pembelajaran,
-        tujuan_pembelajaran: original.tujuan_pembelajaran,
-        pertanyaan_pemantik: original.pertanyaan_pemantik,
-        alokasi_waktu: original.alokasi_waktu,
-        kata_kunci: original.kata_kunci,
-        asesmen_jenis: original.asesmen_jenis,
-        asesmen_deskripsi: original.asesmen_deskripsi,
-        refleksi_siswa: original.refleksi_siswa,
-        refleksi_guru: original.refleksi_guru,
-        sumber_belajar: original.sumber_belajar,
-        glosarium: original.glosarium,
-        metode_pembelajaran: original.metode_pembelajaran,
-        materi_pokok: original.materi_pokok,
-        pendekatan_pembelajaran: original.pendekatan_pembelajaran,
-        evaluasi_guru: original.evaluasi_guru,
-        link_quiz: original.link_quiz,
+        sumberCerita: original.sumberCerita,
+        detailSumber: original.detailSumber,
+        informasiTambahan: original.informasiTambahan,
+        capaianPembelajaran: original.capaianPembelajaran,
+        tujuanPembelajaran: original.tujuanPembelajaran,
+        pertanyaanPemantik: original.pertanyaanPemantik,
+        alokasiWaktu: original.alokasiWaktu,
+        kataKunci: original.kataKunci,
+        asesmenJenis: original.asesmenJenis,
+        asesmenDeskripsi: original.asesmenDeskripsi,
+        refleksiSiswa: original.refleksiSiswa,
+        refleksiGuru: original.refleksiGuru,
+        sumberBelajar: original.sumberBelajar ?? [],
+        glosarium: original.glosarium ?? [],
+        metodePembelajaran: original.metodePembelajaran,
+        materiPokok: original.materiPokok,
+        pendekatanPembelajaran: original.pendekatanPembelajaran,
+        evaluasiGuru: original.evaluasiGuru,
+        linkQuiz: original.linkQuiz,
         status: "draft",
-        author_id: user.id,
-      })
-      .select()
-      .single();
+        authorId: session.user.id,
+      },
+    });
 
-    if (insertErr || !newStory) {
-      return NextResponse.json(
-        { error: insertErr?.message || "Gagal membuat salinan cerita" },
-        { status: 500 }
-      );
-    }
-
-    // 2. Load original panels with dialogs
-    const { data: originalPanels } = await supabase
-      .from("panels")
-      .select("*, dialogs(*)")
-      .eq("story_id", story_id)
-      .order("order_index", { ascending: true });
-
-    if (originalPanels && originalPanels.length > 0) {
-      for (const panel of originalPanels) {
-        // Insert panel copy
-        const { data: newPanel } = await supabase
-          .from("panels")
-          .insert({
-            story_id: newStory.id,
-            order_index: panel.order_index,
-            panel_type: panel.panel_type,
-            image_url: panel.image_url,
-            background_color: panel.background_color,
-            narration_text: panel.narration_text,
-            narration_audio_url: panel.narration_audio_url,
-            narration_overlay: panel.narration_overlay,
-            background_audio_url: panel.background_audio_url,
-            canvas_data: panel.canvas_data,
-            timeline_data: panel.timeline_data,
-          })
-          .select()
-          .single();
-
-        if (!newPanel) continue;
-
-        // Copy dialogs for this panel
-        const dialogs = (panel.dialogs || []) as Array<Record<string, unknown>>;
-        if (dialogs.length > 0) {
-          await supabase.from("dialogs").insert(
-            dialogs.map((d) => ({
-              panel_id: newPanel.id,
-              order_index: d.order_index,
-              character_name: d.character_name,
-              character_color: d.character_color,
-              text: d.text,
-              audio_url: d.audio_url,
-              bubble_style: d.bubble_style,
-              position_x: d.position_x,
-              position_y: d.position_y,
-            }))
-          );
-        }
+    for (const panel of original.panels) {
+      const newPanel = await prisma.panel.create({
+        data: {
+          storyId: newStory.id,
+          orderIndex: panel.orderIndex,
+          panelType: panel.panelType,
+          imageUrl: panel.imageUrl,
+          backgroundColor: panel.backgroundColor,
+          narrationText: panel.narrationText,
+          narrationAudioUrl: panel.narrationAudioUrl,
+          backgroundAudioUrl: panel.backgroundAudioUrl,
+          narrationOverlay: panel.narrationOverlay ?? undefined,
+          timelineData: panel.timelineData ?? [],
+          canvasData: panel.canvasData ?? undefined,
+        },
+      });
+      if (panel.dialogs.length > 0) {
+        await prisma.dialog.createMany({
+          data: panel.dialogs.map((d) => ({
+            panelId: newPanel.id,
+            orderIndex: d.orderIndex,
+            characterName: d.characterName,
+            characterColor: d.characterColor,
+            text: d.text,
+            audioUrl: d.audioUrl,
+            bubbleStyle: d.bubbleStyle,
+            positionX: d.positionX,
+            positionY: d.positionY,
+          })),
+        });
       }
     }
 

@@ -2,7 +2,6 @@
 
 import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
-import { createClient } from "@/lib/supabase/client";
 import type { Theme, Level, TargetClass } from "@/lib/types";
 import { Navbar } from "@/components/layout/navbar";
 import { Button } from "@/components/ui/button";
@@ -16,7 +15,6 @@ import Link from "next/link";
 
 export default function CreateStoryPage() {
   const router = useRouter();
-  const supabase = createClient();
 
   const [title, setTitle] = useState("");
   const [description, setDescription] = useState("");
@@ -46,14 +44,14 @@ export default function CreateStoryPage() {
   useEffect(() => {
     async function loadOptions() {
       const [themeRes, levelRes, classRes] = await Promise.all([
-        supabase.from("themes").select("*").eq("is_active", true).order("sort_order"),
-        supabase.from("levels").select("*").eq("is_active", true).order("sort_order"),
-        supabase.from("target_classes").select("*").eq("is_active", true).order("sort_order"),
+        fetch("/api/themes").then((r) => r.json()),
+        fetch("/api/levels").then((r) => r.json()),
+        fetch("/api/target-classes").then((r) => r.json()),
       ]);
 
-      const t = (themeRes.data || []) as Theme[];
-      const l = (levelRes.data || []) as Level[];
-      const c = (classRes.data || []) as TargetClass[];
+      const t = (themeRes || []) as Theme[];
+      const l = (levelRes || []) as Level[];
+      const c = (classRes || []) as TargetClass[];
 
       setThemes(t);
       setLevels(l);
@@ -84,44 +82,28 @@ export default function CreateStoryPage() {
     setError("");
     setLoading(true);
 
-    const { data: { user } } = await supabase.auth.getUser();
-    if (!user) { router.push("/login"); return; }
-
-    // Upload cover image if selected
     let coverImageUrl: string | undefined;
     if (coverFile) {
       setUploadingCover(true);
-      const ext = coverFile.name.split(".").pop();
-      const path = `${user.id}/cover_${Date.now()}.${ext}`;
-      const { error: uploadErr } = await supabase.storage
-        .from("cover-images")
-        .upload(path, coverFile, { upsert: true, contentType: coverFile.type });
-      if (!uploadErr) {
-        const { data: { publicUrl } } = supabase.storage.from("cover-images").getPublicUrl(path);
-        coverImageUrl = publicUrl;
-      }
+      const fd = new FormData(); fd.append("file", coverFile);
+      const up = await fetch("/api/upload", { method: "POST", body: fd });
+      if (up.ok) { const { url } = await up.json(); coverImageUrl = url; }
       setUploadingCover(false);
     }
 
-    // Upload video trailer if selected
     let videoTrailerUrl: string | undefined;
     if (videoFile) {
       setUploadingVideo(true);
-      const ext = videoFile.name.split(".").pop();
-      const path = `${user.id}/trailer_${Date.now()}.${ext}`;
-      const { error: uploadErr } = await supabase.storage
-        .from("videos")
-        .upload(path, videoFile, { contentType: videoFile.type });
-      if (!uploadErr) {
-        const { data: { publicUrl } } = supabase.storage.from("videos").getPublicUrl(path);
-        videoTrailerUrl = publicUrl;
-      }
+      const fd = new FormData(); fd.append("file", videoFile);
+      const up = await fetch("/api/upload", { method: "POST", body: fd });
+      if (up.ok) { const { url } = await up.json(); videoTrailerUrl = url; }
       setUploadingVideo(false);
     }
 
-    const { data, error: insertError } = await supabase
-      .from("stories")
-      .insert({
+    const storyRes = await fetch("/api/stories", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
         title,
         description,
         theme,
@@ -135,17 +117,17 @@ export default function CreateStoryPage() {
         informasi_tambahan: informasiTambahan || null,
         cover_image_url: coverImageUrl,
         video_trailer_url: videoTrailerUrl,
-        author_id: user.id,
         status: "draft",
-      })
-      .select()
-      .single();
+      }),
+    });
 
-    if (insertError) {
-      setError(insertError.message);
+    if (!storyRes.ok) {
+      const { error: errMsg } = await storyRes.json().catch(() => ({ error: "Gagal membuat cerita" }));
+      setError(errMsg || "Gagal membuat cerita");
       setLoading(false);
       return;
     }
+    const data = await storyRes.json();
 
     router.push(`/stories/${data.id}/edit`);
   }

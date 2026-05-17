@@ -2,7 +2,7 @@
 "use client";
 
 import { useEffect, useRef, useState, useCallback } from "react";
-import { createClient } from "@/lib/supabase/client";
+import { PollingChannel } from "./polling-channel";
 import { VoiceEngine, type PeerState } from "./voice-engine";
 import type {
   LiveSession,
@@ -10,7 +10,6 @@ import type {
   UserProfile,
   BroadcastEvent,
 } from "@/lib/types";
-import type { RealtimeChannel } from "@supabase/supabase-js";
 
 export interface PresenceState {
   user_id: string;
@@ -46,8 +45,7 @@ export function useLiveSession(
   sessionId: string,
   user: UserProfile
 ): UseLiveSessionReturn {
-  const supabase = createClient();
-  const channelRef = useRef<RealtimeChannel | null>(null);
+  const channelRef = useRef<PollingChannel | null>(null);
   const voiceRef = useRef<VoiceEngine | null>(null);
 
   const [session, setSession] = useState<LiveSession | null>(null);
@@ -66,101 +64,40 @@ export function useLiveSession(
   // Load session data
   useEffect(() => {
     async function loadSession() {
-      const { data, error: fetchError } = await supabase
-        .from("live_sessions")
-        .select("*, stories(*), profiles!live_sessions_host_id_fkey(name)")
-        .eq("id", sessionId)
-        .single();
-
-      if (fetchError || !data) {
-        setError("Sesi tidak ditemukan.");
-        return;
-      }
-
-      setSession({
-        ...data,
-        story: data.stories,
-        host_name: (data.profiles as { name: string } | null)?.name,
-      } as unknown as LiveSession);
-      setCurrentPanelIndex(data.current_panel_index);
+      const res = await fetch(`/api/live-sessions/${sessionId}`);
+      if (!res.ok) { setError("Sesi tidak ditemukan."); return; }
+      const data = await res.json();
+      setSession(data as LiveSession);
+      setCurrentPanelIndex(data.currentPanelIndex ?? data.current_panel_index ?? 0);
     }
     loadSession();
   }, [sessionId]);
 
   // Load participants
   const loadParticipants = useCallback(async () => {
-    const { data } = await supabase
-      .from("session_participants")
-      .select("*, profiles!session_participants_user_id_fkey(name, role)")
-      .eq("session_id", sessionId);
-
-    if (data) {
-      setParticipants(
-        data.map((p: Record<string, unknown>) => ({
-          ...p,
-          user_name: (p.profiles as { name: string } | null)?.name,
-          user_role: (p.profiles as { role: string } | null)?.role,
-        })) as SessionParticipant[]
-      );
-    }
+    const res = await fetch(`/api/live-sessions/${sessionId}/participants`);
+    if (res.ok) setParticipants(await res.json());
   }, [sessionId]);
 
   useEffect(() => {
     loadParticipants();
   }, [loadParticipants]);
 
-  // Join as participant (if not host, register in DB)
+  // Join as participant
   useEffect(() => {
-    async function joinAsParticipant() {
-      const { error: joinError } = await supabase
-        .from("session_participants")
-        .upsert(
-          { session_id: sessionId, user_id: user.id },
-          { onConflict: "session_id,user_id" }
-        );
-      if (joinError) console.warn("Join error:", joinError.message);
-      loadParticipants();
-    }
-    if (session) joinAsParticipant();
+    if (!session) return;
+    fetch(`/api/live-sessions/${sessionId}/participants`, { method: "POST" })
+      .then(() => loadParticipants())
+      .catch(() => {});
   }, [session, user.id]);
 
-  // Setup Supabase Realtime channel (presence + broadcast)
+  // Setup polling channel for presence + broadcast
   useEffect(() => {
     if (!session) return;
 
-    const channel = supabase.channel(`live-session:${sessionId}`, {
-      config: { presence: { key: user.id } },
-    });
+    const channel = new PollingChannel(sessionId);
 
-    // Presence
-    channel.on("presence", { event: "sync" }, () => {
-      const state = channel.presenceState();
-      const list: PresenceState[] = [];
-      Object.values(state).forEach((presences: unknown) => {
-        (presences as unknown[]).forEach((p) => list.push(p as PresenceState));
-      });
-      setPresenceList(list);
-    });
-
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    channel.on("presence", { event: "join" }, (payload: any) => {
-      // When a new peer joins, connect WebRTC
-      const newPresences = (payload?.newPresences || []) as unknown[];
-      newPresences.forEach((p: unknown) => {
-        const presence = p as PresenceState;
-        if (presence.user_id !== user.id && voiceRef.current) {
-          voiceRef.current.connectToPeer(presence.user_id, presence.user_name);
-        }
-      });
-      loadParticipants();
-    });
-
-    channel.on("presence", { event: "leave" }, () => {
-      loadParticipants();
-    });
-
-    // Broadcast: panel navigation, dialog highlights, session control
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    // Broadcast: session events (panel_change, highlight_dialog, session_start, session_end)
     channel.on("broadcast", { event: "session-event" }, (msg: any) => {
       const evt = (msg?.payload || msg) as BroadcastEvent;
       switch (evt.type) {
@@ -179,23 +116,10 @@ export function useLiveSession(
       }
     });
 
-    // Poll participants periodically as a fallback for DB changes
-    const pollInterval = setInterval(() => {
-      loadParticipants();
-    }, 5000);
+    // Poll participants periodically
+    const pollInterval = setInterval(() => loadParticipants(), 4000);
 
-    channel.subscribe(async (status) => {
-      if (status === "SUBSCRIBED") {
-        await channel.track({
-          user_id: user.id,
-          user_name: user.name,
-          user_role: user.role,
-          online_at: new Date().toISOString(),
-        });
-        setIsConnected(true);
-      }
-    });
-
+    channel.subscribe(() => setIsConnected(true));
     channelRef.current = channel;
 
     return () => {
@@ -252,18 +176,12 @@ export function useLiveSession(
     (index: number) => {
       if (!isHost) return;
       setCurrentPanelIndex(index);
-
-      channelRef.current?.send({
-        type: "broadcast",
-        event: "session-event",
-        payload: { type: "panel_change", panel_index: index } as BroadcastEvent,
-      });
-
-      supabase
-        .from("live_sessions")
-        .update({ current_panel_index: index })
-        .eq("id", sessionId)
-        .then(() => {});
+      channelRef.current?.send({ type: "broadcast", event: "session-event", payload: { type: "panel_change", panel_index: index } });
+      fetch(`/api/live-sessions/${sessionId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ current_panel_index: index }),
+      }).catch(() => {});
     },
     [isHost, sessionId]
   );
@@ -288,29 +206,31 @@ export function useLiveSession(
   const assignCharacter = useCallback(
     async (participantId: string, character: string, color: string) => {
       if (!isHost) return;
-      await supabase
-        .from("session_participants")
-        .update({ assigned_character: character, assigned_color: color })
-        .eq("id", participantId);
+      await fetch(`/api/live-sessions/${sessionId}/participants/${participantId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ assigned_character: character, assigned_color: color }),
+      });
       loadParticipants();
     },
-    [isHost]
+    [isHost, sessionId]
   );
 
   // Assign narrator (host only)
   const assignNarrator = useCallback(
     async (participantId: string) => {
       if (!isHost) return;
-      // Remove narrator from others first
-      await supabase
-        .from("session_participants")
-        .update({ is_narrator: false })
-        .eq("session_id", sessionId);
-      // Assign new narrator
-      await supabase
-        .from("session_participants")
-        .update({ is_narrator: true })
-        .eq("id", participantId);
+      // Clear narrator from all, then set on target
+      const current = await (await fetch(`/api/live-sessions/${sessionId}/participants`)).json();
+      await Promise.all(
+        current.map((p: { id: string }) =>
+          fetch(`/api/live-sessions/${sessionId}/participants/${p.id}`, {
+            method: "PATCH",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ is_narrator: p.id === participantId }),
+          })
+        )
+      );
       loadParticipants();
     },
     [isHost, sessionId]
@@ -319,33 +239,25 @@ export function useLiveSession(
   // Start session (host only)
   const startSession = useCallback(async () => {
     if (!isHost) return;
-    await supabase
-      .from("live_sessions")
-      .update({ status: "active" })
-      .eq("id", sessionId);
-    setSession((s) => (s ? { ...s, status: "active" } : s));
-
-    channelRef.current?.send({
-      type: "broadcast",
-      event: "session-event",
-      payload: { type: "session_start" } as BroadcastEvent,
+    await fetch(`/api/live-sessions/${sessionId}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ status: "active" }),
     });
+    setSession((s) => (s ? { ...s, status: "active" } : s));
+    channelRef.current?.send({ type: "broadcast", event: "session-event", payload: { type: "session_start" } });
   }, [isHost, sessionId]);
 
   // End session (host only)
   const endSession = useCallback(async () => {
     if (!isHost) return;
-    await supabase
-      .from("live_sessions")
-      .update({ status: "finished", ended_at: new Date().toISOString() })
-      .eq("id", sessionId);
-    setSession((s) => (s ? { ...s, status: "finished" } : s));
-
-    channelRef.current?.send({
-      type: "broadcast",
-      event: "session-event",
-      payload: { type: "session_end" } as BroadcastEvent,
+    await fetch(`/api/live-sessions/${sessionId}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ status: "finished" }),
     });
+    setSession((s) => (s ? { ...s, status: "finished" } : s));
+    channelRef.current?.send({ type: "broadcast", event: "session-event", payload: { type: "session_end" } });
   }, [isHost, sessionId]);
 
   // Leave session

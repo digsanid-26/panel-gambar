@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
-import { createClient } from "@/lib/supabase/client";
+import { useSession } from "next-auth/react";
 import { Navbar } from "@/components/layout/navbar";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -11,7 +11,7 @@ import Image from "next/image";
 
 export default function RoleSelectPage() {
   const router = useRouter();
-  const supabase = createClient();
+  const { data: session, status } = useSession();
   const [role, setRole] = useState<"guru" | "siswa">("guru");
   const [name, setName] = useState("");
   const [loading, setLoading] = useState(false);
@@ -19,36 +19,21 @@ export default function RoleSelectPage() {
   const [error, setError] = useState("");
 
   useEffect(() => {
-    async function checkUser() {
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) {
-        router.push("/login");
-        return;
-      }
-
-      // Pre-fill name from Google profile
-      const googleName =
-        user.user_metadata?.full_name ||
-        user.user_metadata?.name ||
-        "";
-      setName(googleName);
-
-      // Check if profile already exists with a role
-      const { data: profile } = await supabase
-        .from("profiles")
-        .select("role")
-        .eq("id", user.id)
-        .single();
-
-      if (profile?.role) {
-        router.push("/dashboard");
-        return;
-      }
-
-      setChecking(false);
+    if (status === "loading") return;
+    if (!session?.user) {
+      router.push("/login");
+      return;
     }
-    checkUser();
-  }, []);
+    // Pre-fill name from OAuth profile
+    setName(session.user.name ?? "");
+    // Check if role already set
+    const userRole = (session.user as any).role;
+    if (userRole && userRole !== "siswa") {
+      router.push("/dashboard");
+      return;
+    }
+    setChecking(false);
+  }, [session, status, router]);
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -56,38 +41,20 @@ export default function RoleSelectPage() {
       setError("Nama tidak boleh kosong.");
       return;
     }
-
     setLoading(true);
     setError("");
 
-    const { data: { user } } = await supabase.auth.getUser();
-    if (!user) {
-      setError("Sesi tidak ditemukan. Silakan login ulang.");
-      setLoading(false);
-      return;
-    }
-
-    // Upsert profile with role and name
-    const { error: profileError } = await supabase
-      .from("profiles")
-      .upsert({
-        id: user.id,
-        email: user.email,
-        name: name.trim(),
-        role,
-        avatar_url: user.user_metadata?.avatar_url || null,
-      });
-
-    if (profileError) {
-      setError("Gagal menyimpan profil: " + profileError.message);
-      setLoading(false);
-      return;
-    }
-
-    // Also update user metadata so it's consistent
-    await supabase.auth.updateUser({
-      data: { name: name.trim(), role },
+    const res = await fetch("/api/profile", {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ name: name.trim(), role }),
     });
+    const data = await res.json();
+    if (!res.ok) {
+      setError(data.error ?? "Gagal menyimpan profil.");
+      setLoading(false);
+      return;
+    }
 
     router.push("/dashboard");
     router.refresh();

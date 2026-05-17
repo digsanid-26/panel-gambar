@@ -3,7 +3,7 @@
 import { useEffect, useState, useCallback } from "react";
 import { useParams, useRouter } from "next/navigation";
 import Link from "next/link";
-import { createClient } from "@/lib/supabase/client";
+import { useSession } from "next-auth/react";
 import type { Story, Panel, Dialog, UserProfile, DisplayMode, StoryCharacter } from "@/lib/types";
 import { Navbar } from "@/components/layout/navbar";
 import { Button } from "@/components/ui/button";
@@ -43,98 +43,72 @@ export default function StoryViewerPage() {
   const [duplicating, setDuplicating] = useState(false);
   const [showCover, setShowCover] = useState(true);
 
-  const supabase = createClient();
+  const { data: session } = useSession();
 
   useEffect(() => {
     async function load() {
-      const { data: { user: authUser } } = await supabase.auth.getUser();
-      if (authUser) {
-        const { data: profile } = await supabase
-          .from("profiles")
-          .select("*")
-          .eq("id", authUser.id)
-          .single();
-        if (profile) {
+      if (session?.user) {
+        const profileRes = await fetch("/api/profile");
+        if (profileRes.ok) {
+          const profile = await profileRes.json();
           setUser(profile as UserProfile);
-          // If student, resolve their managed_student id for performer checks
           if (profile.role === "siswa") {
-            const { data: ms } = await supabase
-              .from("managed_students")
-              .select("id")
-              .eq("user_id", authUser.id)
-              .single();
-            if (ms) setManagedStudentId(ms.id);
+            const msRes = await fetch("/api/students/managed");
+            if (msRes.ok) {
+              const msData = await msRes.json();
+              if (msData?.[0]?.id) setManagedStudentId(msData[0].id);
+            }
           }
         }
       }
 
-      const { data: storyData } = await supabase
-        .from("stories")
-        .select("*, profiles!stories_author_id_fkey(name)")
-        .eq("id", storyId)
-        .single();
+      const storyRes = await fetch(`/api/stories/${storyId}`);
+      if (!storyRes.ok) { router.push("/stories"); return; }
+      const storyData = await storyRes.json();
+      setStory({ ...storyData, author_name: storyData.author?.name } as Story);
 
-      if (!storyData) {
-        router.push("/stories");
-        return;
-      }
-
-      setStory({
-        ...storyData,
-        author_name: (storyData.profiles as { name: string } | null)?.name,
-      } as Story);
-
-      const { data: panelsData } = await supabase
-        .from("panels")
-        .select("*, dialogs(*)")
-        .eq("story_id", storyId)
-        .order("order_index", { ascending: true });
-
-      if (panelsData) {
-        const sorted = panelsData.map((p: Record<string, unknown>) => ({
-          ...p,
-          dialogs: ((p.dialogs as Dialog[]) || []).sort(
-            (a: Dialog, b: Dialog) => a.order_index - b.order_index
-          ),
-        }));
-        setPanels(sorted as Panel[]);
+      const panelsRes = await fetch(`/api/panels?story_id=${storyId}`);
+      if (panelsRes.ok) {
+        const panelsData = await panelsRes.json();
+        setPanels(
+          panelsData.map((p: Record<string, unknown>) => ({
+            ...p,
+            dialogs: ((p.dialogs as Dialog[]) || []).sort(
+              (a: Dialog, b: Dialog) => a.order_index - b.order_index
+            ),
+          })) as Panel[]
+        );
       }
 
       setLoading(false);
     }
     load();
-  }, [storyId]);
+  }, [storyId, session]);
 
   // Handle saving student recordings
   const handleSaveRecording = useCallback(async (panelId: string, blob: Blob, dialogId?: string) => {
     if (!user) return;
 
-    const fileName = `${user.id}/${storyId}/${panelId}/${Date.now()}.webm`;
-    const { error: uploadError } = await supabase.storage
-      .from("audio")
-      .upload(fileName, blob, { contentType: "audio/webm" });
+    const fd = new FormData();
+    fd.append("file", new File([blob], `${Date.now()}.webm`));
+    const uploadRes = await fetch("/api/upload", { method: "POST", body: fd });
+    if (!uploadRes.ok) { alert("Gagal menyimpan rekaman."); return; }
+    const { url: publicUrl } = await uploadRes.json();
 
-    if (uploadError) {
-      console.error("Upload error:", uploadError);
-      alert("Gagal menyimpan rekaman.");
-      return;
-    }
-
-    const { data: { publicUrl } } = supabase.storage
-      .from("audio")
-      .getPublicUrl(fileName);
-
-    await supabase.from("recordings").insert({
-      student_id: user.id,
-      story_id: storyId,
-      panel_id: panelId,
-      dialog_id: dialogId || null,
-      type: dialogId ? "dialog" : "narration",
-      audio_url: publicUrl,
+    await fetch("/api/recordings", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        story_id: storyId,
+        panel_id: panelId,
+        dialog_id: dialogId || null,
+        type: dialogId ? "dialog" : "narration",
+        audio_url: publicUrl,
+      }),
     });
 
     alert("Rekaman berhasil disimpan! 🎉");
-  }, [user, storyId, supabase]);
+  }, [user, storyId]);
 
   if (loading) {
     return (

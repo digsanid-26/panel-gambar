@@ -4,7 +4,7 @@ import Link from "next/link";
 import Image from "next/image";
 import { usePathname, useRouter } from "next/navigation";
 import { useState, useEffect, useRef } from "react";
-import { createClient } from "@/lib/supabase/client";
+import { useSession, signOut } from "next-auth/react";
 import type { UserProfile } from "@/lib/types";
 import { cn } from "@/lib/utils";
 import {
@@ -36,24 +36,18 @@ export function Navbar() {
   const [mobileSettingsOpen, setMobileSettingsOpen] = useState(false);
   const storiesDropdownRef = useRef<HTMLDivElement>(null);
   const settingsDropdownRef = useRef<HTMLDivElement>(null);
-  const supabase = createClient();
+  const { data: session } = useSession();
 
   useEffect(() => {
-    async function getUser() {
-      const {
-        data: { user: authUser },
-      } = await supabase.auth.getUser();
-      if (authUser) {
-        const { data: profile } = await supabase
-          .from("profiles")
-          .select("*")
-          .eq("id", authUser.id)
-          .single();
-        if (profile) setUser(profile as UserProfile);
-      }
+    if (session?.user) {
+      fetch("/api/profile")
+        .then((r) => r.json())
+        .then((p) => setUser(p as UserProfile))
+        .catch(() => {});
+    } else {
+      setUser(null);
     }
-    getUser();
-  }, []);
+  }, [session]);
 
   // Close desktop dropdowns on outside click
   useEffect(() => {
@@ -70,10 +64,8 @@ export function Navbar() {
   }, []);
 
   async function handleLogout() {
-    await supabase.auth.signOut();
     setUser(null);
-    router.push("/");
-    router.refresh();
+    await signOut({ callbackUrl: "/" });
   }
 
   const isGuru = user?.role === "guru" || user?.role === "admin";

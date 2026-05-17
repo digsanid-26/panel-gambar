@@ -13,7 +13,6 @@
  */
 
 import type { ARScene } from "./types";
-import { createClient } from "@/lib/supabase/client";
 
 const BUCKET = "ar-assets";
 
@@ -78,57 +77,26 @@ function sceneToRowPayload(scene: ARScene, authorId: string | null) {
   };
 }
 
-// ----------------- File API (Supabase Storage) -----------------
+// ----------------- File API (local storage) -----------------
 
 /**
- * Upload file ke bucket `ar-assets` dan return public HTTPS URL.
- * Path: `<userId>/<timestamp>-<hintName>`
+ * Upload file ke local storage dan return public URL.
  */
 export async function saveARFile(file: Blob, hintName?: string): Promise<string> {
-  const supabase = createClient();
-  const { data: userData } = await supabase.auth.getUser();
-  const userId = userData.user?.id ?? "anon";
+  const formData = new FormData();
+  formData.append("file", file instanceof File ? file : new File([file], hintName || "file"));
+  formData.append("bucket", BUCKET);
 
-  const safeName = (hintName || "file").replace(/[^a-z0-9_.-]/gi, "_").slice(-80);
-  const key = `${userId}/${Date.now().toString(36)}-${Math.random()
-    .toString(36)
-    .slice(2, 8)}-${safeName}`;
-
-  const { error } = await supabase.storage.from(BUCKET).upload(key, file, {
-    cacheControl: "31536000",
-    upsert: false,
-    contentType: file.type || undefined,
-  });
-  if (error) {
-    console.error("[AR] upload failed", error);
-    throw new Error("Upload gagal: " + error.message);
-  }
-
-  const { data } = supabase.storage.from(BUCKET).getPublicUrl(key);
-  return data.publicUrl;
-}
-
-/** Ekstrak object key dari public URL Supabase Storage. */
-function extractStorageKey(url: string): string | null {
-  // Format: https://<project>.supabase.co/storage/v1/object/public/ar-assets/<key>
-  const marker = `/storage/v1/object/public/${BUCKET}/`;
-  const idx = url.indexOf(marker);
-  if (idx < 0) return null;
-  return decodeURIComponent(url.slice(idx + marker.length));
+  const res = await fetch("/api/upload", { method: "POST", body: formData });
+  if (!res.ok) throw new Error("Upload gagal");
+  const { url } = await res.json();
+  return url;
 }
 
 export async function deleteARFile(url: string | undefined | null): Promise<void> {
   if (!url) return;
-  // Handle sisa legacy idb:// dari klien lama — tidak ada aksi
   if (url.startsWith(IDB_URL_PREFIX)) return;
-  const key = extractStorageKey(url);
-  if (!key) return;
-  const supabase = createClient();
-  const { error } = await supabase.storage.from(BUCKET).remove([key]);
-  if (error) {
-    // Tidak fatal — bisa saja file sudah terhapus
-    console.warn("[AR] delete file warn", error.message);
-  }
+  // Local files: no server-side deletion needed for now
 }
 
 /**
@@ -141,99 +109,51 @@ export async function resolveARUrl(
   return url || undefined;
 }
 
-// ----------------- Scene metadata API (Supabase table) -----------------
+// ----------------- Scene metadata API -----------------
 
 export async function listUserScenes(): Promise<ARScene[]> {
-  const supabase = createClient();
-  const { data: userData } = await supabase.auth.getUser();
-  const uid = userData.user?.id;
-  if (!uid) return [];
-
-  const { data, error } = await supabase
-    .from("ar_scenes")
-    .select("*")
-    .eq("author_id", uid)
-    .order("updated_at", { ascending: false });
-
-  if (error) {
-    console.error("[AR] listUserScenes", error);
-    return [];
-  }
-  return (data as ARSceneRow[]).map(rowToScene);
+  try {
+    const res = await fetch("/api/ar?scope=mine");
+    if (!res.ok) return [];
+    const data = await res.json();
+    return (data as ARSceneRow[]).map(rowToScene);
+  } catch { return []; }
 }
 
-/** List all published + public AR scenes (untuk gallery umum). */
 export async function listPublishedARScenes(): Promise<ARScene[]> {
-  const supabase = createClient();
-  const { data, error } = await supabase
-    .from("ar_scenes")
-    .select("*")
-    .eq("status", "published")
-    .eq("visibility", "public")
-    .order("updated_at", { ascending: false });
-
-  if (error) {
-    console.error("[AR] listPublishedARScenes", error);
-    return [];
-  }
-  return (data as ARSceneRow[]).map(rowToScene);
+  try {
+    const res = await fetch("/api/ar?scope=public");
+    if (!res.ok) return [];
+    const data = await res.json();
+    return (data as ARSceneRow[]).map(rowToScene);
+  } catch { return []; }
 }
 
 export async function getUserScene(idOrSlug: string): Promise<ARScene | undefined> {
-  const supabase = createClient();
-  // Coba by slug dulu (lebih umum dari URL), fallback id
-  const { data, error } = await supabase
-    .from("ar_scenes")
-    .select("*")
-    .or(`slug.eq.${idOrSlug},id.eq.${idOrSlug}`)
-    .maybeSingle();
-  if (error) {
-    console.error("[AR] getUserScene", error);
-    return undefined;
-  }
-  if (!data) return undefined;
-  return rowToScene(data as ARSceneRow);
+  try {
+    const res = await fetch(`/api/ar/${encodeURIComponent(idOrSlug)}`);
+    if (!res.ok) return undefined;
+    return rowToScene(await res.json());
+  } catch { return undefined; }
 }
 
 export async function saveUserScene(scene: ARScene): Promise<void> {
-  const supabase = createClient();
-  const { data: userData } = await supabase.auth.getUser();
-  const uid = userData.user?.id ?? null;
-  if (!uid) throw new Error("Belum login. Silakan login sebagai guru untuk menyimpan scene AR.");
-
-  const payload = sceneToRowPayload(scene, uid);
-  const { error } = await supabase.from("ar_scenes").upsert(payload, { onConflict: "id" });
-  if (error) {
-    console.error("[AR] saveUserScene", error);
-    throw new Error("Gagal menyimpan scene: " + error.message);
+  const method = scene.id ? "PUT" : "POST";
+  const url = scene.id ? `/api/ar/${scene.id}` : "/api/ar";
+  const res = await fetch(url, {
+    method,
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(sceneToRowPayload(scene, null)),
+  });
+  if (!res.ok) {
+    const e = await res.json().catch(() => ({}));
+    throw new Error("Gagal menyimpan scene: " + (e.error ?? res.statusText));
   }
 }
 
 export async function deleteUserScene(id: string): Promise<void> {
-  const supabase = createClient();
-  // Ambil scene dulu agar bisa hapus file storage-nya
-  const { data: target } = await supabase
-    .from("ar_scenes")
-    .select("*")
-    .eq("id", id)
-    .maybeSingle();
-
-  if (target) {
-    const scene = rowToScene(target as ARSceneRow);
-    const urls: (string | undefined)[] = [
-      scene.coverImage,
-      scene.markerImage,
-      scene.markerMindFile,
-      ...scene.assets.flatMap((a) => [a.src, a.audioUrl]),
-    ];
-    await Promise.all(urls.map((u) => deleteARFile(u)));
-  }
-
-  const { error } = await supabase.from("ar_scenes").delete().eq("id", id);
-  if (error) {
-    console.error("[AR] deleteUserScene", error);
-    throw new Error("Gagal menghapus scene: " + error.message);
-  }
+  const res = await fetch(`/api/ar/${id}`, { method: "DELETE" });
+  if (!res.ok) throw new Error("Gagal menghapus scene");
 }
 
 // ----------------- Helpers -----------------

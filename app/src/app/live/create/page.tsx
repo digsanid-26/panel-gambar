@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import { createClient } from "@/lib/supabase/client";
+import { useSession } from "next-auth/react";
 import type { Story } from "@/lib/types";
 import { Navbar } from "@/components/layout/navbar";
 import { Button } from "@/components/ui/button";
@@ -27,7 +27,7 @@ function generateCode(): string {
 
 export default function CreateLiveSessionPage() {
   const router = useRouter();
-  const supabase = createClient();
+  const { data: session, status } = useSession();
   const [stories, setStories] = useState<Story[]>([]);
   const [selectedStory, setSelectedStory] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
@@ -35,50 +35,33 @@ export default function CreateLiveSessionPage() {
   const [error, setError] = useState("");
 
   useEffect(() => {
-    async function load() {
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) { router.push("/login"); return; }
-
-      const { data } = await supabase
-        .from("stories")
-        .select("*, panels(count)")
-        .eq("author_id", user.id)
-        .eq("status", "published")
-        .order("updated_at", { ascending: false });
-
-      if (data) setStories(data as Story[]);
-      setLoading(false);
-    }
-    load();
-  }, []);
+    if (status === "loading") return;
+    if (!session?.user) { router.push("/login"); return; }
+    fetch("/api/stories?status=published")
+      .then((r) => r.json())
+      .then((data) => { setStories(data as Story[]); setLoading(false); })
+      .catch(() => setLoading(false));
+  }, [session, status, router]);
 
   async function handleCreate() {
     if (!selectedStory) return;
     setError("");
     setCreating(true);
 
-    const { data: { user } } = await supabase.auth.getUser();
-    if (!user) { router.push("/login"); return; }
-
     const code = generateCode();
+    const res = await fetch("/api/live-sessions", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ code, story_id: selectedStory, status: "waiting", current_panel_index: 0 }),
+    });
 
-    const { data, error: insertError } = await supabase
-      .from("live_sessions")
-      .insert({
-        code,
-        story_id: selectedStory,
-        host_id: user.id,
-        status: "waiting",
-        current_panel_index: 0,
-      })
-      .select()
-      .single();
-
-    if (insertError) {
-      setError(insertError.message);
+    if (!res.ok) {
+      const { error: errMsg } = await res.json().catch(() => ({ error: "Gagal membuat sesi" }));
+      setError(errMsg || "Gagal membuat sesi");
       setCreating(false);
       return;
     }
+    const data = await res.json();
 
     router.push(`/live/${data.id}`);
   }

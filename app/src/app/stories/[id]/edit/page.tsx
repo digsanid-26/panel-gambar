@@ -3,7 +3,7 @@
 import { useEffect, useState, useCallback, useRef } from "react";
 import { useParams, useRouter } from "next/navigation";
 import Link from "next/link";
-import { createClient } from "@/lib/supabase/client";
+import { useSession } from "next-auth/react";
 import type { Story, Panel, Dialog, Theme, Level, TargetClass, PanelType, DisplayMode, StoryCharacter, PanelTimelineItem, NarrationOverlay, ManagedStudent, Asset } from "@/lib/types";
 import { AssetPickerModal } from "@/components/asset-library/asset-picker-modal";
 import { Navbar } from "@/components/layout/navbar";
@@ -58,7 +58,34 @@ export default function EditStoryPage() {
   const params = useParams();
   const router = useRouter();
   const storyId = params.id as string;
-  const supabase = createClient();
+  const { data: session } = useSession();
+
+  async function uploadFileViaApi(file: Blob, filename?: string): Promise<string | null> {
+    const fd = new FormData();
+    fd.append("file", file instanceof File ? file : new File([file], filename || "audio.webm"));
+    const res = await fetch("/api/upload", { method: "POST", body: fd });
+    if (!res.ok) return null;
+    const { url } = await res.json();
+    return url;
+  }
+
+  async function patchPanel(panelId: string, patch: Record<string, unknown>) {
+    const res = await fetch(`/api/panels/${panelId}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(patch),
+    });
+    return res.ok;
+  }
+
+  async function patchDialog(dialogId: string, patch: Record<string, unknown>) {
+    const res = await fetch(`/api/dialogs/${dialogId}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(patch),
+    });
+    return res.ok;
+  }
 
   const [story, setStory] = useState<Story | null>(null);
   const [panels, setPanels] = useState<Panel[]>([]);
@@ -105,28 +132,30 @@ export default function EditStoryPage() {
   const [dialogTextAlign, setDialogTextAlign] = useState<"" | "left" | "center" | "right">("");
 
   useEffect(() => {
-    loadData();
-  }, [storyId]);
+    if (session !== undefined) loadData();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [storyId, session]);
 
   async function loadData() {
-    const { data: { user } } = await supabase.auth.getUser();
-    if (!user) { router.push("/login"); return; }
+    if (!session?.user) { router.push("/login"); return; }
 
-    // Load story, panels, and dynamic options in parallel
-    const [storyRes, panelsRes, themeRes, levelRes, classRes] = await Promise.all([
-      supabase.from("stories").select("*").eq("id", storyId).eq("author_id", user.id).single(),
-      supabase.from("panels").select("*, dialogs(*)").eq("story_id", storyId).order("order_index", { ascending: true }),
-      supabase.from("themes").select("*").eq("is_active", true).order("sort_order"),
-      supabase.from("levels").select("*").eq("is_active", true).order("sort_order"),
-      supabase.from("target_classes").select("*").eq("is_active", true).order("sort_order"),
+    const [storyRes, panelsRes, themesRes, levelsRes, classesRes, studentsRes] = await Promise.all([
+      fetch(`/api/stories/${storyId}`),
+      fetch(`/api/panels?story_id=${storyId}`),
+      fetch("/api/themes"),
+      fetch("/api/levels"),
+      fetch("/api/target-classes"),
+      fetch("/api/students/managed"),
     ]);
 
-    if (!storyRes.data) { router.push("/stories"); return; }
-    setStory(storyRes.data as Story);
+    if (!storyRes.ok) { router.push("/stories"); return; }
+    const storyData = await storyRes.json();
+    setStory(storyData as Story);
 
-    if (panelsRes.data) {
+    if (panelsRes.ok) {
+      const panelsData = await panelsRes.json();
       setPanels(
-        panelsRes.data.map((p: Record<string, unknown>) => ({
+        panelsData.map((p: Record<string, unknown>) => ({
           ...p,
           panel_type: (p.panel_type as string) || "simple",
           dialogs: ((p.dialogs as Dialog[]) || []).sort(
@@ -136,17 +165,10 @@ export default function EditStoryPage() {
       );
     }
 
-    setThemes((themeRes.data || []) as Theme[]);
-    setLevels((levelRes.data || []) as Level[]);
-    setTargetClasses((classRes.data || []) as TargetClass[]);
-
-    // Load managed students for character assignment
-    const { data: studentsData } = await supabase
-      .from("managed_students")
-      .select("*")
-      .eq("teacher_id", user.id)
-      .order("name");
-    setManagedStudents((studentsData || []) as ManagedStudent[]);
+    if (themesRes.ok) setThemes(await themesRes.json());
+    if (levelsRes.ok) setLevels(await levelsRes.json());
+    if (classesRes.ok) setTargetClasses(await classesRes.json());
+    if (studentsRes.ok) setManagedStudents(await studentsRes.json());
 
     setLoading(false);
   }
@@ -154,18 +176,18 @@ export default function EditStoryPage() {
   async function addPanel(panelType: PanelType = "simple") {
     setSaving(true);
     setShowPanelTypeMenu(false);
-    const { data, error } = await supabase
-      .from("panels")
-      .insert({
+    const res = await fetch("/api/panels", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
         story_id: storyId,
         order_index: panels.length,
         background_color: panelType === "simple" ? "#f0f9ff" : "#1a1a2e",
         panel_type: panelType,
-      })
-      .select("*, dialogs(*)")
-      .single();
-
-    if (data) {
+      }),
+    });
+    if (res.ok) {
+      const data = await res.json();
       setPanels(prev => [...prev, { ...data, panel_type: panelType, dialogs: [] } as Panel]);
       setExpandedPanel(data.id);
     }
@@ -173,69 +195,43 @@ export default function EditStoryPage() {
   }
 
   async function uploadCoverImage(file: File) {
-    const { data: { user } } = await supabase.auth.getUser();
-    if (!user || !story) return;
+    if (!story) return;
     setUploadingCover(true);
-    const ext = file.name.split(".").pop();
-    const path = `${user.id}/cover_${storyId}.${ext}`;
-    const { error } = await supabase.storage
-      .from("cover-images")
-      .upload(path, file, { upsert: true, contentType: file.type });
-    if (!error) {
-      const { data: { publicUrl } } = supabase.storage.from("cover-images").getPublicUrl(path);
-      await supabase.from("stories").update({ cover_image_url: publicUrl }).eq("id", storyId);
-      setStory((s) => s ? { ...s, cover_image_url: publicUrl } : s);
+    const url = await uploadFileViaApi(file);
+    if (url) {
+      await fetch(`/api/stories/${storyId}`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ cover_image_url: url }) });
+      setStory((s) => s ? { ...s, cover_image_url: url } : s);
     }
     setUploadingCover(false);
   }
 
   async function uploadVideoTrailer(file: File) {
-    const { data: { user } } = await supabase.auth.getUser();
-    if (!user || !story) return;
+    if (!story) return;
     setUploadingVideo(true);
-    const ext = file.name.split(".").pop();
-    const path = `${user.id}/trailer_${storyId}.${ext}`;
-    const { error } = await supabase.storage
-      .from("videos")
-      .upload(path, file, { upsert: true, contentType: file.type });
-    if (!error) {
-      const { data: { publicUrl } } = supabase.storage.from("videos").getPublicUrl(path);
-      await supabase.from("stories").update({ video_trailer_url: publicUrl }).eq("id", storyId);
-      setStory((s) => s ? { ...s, video_trailer_url: publicUrl } : s);
+    const url = await uploadFileViaApi(file);
+    if (url) {
+      await fetch(`/api/stories/${storyId}`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ video_trailer_url: url }) });
+      setStory((s) => s ? { ...s, video_trailer_url: url } : s);
     }
     setUploadingVideo(false);
   }
 
   async function updateStoryField(field: string, value: unknown) {
-    await supabase.from("stories").update({ [field]: value, updated_at: new Date().toISOString() }).eq("id", storyId);
+    await fetch(`/api/stories/${storyId}`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ [field]: value }) });
     setStory((s) => s ? { ...s, [field]: value } as Story : s);
   }
 
   async function saveCharacters(chars: StoryCharacter[]) {
-    await supabase.from("stories").update({
-      characters: chars as unknown as Record<string, unknown>[],
-      updated_at: new Date().toISOString(),
-    }).eq("id", storyId);
+    await fetch(`/api/stories/${storyId}`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ characters: chars }) });
     setStory((s) => s ? { ...s, characters: chars } : s);
   }
 
   async function uploadCharacterAvatar(file: File): Promise<string | null> {
-    const { data: { user } } = await supabase.auth.getUser();
-    if (!user) return null;
-    const ext = file.name.split(".").pop();
-    const path = `${user.id}/${storyId}/characters/avatar_${Date.now()}.${ext}`;
-    const { error } = await supabase.storage
-      .from("panel-images")
-      .upload(path, file, { upsert: true, contentType: file.type });
-    if (error) return null;
-    const { data: { publicUrl } } = supabase.storage.from("panel-images").getPublicUrl(path);
-    return publicUrl;
+    return await uploadFileViaApi(file);
   }
 
   async function saveTimelineData(panelId: string, timeline: PanelTimelineItem[]) {
-    await supabase.from("panels").update({
-      timeline_data: timeline as unknown as Record<string, unknown>[],
-    }).eq("id", panelId);
+    await patchPanel(panelId, { timeline_data: timeline });
     setPanels(prev => prev.map((p) => (p.id === panelId ? { ...p, timeline_data: timeline } : p)));
   }
 
@@ -375,15 +371,13 @@ export default function EditStoryPage() {
   }
 
   async function saveNarrationOverlay(panelId: string, overlay: NarrationOverlay) {
-    await supabase.from("panels").update({
-      narration_overlay: overlay as unknown as Record<string, unknown>,
-    }).eq("id", panelId);
+    await patchPanel(panelId, { narration_overlay: overlay });
     setPanels(prev => prev.map((p) => (p.id === panelId ? { ...p, narration_overlay: overlay } : p)));
   }
 
   async function saveCanvasData(panelId: string, canvasData: import("@/lib/types").CanvasData) {
     setSaving(true);
-    await supabase.from("panels").update({ canvas_data: canvasData as unknown as Record<string, unknown> }).eq("id", panelId);
+    await patchPanel(panelId, { canvas_data: canvasData });
     setPanels(prev => prev.map((p) => (p.id === panelId ? { ...p, canvas_data: canvasData } : p)));
     setSaving(false);
 
@@ -514,68 +508,33 @@ export default function EditStoryPage() {
   }
 
   async function uploadCanvasImage(panelId: string, file: File): Promise<string | null> {
-    const { data: { user } } = await supabase.auth.getUser();
-    if (!user) return null;
-    const ext = file.name.split(".").pop();
-    const path = `${user.id}/${storyId}/${panelId}/asset_${Date.now()}.${ext}`;
-    const { error } = await supabase.storage
-      .from("panel-images")
-      .upload(path, file, { upsert: true, contentType: file.type });
-    if (error) return null;
-    const { data: { publicUrl } } = supabase.storage.from("panel-images").getPublicUrl(path);
-    return publicUrl;
+    return await uploadFileViaApi(file);
   }
 
   async function deletePanel(panelId: string) {
     if (!confirm("Hapus panel ini?")) return;
-    await supabase.from("panels").delete().eq("id", panelId);
+    await fetch(`/api/panels/${panelId}`, { method: "DELETE" });
     setPanels(prev => prev.filter((p) => p.id !== panelId));
   }
 
   async function updatePanelField(panelId: string, field: string, value: string) {
-    await supabase.from("panels").update({ [field]: value }).eq("id", panelId);
+    await patchPanel(panelId, { [field]: value });
     setPanels(prev => prev.map((p) => (p.id === panelId ? { ...p, [field]: value } : p)));
   }
 
   async function uploadPanelImage(panelId: string, file: File) {
-    const { data: { user } } = await supabase.auth.getUser();
-    if (!user) return;
-
-    const ext = file.name.split(".").pop();
-    const path = `${user.id}/${storyId}/${panelId}/image.${ext}`;
-
     setSaving(true);
-    const { error } = await supabase.storage
-      .from("panel-images")
-      .upload(path, file, { upsert: true, contentType: file.type });
-
-    if (!error) {
-      const { data: { publicUrl } } = supabase.storage
-        .from("panel-images")
-        .getPublicUrl(path);
-      await updatePanelField(panelId, "image_url", publicUrl);
-    }
+    const url = await uploadFileViaApi(file);
+    if (url) await updatePanelField(panelId, "image_url", url);
     setSaving(false);
   }
 
   async function uploadAudio(panelId: string, blob: Blob, type: "narration" | "background") {
-    const { data: { user } } = await supabase.auth.getUser();
-    if (!user) return;
-
-    const path = `${user.id}/${storyId}/${panelId}/${type}_${Date.now()}.webm`;
     setSaving(true);
-
-    const { error } = await supabase.storage
-      .from("audio")
-      .upload(path, blob, { contentType: "audio/webm" });
-
-    if (!error) {
-      const { data: { publicUrl } } = supabase.storage
-        .from("audio")
-        .getPublicUrl(path);
-
+    const url = await uploadFileViaApi(blob, `${type}_${Date.now()}.webm`);
+    if (url) {
       const field = type === "narration" ? "narration_audio_url" : "background_audio_url";
-      await updatePanelField(panelId, field, publicUrl);
+      await updatePanelField(panelId, field, url);
       const dur = await getAudioDurationFromBlob(blob);
       await ensureTimelineAudioEntry(panelId, type, dur > 0 ? dur : undefined);
     }
@@ -590,9 +549,10 @@ export default function EditStoryPage() {
 
     const panel = panels.find((p) => p.id === panelId);
     const text_style = buildDialogTextStyle();
-    const { data, error } = await supabase
-      .from("dialogs")
-      .insert({
+    const res = await fetch("/api/dialogs", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
         panel_id: panelId,
         order_index: panel?.dialogs?.length || 0,
         character_name: dialogCharName,
@@ -602,11 +562,11 @@ export default function EditStoryPage() {
         position_x: dialogPosX,
         position_y: dialogPosY,
         text_style,
-      })
-      .select()
-      .single();
+      }),
+    });
 
-    if (data) {
+    if (res.ok) {
+      const data = await res.json();
       setPanels(prev =>
         prev.map((p) =>
           p.id === panelId
@@ -625,20 +585,17 @@ export default function EditStoryPage() {
     setSaving(true);
 
     const text_style = buildDialogTextStyle();
-    const { error } = await supabase
-      .from("dialogs")
-      .update({
-        character_name: dialogCharName,
-        character_color: dialogCharColor,
-        text: dialogText,
-        bubble_style: dialogBubble,
-        position_x: dialogPosX,
-        position_y: dialogPosY,
-        text_style,
-      })
-      .eq("id", editingDialogId);
+    const res = await patchDialog(editingDialogId, {
+      character_name: dialogCharName,
+      character_color: dialogCharColor,
+      text: dialogText,
+      bubble_style: dialogBubble,
+      position_x: dialogPosX,
+      position_y: dialogPosY,
+      text_style,
+    });
 
-    if (!error) {
+    if (res) {
       setPanels(prev =>
         prev.map((p) =>
           p.id === panelId
@@ -730,7 +687,7 @@ export default function EditStoryPage() {
   }
 
   async function updateDialogPosition(dialogId: string, posX: number, posY: number) {
-    await supabase.from("dialogs").update({ position_x: posX, position_y: posY }).eq("id", dialogId);
+    await patchDialog(dialogId, { position_x: posX, position_y: posY });
     setPanels((prev) =>
       prev.map((p) => ({
         ...p,
@@ -759,16 +716,12 @@ export default function EditStoryPage() {
     ));
 
     // Persist to DB
-    await Promise.all(
-      reordered.map((d, i) =>
-        supabase.from("dialogs").update({ order_index: i }).eq("id", d.id)
-      )
-    );
+    await Promise.all(reordered.map((d, i) => patchDialog(d.id, { order_index: i })));
   }
 
   async function deleteDialog(panelId: string, dialogId: string) {
     if (!confirm("Hapus dialog ini?")) return;
-    await supabase.from("dialogs").delete().eq("id", dialogId);
+    await fetch(`/api/dialogs/${dialogId}`, { method: "DELETE" });
     setPanels(prev =>
       prev.map((p) =>
         p.id === panelId
@@ -779,30 +732,14 @@ export default function EditStoryPage() {
   }
 
   async function uploadDialogAudio(dialogId: string, panelId: string, blob: Blob) {
-    const { data: { user } } = await supabase.auth.getUser();
-    if (!user) return;
-
-    const path = `${user.id}/${storyId}/${panelId}/dialog_${dialogId}_${Date.now()}.webm`;
     setSaving(true);
-
-    const { error } = await supabase.storage
-      .from("audio")
-      .upload(path, blob, { contentType: "audio/webm" });
-
-    if (!error) {
-      const { data: { publicUrl } } = supabase.storage
-        .from("audio")
-        .getPublicUrl(path);
-      await supabase.from("dialogs").update({ audio_url: publicUrl }).eq("id", dialogId);
+    const url = await uploadFileViaApi(blob, `dialog_${dialogId}_${Date.now()}.webm`);
+    if (url) {
+      await patchDialog(dialogId, { audio_url: url });
       setPanels(prev =>
         prev.map((p) =>
           p.id === panelId
-            ? {
-                ...p,
-                dialogs: (p.dialogs || []).map((d) =>
-                  d.id === dialogId ? { ...d, audio_url: publicUrl } : d
-                ),
-              }
+            ? { ...p, dialogs: (p.dialogs || []).map((d) => d.id === dialogId ? { ...d, audio_url: url } : d) }
             : p
         )
       );
@@ -813,23 +750,11 @@ export default function EditStoryPage() {
   }
 
   async function uploadAudioFile(panelId: string, file: File, type: "narration" | "background") {
-    const { data: { user } } = await supabase.auth.getUser();
-    if (!user) return;
-
-    const ext = file.name.split(".").pop() || "mp3";
-    const path = `${user.id}/${storyId}/${panelId}/${type}_${Date.now()}.${ext}`;
     setSaving(true);
-
-    const { error } = await supabase.storage
-      .from("audio")
-      .upload(path, file, { contentType: file.type });
-
-    if (!error) {
-      const { data: { publicUrl } } = supabase.storage
-        .from("audio")
-        .getPublicUrl(path);
+    const url = await uploadFileViaApi(file);
+    if (url) {
       const field = type === "narration" ? "narration_audio_url" : "background_audio_url";
-      await updatePanelField(panelId, field, publicUrl);
+      await updatePanelField(panelId, field, url);
       const dur = await getAudioDurationFromBlob(file);
       await ensureTimelineAudioEntry(panelId, type, dur > 0 ? dur : undefined);
     }
@@ -839,31 +764,14 @@ export default function EditStoryPage() {
   }
 
   async function uploadDialogAudioFile(dialogId: string, panelId: string, file: File) {
-    const { data: { user } } = await supabase.auth.getUser();
-    if (!user) return;
-
-    const ext = file.name.split(".").pop() || "mp3";
-    const path = `${user.id}/${storyId}/${panelId}/dialog_${dialogId}_${Date.now()}.${ext}`;
     setSaving(true);
-
-    const { error } = await supabase.storage
-      .from("audio")
-      .upload(path, file, { contentType: file.type });
-
-    if (!error) {
-      const { data: { publicUrl } } = supabase.storage
-        .from("audio")
-        .getPublicUrl(path);
-      await supabase.from("dialogs").update({ audio_url: publicUrl }).eq("id", dialogId);
+    const url = await uploadFileViaApi(file);
+    if (url) {
+      await patchDialog(dialogId, { audio_url: url });
       setPanels(prev =>
         prev.map((p) =>
           p.id === panelId
-            ? {
-                ...p,
-                dialogs: (p.dialogs || []).map((d) =>
-                  d.id === dialogId ? { ...d, audio_url: publicUrl } : d
-                ),
-              }
+            ? { ...p, dialogs: (p.dialogs || []).map((d) => d.id === dialogId ? { ...d, audio_url: url } : d) }
             : p
         )
       );
@@ -878,7 +786,7 @@ export default function EditStoryPage() {
     if (!confirm(`Hapus ${type === "narration" ? "Audio Narasi" : "Suara Latar"} yang sudah diset?`)) return;
     setSaving(true);
     const field = type === "narration" ? "narration_audio_url" : "background_audio_url";
-    await supabase.from("panels").update({ [field]: null }).eq("id", panelId);
+    await patchPanel(panelId, { [field]: null });
     setPanels(prev => prev.map((p) => (p.id === panelId ? { ...p, [field]: undefined } : p)));
 
     // Remove the matching timeline entry
@@ -898,7 +806,7 @@ export default function EditStoryPage() {
   async function clearDialogAudio(dialogId: string, panelId: string) {
     if (!confirm("Hapus audio dialog yang sudah diset?")) return;
     setSaving(true);
-    await supabase.from("dialogs").update({ audio_url: null }).eq("id", dialogId);
+    await patchDialog(dialogId, { audio_url: null });
     setPanels(prev =>
       prev.map((p) =>
         p.id === panelId
@@ -941,7 +849,7 @@ export default function EditStoryPage() {
         const dur = await getAudioDurationFromUrl(asset.url);
         await ensureTimelineAudioEntry(target.panelId, target.type, dur > 0 ? dur : undefined);
       } else {
-        await supabase.from("dialogs").update({ audio_url: asset.url }).eq("id", target.dialogId);
+        await patchDialog(target.dialogId, { audio_url: asset.url });
         setPanels(prev =>
           prev.map((p) =>
             p.id === target.panelId
@@ -966,20 +874,14 @@ export default function EditStoryPage() {
   async function publishStory() {
     if (!confirm("Terbitkan cerita ini? Siswa akan bisa membacanya.")) return;
     setSaving(true);
-    await supabase
-      .from("stories")
-      .update({ status: "published", updated_at: new Date().toISOString() })
-      .eq("id", storyId);
+    await fetch(`/api/stories/${storyId}`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ status: "published" }) });
     setStory((s) => (s ? { ...s, status: "published" } : s));
     setSaving(false);
   }
 
   async function unpublishStory() {
     setSaving(true);
-    await supabase
-      .from("stories")
-      .update({ status: "draft", updated_at: new Date().toISOString() })
-      .eq("id", storyId);
+    await fetch(`/api/stories/${storyId}`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ status: "draft" }) });
     setStory((s) => (s ? { ...s, status: "draft" } : s));
     setSaving(false);
   }
@@ -990,11 +892,7 @@ export default function EditStoryPage() {
     [updated[index - 1], updated[index]] = [updated[index], updated[index - 1]];
     const reordered = updated.map((p, i) => ({ ...p, order_index: i }));
     setPanels(reordered);
-    await Promise.all(
-      reordered.map((p, i) =>
-        supabase.from("panels").update({ order_index: i }).eq("id", p.id)
-      )
-    );
+    await Promise.all(reordered.map((p, i) => patchPanel(p.id, { order_index: i })));
   }
 
   async function movePanelDown(index: number) {
@@ -1003,11 +901,7 @@ export default function EditStoryPage() {
     [updated[index], updated[index + 1]] = [updated[index + 1], updated[index]];
     const reordered = updated.map((p, i) => ({ ...p, order_index: i }));
     setPanels(reordered);
-    await Promise.all(
-      reordered.map((p, i) =>
-        supabase.from("panels").update({ order_index: i }).eq("id", p.id)
-      )
-    );
+    await Promise.all(reordered.map((p, i) => patchPanel(p.id, { order_index: i })));
   }
 
   if (loading) {
@@ -1081,12 +975,12 @@ export default function EditStoryPage() {
                 currentUrl={story.cover_image_url}
                 onUpload={uploadCoverImage}
                 onRemove={async () => {
-                  await supabase.from("stories").update({ cover_image_url: null }).eq("id", storyId);
+                  await fetch(`/api/stories/${storyId}`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ cover_image_url: null }) });
                   setStory((s) => s ? { ...s, cover_image_url: undefined } : s);
                 }}
                 uploading={uploadingCover}
                 onPickFromLibrary={async (url) => {
-                  await supabase.from("stories").update({ cover_image_url: url }).eq("id", storyId);
+                  await fetch(`/api/stories/${storyId}`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ cover_image_url: url }) });
                   setStory((s) => s ? { ...s, cover_image_url: url } : s);
                 }}
               />
@@ -1094,7 +988,7 @@ export default function EditStoryPage() {
                 currentUrl={story.video_trailer_url}
                 onUpload={uploadVideoTrailer}
                 onRemove={async () => {
-                  await supabase.from("stories").update({ video_trailer_url: null }).eq("id", storyId);
+                  await fetch(`/api/stories/${storyId}`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ video_trailer_url: null }) });
                   setStory((s) => s ? { ...s, video_trailer_url: undefined } : s);
                 }}
                 uploading={uploadingVideo}

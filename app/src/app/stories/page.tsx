@@ -2,7 +2,7 @@
 
 import { useEffect, useState, useRef } from "react";
 import Link from "next/link";
-import { createClient } from "@/lib/supabase/client";
+import { useSession } from "next-auth/react";
 import type { Story } from "@/lib/types";
 import { Navbar } from "@/components/layout/navbar";
 import { Button } from "@/components/ui/button";
@@ -41,43 +41,26 @@ export default function StoriesPage() {
   const [openMenu, setOpenMenu] = useState<string | null>(null);
   const menuRef = useRef<HTMLDivElement>(null);
 
-  const supabase = createClient();
+  const { data: session } = useSession();
 
   useEffect(() => {
     async function load() {
-      const { data: { user } } = await supabase.auth.getUser();
-      if (user) {
-        setUserId(user.id);
-        const { data: profile } = await supabase
-          .from("profiles")
-          .select("role")
-          .eq("id", user.id)
-          .single();
-        if (profile) setUserRole(profile.role);
+      if (session?.user) {
+        setUserId(session.user.id ?? null);
+        setUserRole((session.user as any).role ?? null);
       }
-
-      let query = supabase
-        .from("stories")
-        .select("*, profiles!stories_author_id_fkey(name)")
-        .order("created_at", { ascending: false });
-
-      if (!user) {
-        query = query.eq("status", "published");
-      }
-
-      const { data } = await query;
-      if (data) {
-        setStories(
-          data.map((s: Record<string, unknown>) => ({
-            ...s,
-            author_name: (s.profiles as { name: string } | null)?.name || "Anonim",
-          })) as Story[]
-        );
-      }
+      const res = await fetch("/api/stories");
+      const data = res.ok ? await res.json() : [];
+      setStories(
+        data.map((s: Record<string, unknown>) => ({
+          ...s,
+          author_name: (s as any).author?.name || "Anonim",
+        })) as Story[]
+      );
       setLoading(false);
     }
     load();
-  }, []);
+  }, [session]);
 
   // Close menu on outside click
   useEffect(() => {
@@ -96,34 +79,30 @@ export default function StoriesPage() {
 
   async function togglePublish(story: Story) {
     const newStatus = story.status === "published" ? "draft" : "published";
-    const { error } = await supabase
-      .from("stories")
-      .update({ status: newStatus, updated_at: new Date().toISOString() })
-      .eq("id", story.id);
-    if (!error) {
-      setStories((prev) => prev.map((s) => s.id === story.id ? { ...s, status: newStatus } : s));
-    }
+    const res = await fetch(`/api/stories/${story.id}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ status: newStatus }),
+    });
+    if (res.ok) setStories((prev) => prev.map((s) => s.id === story.id ? { ...s, status: newStatus } : s));
     setOpenMenu(null);
   }
 
   async function toggleVisibility(story: Story) {
     const newVis = story.visibility === "private" ? "public" : "private";
-    const { error } = await supabase
-      .from("stories")
-      .update({ visibility: newVis, updated_at: new Date().toISOString() })
-      .eq("id", story.id);
-    if (!error) {
-      setStories((prev) => prev.map((s) => s.id === story.id ? { ...s, visibility: newVis } : s));
-    }
+    const res = await fetch(`/api/stories/${story.id}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ visibility: newVis }),
+    });
+    if (res.ok) setStories((prev) => prev.map((s) => s.id === story.id ? { ...s, visibility: newVis } : s));
     setOpenMenu(null);
   }
 
   async function deleteStory(story: Story) {
     if (!confirm(`Hapus cerita "${story.title}"? Semua panel, dialog, dan rekaman akan ikut terhapus.`)) return;
-    const { error } = await supabase.from("stories").delete().eq("id", story.id);
-    if (!error) {
-      setStories((prev) => prev.filter((s) => s.id !== story.id));
-    }
+    const res = await fetch(`/api/stories/${story.id}`, { method: "DELETE" });
+    if (res.ok) setStories((prev) => prev.filter((s) => s.id !== story.id));
     setOpenMenu(null);
   }
 

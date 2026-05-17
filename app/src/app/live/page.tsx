@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import { createClient } from "@/lib/supabase/client";
+import { useSession } from "next-auth/react";
 import type { LiveSession, UserProfile } from "@/lib/types";
 import { Navbar } from "@/components/layout/navbar";
 import { Button } from "@/components/ui/button";
@@ -20,7 +20,7 @@ import {
 
 export default function LivePage() {
   const router = useRouter();
-  const supabase = createClient();
+  const { data: session, status } = useSession();
   const [user, setUser] = useState<UserProfile | null>(null);
   const [sessions, setSessions] = useState<LiveSession[]>([]);
   const [joinCode, setJoinCode] = useState("");
@@ -29,33 +29,22 @@ export default function LivePage() {
   const [joining, setJoining] = useState(false);
 
   useEffect(() => {
+    if (status === "loading") return;
+    if (!session?.user) { router.push("/login"); return; }
     async function load() {
-      const { data: { user: authUser } } = await supabase.auth.getUser();
-      if (!authUser) { router.push("/login"); return; }
-
-      const { data: profile } = await supabase
-        .from("profiles")
-        .select("*")
-        .eq("id", authUser.id)
-        .single();
-      if (!profile) { router.push("/login"); return; }
+      const profileRes = await fetch("/api/profile");
+      if (!profileRes.ok) { router.push("/login"); return; }
+      const profile = await profileRes.json();
       setUser(profile as UserProfile);
 
-      // Load active sessions
       if (profile.role === "guru") {
-        const { data } = await supabase
-          .from("live_sessions")
-          .select("*, stories(title, level)")
-          .eq("host_id", authUser.id)
-          .in("status", ["waiting", "active"])
-          .order("created_at", { ascending: false });
-        if (data) setSessions(data as unknown as LiveSession[]);
+        const res = await fetch("/api/live-sessions?status=active");
+        if (res.ok) setSessions(await res.json());
       }
-
       setLoading(false);
     }
     load();
-  }, []);
+  }, [session, status, router]);
 
   async function handleJoin(e: React.FormEvent) {
     e.preventDefault();
@@ -69,13 +58,10 @@ export default function LivePage() {
       return;
     }
 
-    const { data, error } = await supabase
-      .from("live_sessions")
-      .select("id, status")
-      .eq("code", code)
-      .single();
+    const res = await fetch(`/api/live-sessions?code=${code}`);
+    const data = res.ok ? await res.json() : null;
 
-    if (error || !data) {
+    if (!data || !data.id) {
       setJoinError("Kode sesi tidak ditemukan.");
       setJoining(false);
       return;

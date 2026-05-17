@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import { createClient } from "@/lib/supabase/client";
+import { useSession } from "next-auth/react";
 import type { School, UserProfile, ClassRoom, ManagedStudent } from "@/lib/types";
 import { Navbar } from "@/components/layout/navbar";
 import { Button } from "@/components/ui/button";
@@ -28,7 +28,7 @@ import {
 
 export default function SchoolPage() {
   const router = useRouter();
-  const supabase = createClient();
+  const { data: session, status } = useSession();
 
   const [user, setUser] = useState<UserProfile | null>(null);
   const [loading, setLoading] = useState(true);
@@ -60,60 +60,51 @@ export default function SchoolPage() {
   const [editingStudentId, setEditingStudentId] = useState<string | null>(null);
 
   useEffect(() => {
+    if (status === "loading") return;
+    if (!session?.user) { router.push("/login"); return; }
     loadData();
-  }, []);
+  }, [session, status]);
 
   async function loadData() {
-    const { data: { user: authUser } } = await supabase.auth.getUser();
-    if (!authUser) { router.push("/login"); return; }
-
-    const { data: profile } = await supabase.from("profiles").select("*").eq("id", authUser.id).single();
-    if (!profile || (profile.role !== "guru" && profile.role !== "admin")) {
-      router.push("/dashboard");
-      return;
-    }
+    const profileRes = await fetch("/api/profile");
+    if (!profileRes.ok) { router.push("/login"); return; }
+    const profile = await profileRes.json();
+    if (profile.role !== "guru" && profile.role !== "admin") { router.push("/dashboard"); return; }
     setUser(profile as UserProfile);
 
-    // Load school
-    const { data: schoolData } = await supabase
-      .from("schools")
-      .select("*")
-      .eq("teacher_id", authUser.id)
-      .single();
+    const [schoolRes, classRes, studentsRes] = await Promise.all([
+      fetch("/api/schools/mine"),
+      fetch("/api/classrooms"),
+      fetch("/api/students/managed"),
+    ]);
 
-    if (schoolData) {
-      setSchool(schoolData as School);
-      setSchoolForm({
-        name: schoolData.name,
-        address: schoolData.address || "",
-        city: schoolData.city || "",
-        province: schoolData.province || "",
-        postal_code: schoolData.postal_code || "",
-        phone: schoolData.phone || "",
-      });
+    if (schoolRes.ok) {
+      const schoolData = await schoolRes.json();
+      if (schoolData) {
+        setSchool(schoolData as School);
+        setSchoolForm({
+          name: schoolData.name || "",
+          address: schoolData.address || "",
+          city: schoolData.city || "",
+          province: schoolData.province || "",
+          postal_code: schoolData.postalCode || "",
+          phone: schoolData.phone || "",
+        });
+      }
     }
 
-    // Load classes
-    const { data: classData } = await supabase
-      .from("classrooms")
-      .select("*")
-      .eq("teacher_id", authUser.id)
-      .order("created_at", { ascending: false });
-    setClasses((classData || []) as ClassRoom[]);
+    if (classRes.ok) setClasses(await classRes.json());
 
-    // Load all managed students for this teacher
-    const { data: studentData } = await supabase
-      .from("managed_students")
-      .select("*")
-      .eq("teacher_id", authUser.id)
-      .order("name");
-
-    const grouped: Record<string, ManagedStudent[]> = {};
-    (studentData || []).forEach((s: ManagedStudent) => {
-      if (!grouped[s.class_id]) grouped[s.class_id] = [];
-      grouped[s.class_id].push(s);
-    });
-    setStudents(grouped);
+    if (studentsRes.ok) {
+      const studentData: ManagedStudent[] = await studentsRes.json();
+      const grouped: Record<string, ManagedStudent[]> = {};
+      studentData.forEach((s) => {
+        const key = s.class_id ?? (s as any).classId;
+        if (!grouped[key]) grouped[key] = [];
+        grouped[key].push(s);
+      });
+      setStudents(grouped);
+    }
 
     setLoading(false);
   }
@@ -124,28 +115,26 @@ export default function SchoolPage() {
     setSaving(true);
 
     if (school) {
-      await supabase.from("schools").update({
-        name: schoolForm.name,
-        address: schoolForm.address,
-        city: schoolForm.city,
-        province: schoolForm.province,
-        postal_code: schoolForm.postal_code,
-        phone: schoolForm.phone,
-      }).eq("id", school.id);
-      setSchool({ ...school, ...schoolForm });
+      const res = await fetch(`/api/schools/${school.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(schoolForm),
+      });
+      if (res.ok) setSchool({ ...school, ...schoolForm });
     } else {
-      const { data } = await supabase.from("schools").insert({
-        name: schoolForm.name,
-        address: schoolForm.address,
-        city: schoolForm.city,
-        province: schoolForm.province,
-        postal_code: schoolForm.postal_code,
-        phone: schoolForm.phone,
-        teacher_id: user.id,
-      }).select().single();
-      if (data) {
+      const res = await fetch("/api/schools", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(schoolForm),
+      });
+      if (res.ok) {
+        const data = await res.json();
         setSchool(data as School);
-        await supabase.from("profiles").update({ school_id: data.id, school: data.name }).eq("id", user.id);
+        await fetch("/api/profile", {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ school_id: data.id, school: data.name }),
+        });
       }
     }
     setEditingSchool(false);
@@ -156,19 +145,24 @@ export default function SchoolPage() {
   async function saveClass() {
     if (!user || !classForm.name.trim()) return;
     setSaving(true);
-    const code = Math.random().toString(36).substring(2, 8).toUpperCase();
 
     if (editingClassId) {
-      await supabase.from("classrooms").update({ name: classForm.name }).eq("id", editingClassId);
-      setClasses(classes.map((c) => c.id === editingClassId ? { ...c, name: classForm.name } : c));
+      const res = await fetch(`/api/classrooms/${editingClassId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name: classForm.name }),
+      });
+      if (res.ok) setClasses(classes.map((c) => c.id === editingClassId ? { ...c, name: classForm.name } : c));
     } else {
-      const { data } = await supabase.from("classrooms").insert({
-        name: classForm.name,
-        code,
-        teacher_id: user.id,
-        school_id: school?.id || null,
-      }).select().single();
-      if (data) setClasses([data as ClassRoom, ...classes]);
+      const res = await fetch("/api/classrooms", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name: classForm.name, school_id: school?.id || null }),
+      });
+      if (res.ok) {
+        const data = await res.json();
+        setClasses([data as ClassRoom, ...classes]);
+      }
     }
     setShowClassForm(false);
     setEditingClassId(null);
@@ -178,7 +172,7 @@ export default function SchoolPage() {
 
   async function deleteClass(classId: string) {
     if (!confirm("Hapus kelas ini beserta semua siswanya?")) return;
-    await supabase.from("classrooms").delete().eq("id", classId);
+    await fetch(`/api/classrooms/${classId}`, { method: "DELETE" });
     setClasses(classes.filter((c) => c.id !== classId));
     const newStudents = { ...students };
     delete newStudents[classId];
@@ -192,11 +186,11 @@ export default function SchoolPage() {
 
     if (editingStudentId) {
       // Update existing student (name/username/email only, no auth change)
-      await supabase.from("managed_students").update({
-        name: studentForm.name,
-        username: studentForm.username,
-        email: studentForm.email || null,
-      }).eq("id", editingStudentId);
+      await fetch(`/api/students/managed/${editingStudentId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name: studentForm.name, username: studentForm.username, email: studentForm.email || null }),
+      });
       setStudents((prev) => ({
         ...prev,
         [classId]: (prev[classId] || []).map((s) =>
@@ -233,14 +227,9 @@ export default function SchoolPage() {
         return;
       }
 
-      // Reload students for this class to get the full record
-      const { data: updated } = await supabase
-        .from("managed_students")
-        .select("*")
-        .eq("class_id", classId)
-        .eq("teacher_id", user.id)
-        .order("name");
-      setStudents((prev) => ({ ...prev, [classId]: (updated || []) as ManagedStudent[] }));
+      const updatedRes = await fetch(`/api/students/managed?class_id=${classId}`);
+      const updated = updatedRes.ok ? await updatedRes.json() : [];
+      setStudents((prev) => ({ ...prev, [classId]: updated as ManagedStudent[] }));
     }
 
     setShowStudentForm(null);
@@ -251,7 +240,7 @@ export default function SchoolPage() {
 
   async function deleteStudent(classId: string, studentId: string) {
     if (!confirm("Hapus siswa ini?")) return;
-    await supabase.from("managed_students").delete().eq("id", studentId);
+    await fetch(`/api/students/${studentId}`, { method: "DELETE" });
     setStudents((prev) => ({
       ...prev,
       [classId]: (prev[classId] || []).filter((s) => s.id !== studentId),

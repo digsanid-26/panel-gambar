@@ -3,7 +3,6 @@
 import Link from "next/link";
 import { useEffect, useRef, useState } from "react";
 import { Navbar } from "@/components/layout/navbar";
-import { createClient } from "@/lib/supabase/client";
 import {
   BookOpen,
   Mic,
@@ -35,31 +34,22 @@ export default function HomePage() {
   const featuresRef = useRef<HTMLDivElement>(null);
   const [stories, setStories] = useState<StoryPreview[]>([]);
 
-  // Fetch published stories for the story list
   useEffect(() => {
-    const supabase = createClient();
-    supabase
-      .from("stories")
-      .select("id, title, cover_image_url, theme, level, profiles!stories_author_id_fkey(name)")
-      .eq("status", "published")
-      .eq("visibility", "public")
-      .order("updated_at", { ascending: false })
-      .limit(6)
-      .then(({ data, error }: { data: Record<string, unknown>[] | null; error: unknown }) => {
-        if (error) { console.error("Failed to load stories:", error); return; }
-        if (data) {
-          setStories(
-            data.map((s: Record<string, unknown>) => ({
-              id: s.id as string,
-              title: s.title as string,
-              cover_image_url: s.cover_image_url as string | undefined,
-              theme: s.theme as string | undefined,
-              level: s.level as string | undefined,
-              author_name: (s.profiles as { name: string } | null)?.name || undefined,
-            }))
-          );
-        }
-      });
+    fetch("/api/stories?limit=6")
+      .then((r) => r.json())
+      .then((data: Record<string, unknown>[]) => {
+        setStories(
+          data.map((s) => ({
+            id: s.id as string,
+            title: s.title as string,
+            cover_image_url: (s.coverImageUrl ?? s.cover_image_url) as string | undefined,
+            theme: s.theme as string | undefined,
+            level: s.level as string | undefined,
+            author_name: (s.author as { name: string } | null)?.name || undefined,
+          }))
+        );
+      })
+      .catch(() => {});
   }, []);
 
   useEffect(() => {

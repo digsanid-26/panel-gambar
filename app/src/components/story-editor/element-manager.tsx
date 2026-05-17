@@ -1,7 +1,6 @@
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
-import { createClient } from "@/lib/supabase/client";
 import type { ElementAsset, ElementAssetType, Recording } from "@/lib/types";
 import { Button } from "@/components/ui/button";
 import { AudioPlayer } from "@/components/audio/audio-player";
@@ -46,7 +45,6 @@ function getTypeLabel(type: ElementAssetType) {
 }
 
 export function ElementManager({ storyId, onAssignAsset, className = "" }: ElementManagerProps) {
-  const supabase = createClient();
   const [assets, setAssets] = useState<ElementAsset[]>([]);
   const [recordings, setRecordings] = useState<Recording[]>([]);
   const [loading, setLoading] = useState(true);
@@ -55,28 +53,14 @@ export function ElementManager({ storyId, onAssignAsset, className = "" }: Eleme
 
   const loadAssets = useCallback(async () => {
     const [assetsRes, recordingsRes] = await Promise.all([
-      supabase
-        .from("element_assets")
-        .select("*")
-        .eq("story_id", storyId)
-        .order("created_at", { ascending: false }),
-      supabase
-        .from("recordings")
-        .select("*, profiles:student_id(name)")
-        .eq("story_id", storyId)
-        .order("created_at", { ascending: false }),
+      fetch(`/api/element-assets?story_id=${storyId}`),
+      fetch(`/api/recordings?story_id=${storyId}`),
     ]);
 
-    setAssets((assetsRes.data || []) as ElementAsset[]);
-
-    // Map recordings with student name
-    const recs = (recordingsRes.data || []).map((r: Record<string, unknown>) => ({
-      ...r,
-      student_name: (r.profiles as Record<string, unknown>)?.name || "Unknown",
-    }));
-    setRecordings(recs as Recording[]);
+    if (assetsRes.ok) setAssets(await assetsRes.json());
+    if (recordingsRes.ok) setRecordings(await recordingsRes.json());
     setLoading(false);
-  }, [storyId, supabase]);
+  }, [storyId]);
 
   useEffect(() => {
     loadAssets();
@@ -84,46 +68,37 @@ export function ElementManager({ storyId, onAssignAsset, className = "" }: Eleme
 
   async function handleUpload(file: File) {
     setUploading(true);
-    const { data: { user } } = await supabase.auth.getUser();
-    if (!user) { setUploading(false); return; }
+    const fd = new FormData();
+    fd.append("file", file);
+    const uploadRes = await fetch("/api/upload", { method: "POST", body: fd });
+    if (!uploadRes.ok) { alert("Upload gagal."); setUploading(false); return; }
+    const { url } = await uploadRes.json();
 
-    const ext = file.name.split(".").pop() || "bin";
     const isImage = file.type.startsWith("image/");
     const isAudio = file.type.startsWith("audio/");
-    const bucket = isImage ? "panel-images" : "audio";
     const assetType: ElementAssetType = isImage ? "image" : isAudio ? "audio" : "file";
 
-    const path = `${user.id}/${storyId}/${Date.now()}.${ext}`;
-    const { error: uploadErr } = await supabase.storage.from(bucket).upload(path, file);
-    if (uploadErr) {
-      alert("Upload gagal: " + uploadErr.message);
-      setUploading(false);
-      return;
-    }
-
-    const { data: urlData } = supabase.storage.from(bucket).getPublicUrl(path);
-
-    const { data } = await supabase.from("element_assets").insert({
-      story_id: storyId,
-      type: assetType,
-      label: file.name,
-      url: urlData.publicUrl,
-      source: "upload",
-      created_by: user.id,
-    }).select().single();
-
-    if (data) setAssets((prev) => [data as ElementAsset, ...prev]);
+    const res = await fetch("/api/element-assets", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ story_id: storyId, type: assetType, label: file.name, url, source: "upload" }),
+    });
+    if (res.ok) { const newAsset = await res.json() as ElementAsset; setAssets((prev) => [newAsset, ...prev]); }
     setUploading(false);
   }
 
   async function deleteAsset(id: string) {
     if (!confirm("Hapus aset ini?")) return;
-    await supabase.from("element_assets").delete().eq("id", id);
+    await fetch(`/api/element-assets/${id}`, { method: "DELETE" });
     setAssets((prev) => prev.filter((a) => a.id !== id));
   }
 
   async function updateRecordingStatus(recId: string, status: "approved" | "rejected", autoActive: boolean) {
-    await supabase.from("recordings").update({ status, auto_active: autoActive }).eq("id", recId);
+    await fetch(`/api/recordings/${recId}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ status, auto_active: autoActive }),
+    });
     setRecordings((prev) =>
       prev.map((r) => r.id === recId ? { ...r, status, auto_active: autoActive } : r)
     );

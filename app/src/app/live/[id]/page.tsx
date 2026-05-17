@@ -3,7 +3,7 @@
 import { useEffect, useState, useMemo } from "react";
 import { useParams, useRouter } from "next/navigation";
 import Link from "next/link";
-import { createClient } from "@/lib/supabase/client";
+import { useSession } from "next-auth/react";
 import type { UserProfile, Panel, Dialog } from "@/lib/types";
 import { useLiveSession } from "@/lib/webrtc/use-live-session";
 import { Navbar } from "@/components/layout/navbar";
@@ -33,7 +33,7 @@ export default function LiveSessionRoomPage() {
   const params = useParams();
   const router = useRouter();
   const sessionId = params.id as string;
-  const supabase = createClient();
+  const { data: sessionData } = useSession();
 
   const [user, setUser] = useState<UserProfile | null>(null);
   const [panels, setPanels] = useState<Panel[]>([]);
@@ -46,19 +46,12 @@ export default function LiveSessionRoomPage() {
 
   // Load auth user
   useEffect(() => {
-    async function loadUser() {
-      const { data: { user: authUser } } = await supabase.auth.getUser();
-      if (!authUser) { router.push("/login"); return; }
-      const { data: profile } = await supabase
-        .from("profiles")
-        .select("*")
-        .eq("id", authUser.id)
-        .single();
-      if (profile) setUser(profile as UserProfile);
-      setAuthLoading(false);
-    }
-    loadUser();
-  }, []);
+    if (!sessionData?.user) return;
+    fetch("/api/profile")
+      .then((r) => r.json())
+      .then((profile) => { setUser(profile as UserProfile); setAuthLoading(false); })
+      .catch(() => router.push("/login"));
+  }, [sessionData, router]);
 
   // Use the live session hook (only after user is loaded)
   const liveSession = useLiveSession(
@@ -91,12 +84,9 @@ export default function LiveSessionRoomPage() {
   useEffect(() => {
     if (!session?.story_id) return;
     async function loadPanels() {
-      const { data } = await supabase
-        .from("panels")
-        .select("*, dialogs(*)")
-        .eq("story_id", session!.story_id)
-        .order("order_index", { ascending: true });
-      if (data) {
+      const res = await fetch(`/api/panels?story_id=${session!.story_id}`);
+      if (res.ok) {
+        const data = await res.json();
         setPanels(
           data.map((p: Record<string, unknown>) => ({
             ...p,
