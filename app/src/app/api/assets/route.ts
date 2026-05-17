@@ -20,7 +20,7 @@ export async function GET(request: NextRequest) {
     where,
     orderBy: { createdAt: "desc" },
   });
-  return NextResponse.json(assets);
+  return NextResponse.json(assets.map(({ sizeBytes, ...a }) => ({ ...a, sizeBytes: sizeBytes?.toString() ?? null })));
 }
 
 export async function POST(request: NextRequest) {
@@ -44,5 +44,6 @@ export async function POST(request: NextRequest) {
       metadata: body.metadata ?? {},
     },
   });
-  return NextResponse.json({ ...asset, size_bytes: asset.sizeBytes?.toString() });
+  const { sizeBytes, ...rest } = asset;
+  return NextResponse.json({ ...rest, sizeBytes: sizeBytes?.toString() ?? null });
 }
