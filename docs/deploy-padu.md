@@ -456,7 +456,7 @@ git pull origin main
 
 echo "==> Installing dependencies..."
 cd "$APP_DIR/app"
-npm install --omit=dev
+npm install
 
 echo "==> Generating Prisma client..."
 npx prisma generate
