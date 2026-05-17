@@ -2,17 +2,18 @@ import { auth } from "@/auth";
 import { prisma } from "@/lib/db";
 import { NextRequest, NextResponse } from "next/server";
 
-export async function GET(request: NextRequest, { params }: { params: { id: string } }) {
+export async function GET(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const session = await auth();
   if (!session?.user?.id) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
+  const { id } = await params;
   const { searchParams } = new URL(request.url);
   const after = searchParams.get("after");
   const userId = session.user.id;
 
   const signals = await prisma.sessionSignal.findMany({
     where: {
-      sessionId: params.id,
+      sessionId: id,
       OR: [{ toUserId: userId }, { toUserId: null }],
       NOT: { fromUserId: userId },
       ...(after && { createdAt: { gt: new Date(after) } }),
@@ -23,14 +24,15 @@ export async function GET(request: NextRequest, { params }: { params: { id: stri
   return NextResponse.json(signals);
 }
 
-export async function POST(request: NextRequest, { params }: { params: { id: string } }) {
+export async function POST(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const session = await auth();
   if (!session?.user?.id) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
+  const { id } = await params;
   const body = await request.json();
   const signal = await prisma.sessionSignal.create({
     data: {
-      sessionId: params.id,
+      sessionId: id,
       fromUserId: session.user.id,
       toUserId: body.to_user_id ?? null,
       event: body.event,

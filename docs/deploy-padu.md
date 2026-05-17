@@ -99,7 +99,13 @@ npm -v    # 10.x.x
 sudo npm install -g pm2
 
 # Nginx
-sudo apt install -y nginx
+sudo apt install -y nginx || true   # abaikan error start awal
+
+# Fix IPv6 — server Ubuntu ini tidak support IPv6, nginx gagal start tanpanya
+sudo sed -i 's/listen \[::\]:80 default_server;//g' /etc/nginx/sites-enabled/default
+sudo sed -i 's/listen \[::\]:80;//g' /etc/nginx/sites-enabled/default
+sudo dpkg --configure -a
+sudo nginx -t && sudo systemctl start nginx
 
 # Git
 sudo apt install -y git
@@ -149,13 +155,36 @@ docker ps
 
 ## Langkah 5 — Clone Repository & Install
 
-> **Repo private** — gunakan Personal Access Token (PAT) GitHub atau SSH key.
-> Buat PAT di: GitHub → Settings → Developer settings → Personal access tokens → Fine-grained → repo scope.
+> **Repo private** — gunakan SSH Deploy Key agar tidak perlu password.
 
 ```bash
+# 1. Generate SSH key khusus untuk repo ini
+ssh-keygen -t ed25519 -C "padu-edu-server" -f ~/.ssh/padu_deploy -N ""
+
+# 2. Tampilkan public key — copy hasilnya
+cat ~/.ssh/padu_deploy.pub
+
+# 3. Tambahkan ke GitHub:
+#    https://github.com/digsanid-26/padu-edu/settings/keys → Add deploy key
+#    Paste public key di atas, Allow write access: TIDAK perlu
+
+# 4. Konfigurasi SSH alias
+cat >> ~/.ssh/config << 'EOF'
+Host github-padu
+    HostName github.com
+    User git
+    IdentityFile ~/.ssh/padu_deploy
+EOF
+chmod 600 ~/.ssh/config
+
+# 5. Test koneksi (harus muncul: Hi digsanid-26! You've successfully authenticated...)
+ssh -T github-padu
+```
+
+```bash
+# 6. Clone via SSH alias (tanpa password)
 cd ~
-# Gunakan PAT di URL (ganti YOUR_PAT)
-git clone https://YOUR_PAT@github.com/digsanid-26/padu-edu.git
+git clone github-padu:digsanid-26/padu-edu.git
 cd padu-edu/app
 npm install
 ```
@@ -172,10 +201,10 @@ Isi dengan:
 
 ```env
 # Database (PostgreSQL di Docker lokal)
-DATABASE_URL="postgresql://postgres:GANTI_PASSWORD_KUAT@localhost:5432/panel_gambar?schema=public"
+DATABASE_URL="postgresql://postgres:Padu462!@localhost:5432/panel_gambar?schema=public"
 
 # NextAuth v5
-AUTH_SECRET="GENERATE_DENGAN_PERINTAH_DI_BAWAH"
+AUTH_SECRET="cGjtkx45uF/WtLBGNKFMHCu9Q3AzkI48Lw0pqZ0/HCQ="
 NEXTAUTH_URL="https://padu.digsan.id"
 
 # Google OAuth (isi jika pakai login Google, kosongkan jika tidak)
@@ -222,6 +251,7 @@ npm run build
 
 ```bash
 cd ~/padu-edu/app
+npx prisma generate
 npm run build
 ```
 
@@ -427,6 +457,9 @@ git pull origin main
 echo "==> Installing dependencies..."
 cd "$APP_DIR/app"
 npm install --omit=dev
+
+echo "==> Generating Prisma client..."
+npx prisma generate
 
 echo "==> Pushing schema (jika ada perubahan)..."
 npx prisma db push
