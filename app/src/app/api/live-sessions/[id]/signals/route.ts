@@ -43,7 +43,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
   // Cleanup old signals (older than 30s) to keep table small
   await prisma.sessionSignal.deleteMany({
     where: {
-      sessionId: params.id,
+      sessionId: id,
       createdAt: { lt: new Date(Date.now() - 30_000) },
     },
   });
