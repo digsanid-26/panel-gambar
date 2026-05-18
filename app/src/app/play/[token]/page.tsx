@@ -126,7 +126,7 @@ export default function PlayPage() {
                 <span className="inline-flex items-center gap-1 text-[10px] font-bold uppercase tracking-wider text-primary">
                   <Mic className="w-3 h-3" /> Hasil Rekaman
                 </span>
-                <Lock className="w-3 h-3 text-white/20" title="Link private" />
+                <Lock className="w-3 h-3 text-white/20" />
               </div>
               <h1 className="font-bold text-sm text-white line-clamp-1">{result.story.title}</h1>
             </div>
