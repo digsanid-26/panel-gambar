@@ -1,5 +1,6 @@
 import { auth } from "@/auth";
 import { prisma } from "@/lib/db";
+import { transformDialog } from "@/lib/api-transform";
 import { NextRequest, NextResponse } from "next/server";
 
 async function authorize(dialogId: string, userId: string) {
@@ -38,7 +39,7 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
   if ("text" in body) data.text = body.text;
 
   const updated = await prisma.dialog.update({ where: { id }, data });
-  return NextResponse.json(updated);
+  return NextResponse.json(transformDialog(updated as any));
 }
 
 export async function DELETE(_req: NextRequest, { params }: { params: Promise<{ id: string }> }) {

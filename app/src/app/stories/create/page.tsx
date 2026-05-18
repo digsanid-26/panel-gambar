@@ -29,6 +29,7 @@ export default function CreateStoryPage() {
   const [informasiTambahan, setInformasiTambahan] = useState("");
   const [coverFile, setCoverFile] = useState<File | null>(null);
   const [coverPreview, setCoverPreview] = useState<string | null>(null);
+  const [coverUrlFromGallery, setCoverUrlFromGallery] = useState<string | null>(null);
   const [videoFile, setVideoFile] = useState<File | null>(null);
   const [uploadingCover, setUploadingCover] = useState(false);
   const [uploadingVideo, setUploadingVideo] = useState(false);
@@ -67,6 +68,7 @@ export default function CreateStoryPage() {
   }, []);
 
   async function handleCoverUpload(file: File) {
+    setCoverUrlFromGallery(null);
     setCoverFile(file);
     const reader = new FileReader();
     reader.onload = () => setCoverPreview(reader.result as string);
@@ -83,7 +85,9 @@ export default function CreateStoryPage() {
     setLoading(true);
 
     let coverImageUrl: string | undefined;
-    if (coverFile) {
+    if (coverUrlFromGallery) {
+      coverImageUrl = coverUrlFromGallery;
+    } else if (coverFile) {
       setUploadingCover(true);
       const fd = new FormData(); fd.append("file", coverFile);
       const up = await fetch("/api/upload", { method: "POST", body: fd });
@@ -161,10 +165,11 @@ export default function CreateStoryPage() {
         <div className="bg-surface-card rounded-2xl border border-border p-6 sm:p-8">
           <form onSubmit={handleCreate} className="space-y-5">
             <CoverImageUploader
-              currentUrl={coverPreview || undefined}
+              currentUrl={coverUrlFromGallery || coverPreview || undefined}
               onUpload={handleCoverUpload}
-              onRemove={() => { setCoverFile(null); setCoverPreview(null); }}
+              onRemove={() => { setCoverFile(null); setCoverPreview(null); setCoverUrlFromGallery(null); }}
               uploading={uploadingCover}
+              onPickFromLibrary={(url) => { setCoverFile(null); setCoverPreview(null); setCoverUrlFromGallery(url); }}
             />
 
             <Input

@@ -1,5 +1,6 @@
 import { auth } from "@/auth";
 import { prisma } from "@/lib/db";
+import { transformPanel } from "@/lib/api-transform";
 import { NextRequest, NextResponse } from "next/server";
 
 async function authorize(panelId: string, userId: string) {
@@ -19,7 +20,7 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ id:
     include: { dialogs: { orderBy: { orderIndex: "asc" } } },
   });
   if (!panel) return NextResponse.json({ error: "Not found" }, { status: 404 });
-  return NextResponse.json(panel);
+  return NextResponse.json(transformPanel(panel as any));
 }
 
 export async function PATCH(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
@@ -50,7 +51,7 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
   }
 
   const updated = await prisma.panel.update({ where: { id }, data, include: { dialogs: true } });
-  return NextResponse.json(updated);
+  return NextResponse.json(transformPanel(updated as any));
 }
 
 export async function DELETE(_req: NextRequest, { params }: { params: Promise<{ id: string }> }) {

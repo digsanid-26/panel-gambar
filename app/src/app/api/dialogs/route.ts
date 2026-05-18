@@ -1,5 +1,6 @@
 import { auth } from "@/auth";
 import { prisma } from "@/lib/db";
+import { transformDialog } from "@/lib/api-transform";
 import { NextRequest, NextResponse } from "next/server";
 
 export async function GET(request: NextRequest) {
@@ -11,7 +12,7 @@ export async function GET(request: NextRequest) {
     where: { panelId },
     orderBy: { orderIndex: "asc" },
   });
-  return NextResponse.json(dialogs);
+  return NextResponse.json(dialogs.map(transformDialog));
 }
 
 export async function POST(request: NextRequest) {
@@ -41,5 +42,5 @@ export async function POST(request: NextRequest) {
       textStyle: body.text_style ?? undefined,
     },
   });
-  return NextResponse.json(dialog);
+  return NextResponse.json(transformDialog(dialog as any));
 }

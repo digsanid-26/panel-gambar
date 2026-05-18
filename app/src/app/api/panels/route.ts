@@ -1,5 +1,6 @@
 import { auth } from "@/auth";
 import { prisma } from "@/lib/db";
+import { transformPanel } from "@/lib/api-transform";
 import { NextRequest, NextResponse } from "next/server";
 
 export async function GET(request: NextRequest) {
@@ -12,7 +13,7 @@ export async function GET(request: NextRequest) {
     orderBy: { orderIndex: "asc" },
     include: { dialogs: { orderBy: { orderIndex: "asc" } } },
   });
-  return NextResponse.json(panels);
+  return NextResponse.json(panels.map(transformPanel));
 }
 
 export async function POST(request: NextRequest) {
@@ -42,7 +43,7 @@ export async function POST(request: NextRequest) {
       },
       include: { dialogs: true },
     });
-    return NextResponse.json(panel);
+    return NextResponse.json(transformPanel(panel));
   } catch (err) {
     console.error(err);
     return NextResponse.json({ error: "Server error" }, { status: 500 });
