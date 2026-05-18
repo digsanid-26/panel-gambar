@@ -3,10 +3,11 @@
 import { useEffect, useState, useMemo } from "react";
 import { useParams, useRouter } from "next/navigation";
 import Link from "next/link";
+import Image from "next/image";
+import { Navbar } from "@/components/layout/navbar";
 import { useSession } from "next-auth/react";
 import type { UserProfile, Panel, Dialog } from "@/lib/types";
 import { useLiveSession } from "@/lib/webrtc/use-live-session";
-import { Navbar } from "@/components/layout/navbar";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { AudioPlayer } from "@/components/audio/audio-player";
@@ -20,13 +21,14 @@ import {
   Mic,
   MicOff,
   Radio,
-  Settings,
+  UserCog,
   Users,
   Volume2,
   X,
   Image as ImageIcon,
   Phone,
   PhoneOff,
+  PlayCircle,
 } from "lucide-react";
 
 export default function LiveSessionRoomPage() {
@@ -43,6 +45,7 @@ export default function LiveSessionRoomPage() {
   const [roleCharacter, setRoleCharacter] = useState("");
   const [roleColor, setRoleColor] = useState("#3b82f6");
   const [editingParticipantId, setEditingParticipantId] = useState<string | null>(null);
+  const [assigningCharacter, setAssigningCharacter] = useState<{ name: string; color: string } | null>(null);
 
   // Load auth user
   useEffect(() => {
@@ -160,8 +163,7 @@ export default function LiveSessionRoomPage() {
 
   if (authLoading || !user) {
     return (
-      <div className="min-h-screen flex flex-col">
-        <Navbar />
+      <div className="min-h-screen flex flex-col bg-gray-950">
         <div className="flex-1 flex items-center justify-center">
           <Loader2 className="w-8 h-8 animate-spin text-primary" />
         </div>
@@ -171,13 +173,12 @@ export default function LiveSessionRoomPage() {
 
   if (error && !session) {
     return (
-      <div className="min-h-screen flex flex-col">
-        <Navbar />
+      <div className="min-h-screen flex flex-col bg-gray-950">
         <div className="flex-1 flex items-center justify-center p-8">
           <div className="text-center">
-            <Radio className="w-12 h-12 text-muted mx-auto mb-4" />
-            <h2 className="text-lg font-bold mb-2">Sesi Tidak Ditemukan</h2>
-            <p className="text-muted text-sm mb-4">{error}</p>
+            <Radio className="w-12 h-12 text-white/30 mx-auto mb-4" />
+            <h2 className="text-lg font-bold mb-2 text-white">Sesi Tidak Ditemukan</h2>
+            <p className="text-white/50 text-sm mb-4">{error}</p>
             <Link href="/live">
               <Button variant="primary">Kembali</Button>
             </Link>
@@ -189,8 +190,7 @@ export default function LiveSessionRoomPage() {
 
   if (!session) {
     return (
-      <div className="min-h-screen flex flex-col">
-        <Navbar />
+      <div className="min-h-screen flex flex-col bg-gray-950">
         <div className="flex-1 flex items-center justify-center">
           <Loader2 className="w-8 h-8 animate-spin text-primary" />
         </div>
@@ -201,7 +201,7 @@ export default function LiveSessionRoomPage() {
   // Session ended
   if (session.status === "finished") {
     return (
-      <div className="min-h-screen flex flex-col bg-surface">
+      <div className="min-h-screen flex flex-col bg-gray-950">
         <Navbar />
         <div className="flex-1 flex items-center justify-center p-8">
           <div className="text-center max-w-md">
@@ -227,28 +227,35 @@ export default function LiveSessionRoomPage() {
   }
 
   return (
-    <div className="min-h-screen flex flex-col bg-surface">
-      {/* Top bar */}
-      <div className="bg-white border-b border-border px-4 py-2.5 sticky top-0 z-50">
-        <div className="max-w-7xl mx-auto flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            <Link href="/live">
-              <Button variant="ghost" size="icon">
+    <div className="min-h-screen flex flex-col bg-gray-950">
+      {/* Top bar — dark */}
+      <div className="bg-gray-950 border-b border-white/10 px-4 py-2.5 sticky top-0 z-50">
+        <div className="max-w-7xl mx-auto flex items-center justify-between gap-3">
+          {/* Left: logo + back + title */}
+          <div className="flex items-center gap-3 min-w-0">
+            <Link href="/live" className="shrink-0">
+              <button className="p-1.5 rounded-lg hover:bg-white/10 text-white/70 hover:text-white transition-colors">
                 <ChevronLeft className="w-5 h-5" />
-              </Button>
+              </button>
             </Link>
-            <div>
+            <Link href="/" className="shrink-0">
+              <Image src="/logo-icon.svg" alt="PADU" width={32} height={32} className="w-8 h-8" priority />
+            </Link>
+            <div className="min-w-0">
               <div className="flex items-center gap-2">
-                <div className="w-2 h-2 rounded-full bg-danger animate-pulse" />
-                <h1 className="font-bold text-sm sm:text-base line-clamp-1">
+                <span className="inline-flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-wider text-red-400">
+                  <span className="w-1.5 h-1.5 rounded-full bg-red-400 animate-pulse" />
+                  {session.status === "waiting" ? "Menunggu" : "Live"}
+                </span>
+                <h1 className="font-bold text-sm sm:text-base line-clamp-1 text-white">
                   {session.story?.title || "Sesi Baca Bersama"}
                 </h1>
               </div>
-              <div className="flex items-center gap-2 text-xs text-muted">
+              <div className="flex items-center gap-2 text-xs text-white/40">
                 <span>Kode:</span>
-                <code className="font-mono font-bold text-foreground">{session.code}</code>
-                <button onClick={copyCode} className="text-secondary hover:text-secondary-dark">
-                  {copiedCode ? <Check className="w-3 h-3" /> : <Copy className="w-3 h-3" />}
+                <code className="font-mono font-bold text-white/80">{session.code}</code>
+                <button onClick={copyCode} className="text-white/40 hover:text-white/80">
+                  {copiedCode ? <Check className="w-3 h-3 text-green-400" /> : <Copy className="w-3 h-3" />}
                 </button>
                 <span>·</span>
                 <span>{presenceList.length} online</span>
@@ -256,7 +263,8 @@ export default function LiveSessionRoomPage() {
             </div>
           </div>
 
-          <div className="flex items-center gap-2">
+          {/* Right: controls */}
+          <div className="flex items-center gap-2 shrink-0">
             {/* Voice controls */}
             {!voiceReady ? (
               <Button
@@ -282,18 +290,18 @@ export default function LiveSessionRoomPage() {
                   variant="ghost"
                   size="icon"
                   onClick={() => { leaveSession(); router.push("/live"); }}
-                  title="Putuskan suara"
-                  className="text-danger"
+                  title="Keluar dari sesi"
+                  className="text-red-400 hover:text-red-300 hover:bg-red-400/10"
                 >
                   <PhoneOff className="w-4 h-4" />
                 </Button>
               </div>
             )}
 
-            {/* Host controls */}
+            {/* Host: start / end */}
             {isHost && session.status === "waiting" && (
-              <Button variant="primary" size="sm" onClick={startSession}>
-                <Radio className="w-4 h-4" />
+              <Button variant="primary" size="sm" onClick={startSession} disabled={participants.length < 1}>
+                <PlayCircle className="w-4 h-4" />
                 Mulai Sesi
               </Button>
             )}
@@ -308,9 +316,9 @@ export default function LiveSessionRoomPage() {
 
       <div className="flex-1 flex flex-col lg:flex-row">
         {/* Sidebar: participants */}
-        <aside className="lg:w-72 bg-white border-b lg:border-b-0 lg:border-r border-border p-4 overflow-y-auto">
+        <aside className="lg:w-72 bg-gray-900 border-b lg:border-b-0 lg:border-r border-white/10 p-4 overflow-y-auto">
           <div className="flex items-center justify-between mb-3">
-            <h2 className="text-sm font-bold flex items-center gap-2">
+            <h2 className="text-sm font-bold flex items-center gap-2 text-white">
               <Users className="w-4 h-4" />
               Peserta ({participants.length})
             </h2>
@@ -328,8 +336,8 @@ export default function LiveSessionRoomPage() {
                   key={p.id}
                   className={`flex items-center gap-2.5 p-2.5 rounded-xl border transition-all ${
                     speaking
-                      ? "border-accent bg-accent/5 shadow-sm"
-                      : "border-transparent hover:bg-surface-alt"
+                      ? "border-accent bg-accent/10 shadow-sm"
+                      : "border-white/5 hover:bg-white/5"
                   }`}
                 >
                   {/* Avatar / status */}
@@ -354,8 +362,8 @@ export default function LiveSessionRoomPage() {
 
                   {/* Info */}
                   <div className="flex-1 min-w-0">
-                    <p className="text-xs font-semibold truncate">
-                      {p.user_name || "Pengguna"} {isMe && "(Anda)"}
+                    <p className="text-xs font-semibold truncate text-white">
+                      {p.user_name || "Pengguna"} {isMe && <span className="text-white/40">(Anda)</span>}
                     </p>
                     {p.assigned_character ? (
                       <div className="flex items-center gap-1 mt-0.5">
@@ -373,7 +381,7 @@ export default function LiveSessionRoomPage() {
                         )}
                       </div>
                     ) : (
-                      <span className="text-[10px] text-muted">Belum ada peran</span>
+                      <span className="text-[10px] text-white/30">Belum ada peran</span>
                     )}
                   </div>
 
@@ -381,10 +389,11 @@ export default function LiveSessionRoomPage() {
                   {isHost && (
                     <button
                       onClick={() => handleAssignRole(p.id)}
-                      className="text-muted hover:text-secondary p-1 shrink-0"
+                      className="flex items-center gap-1 text-xs font-medium px-2 py-1 rounded-lg bg-white/10 hover:bg-primary/30 text-white/60 hover:text-white transition-colors shrink-0"
                       title="Atur peran"
                     >
-                      <Settings className="w-3.5 h-3.5" />
+                      <UserCog className="w-3.5 h-3.5" />
+                      <span className="hidden sm:inline">Peran</span>
                     </button>
                   )}
                 </div>
@@ -392,32 +401,29 @@ export default function LiveSessionRoomPage() {
             })}
           </div>
 
-          {/* Characters in story */}
+          {/* Characters legend */}
           {allCharacters.length > 0 && (
-            <div className="mt-4 pt-4 border-t border-border">
-              <h3 className="text-xs font-bold text-muted mb-2">Karakter dalam cerita:</h3>
-              <div className="flex flex-wrap gap-1.5">
+            <div className="mt-4 pt-4 border-t border-white/10">
+              <h3 className="text-xs font-bold text-white/40 uppercase tracking-wider mb-2">Karakter Cerita</h3>
+              <div className="space-y-1.5">
                 {allCharacters.map((c) => {
                   const assigned = getAssignedUser(c.name);
                   return (
                     <div
                       key={c.name}
-                      className="inline-flex items-center gap-1 px-2 py-1 rounded-full text-[10px] font-semibold border"
-                      style={{
-                        borderColor: c.color,
-                        color: c.color,
-                        backgroundColor: `${c.color}10`,
-                      }}
+                      className="flex items-center justify-between gap-2 px-2.5 py-1.5 rounded-lg"
+                      style={{ backgroundColor: `${c.color}18` }}
                     >
-                      <div
-                        className="w-2 h-2 rounded-full"
-                        style={{ backgroundColor: c.color }}
-                      />
-                      {c.name}
-                      {assigned && (
-                        <span className="text-muted ml-0.5">
-                          → {assigned.user_name?.split(" ")[0]}
+                      <div className="flex items-center gap-2">
+                        <div className="w-2.5 h-2.5 rounded-full shrink-0" style={{ backgroundColor: c.color }} />
+                        <span className="text-xs font-semibold" style={{ color: c.color }}>{c.name}</span>
+                      </div>
+                      {assigned ? (
+                        <span className="text-[10px] text-white/50 truncate max-w-[80px]">
+                          {assigned.user_name?.split(" ")[0]}
                         </span>
+                      ) : (
+                        <span className="text-[10px] text-white/20 italic">kosong</span>
                       )}
                     </div>
                   );
@@ -428,60 +434,127 @@ export default function LiveSessionRoomPage() {
         </aside>
 
         {/* Main: Panel viewer */}
-        <main className="flex-1 flex flex-col">
+        <main className="flex-1 flex flex-col bg-gray-900">
           {/* Waiting room */}
           {session.status === "waiting" && (
-            <div className="flex-1 flex items-center justify-center p-8">
-              <div className="text-center max-w-md">
-                <div className="w-20 h-20 rounded-full bg-primary/10 flex items-center justify-center mx-auto mb-6">
-                  <Users className="w-10 h-10 text-primary" />
-                </div>
-                <h2 className="text-xl font-bold mb-2">Menunggu Peserta</h2>
-                <p className="text-muted text-sm mb-6">
-                  Bagikan kode sesi kepada siswa untuk bergabung.
-                </p>
+            <div className="flex-1 overflow-y-auto p-6">
+              <div className="max-w-2xl mx-auto space-y-5">
 
-                <div className="bg-white rounded-2xl border-2 border-dashed border-primary/30 p-6 mb-6">
-                  <p className="text-xs text-muted mb-2">Kode Sesi:</p>
+                {/* Session code */}
+                <div className="bg-gray-800/80 border border-white/10 rounded-2xl p-5 text-center">
+                  <p className="text-xs text-white/40 uppercase tracking-wider mb-2">Kode Sesi — bagikan ke peserta</p>
                   <div className="flex items-center justify-center gap-3">
                     <span className="text-4xl font-mono font-extrabold tracking-[0.3em] text-primary">
                       {session.code}
                     </span>
                     <button
                       onClick={copyCode}
-                      className="p-2 rounded-lg hover:bg-surface-alt text-muted hover:text-secondary"
+                      className="p-2 rounded-lg bg-white/5 hover:bg-white/10 text-white/40 hover:text-white transition-colors"
                     >
-                      {copiedCode ? <Check className="w-5 h-5" /> : <Copy className="w-5 h-5" />}
+                      {copiedCode ? <Check className="w-5 h-5 text-green-400" /> : <Copy className="w-5 h-5" />}
                     </button>
                   </div>
+                  <p className="text-sm text-white/40 mt-2">{presenceList.length} peserta online</p>
                 </div>
 
-                <p className="text-sm text-muted mb-4">
-                  {presenceList.length} peserta bergabung
-                </p>
+                {/* Character role assignment board (host only) */}
+                {isHost && allCharacters.length > 0 && (
+                  <div className="bg-gray-800/80 border border-white/10 rounded-2xl p-5">
+                    <div className="flex items-center gap-2 mb-4">
+                      <UserCog className="w-4 h-4 text-primary" />
+                      <h3 className="text-sm font-bold text-white">Pembagian Peran</h3>
+                      <span className="text-xs text-white/30 ml-auto">Klik karakter → pilih peserta</span>
+                    </div>
+                    <div className="space-y-2">
+                      {/* Narrator row */}
+                      <div className="flex items-center gap-3 p-3 rounded-xl bg-white/5 border border-white/10">
+                        <div className="flex items-center gap-2 flex-1 min-w-0">
+                          <Volume2 className="w-4 h-4 text-primary shrink-0" />
+                          <span className="text-sm font-semibold text-white">Narator</span>
+                        </div>
+                        <div className="flex flex-wrap gap-1.5 justify-end">
+                          {participants.map((p) => {
+                            const isNarrator = p.is_narrator;
+                            return (
+                              <button
+                                key={p.id}
+                                onClick={() => assignNarrator(p.id)}
+                                className={`text-xs px-2.5 py-1 rounded-full font-medium transition-all border ${
+                                  isNarrator
+                                    ? "bg-primary text-white border-primary"
+                                    : "bg-white/5 text-white/50 border-white/10 hover:border-primary/50 hover:text-white"
+                                }`}
+                              >
+                                {p.user_name?.split(" ")[0]} {p.user_id === user.id && "(Anda)"}
+                              </button>
+                            );
+                          })}
+                          {participants.length === 0 && <span className="text-xs text-white/20 italic">Belum ada peserta</span>}
+                        </div>
+                      </div>
 
-                {isHost && (
-                  <div className="space-y-2">
-                    <p className="text-xs text-muted">
-                      Atur peran peserta di panel kiri, lalu mulai sesi.
-                    </p>
-                    <Button
-                      variant="primary"
-                      size="lg"
-                      onClick={startSession}
-                      disabled={participants.length < 1}
-                      className="w-full"
-                    >
-                      <Radio className="w-5 h-5" />
-                      Mulai Sesi Baca Bersama
-                    </Button>
+                      {/* Character rows */}
+                      {allCharacters.map((c) => {
+                        const assigned = getAssignedUser(c.name);
+                        return (
+                          <div
+                            key={c.name}
+                            className="flex items-center gap-3 p-3 rounded-xl border transition-all"
+                            style={{
+                              backgroundColor: `${c.color}12`,
+                              borderColor: `${c.color}30`,
+                            }}
+                          >
+                            <div className="flex items-center gap-2 flex-1 min-w-0">
+                              <div className="w-3.5 h-3.5 rounded-full shrink-0" style={{ backgroundColor: c.color }} />
+                              <span className="text-sm font-semibold" style={{ color: c.color }}>{c.name}</span>
+                            </div>
+                            <div className="flex flex-wrap gap-1.5 justify-end">
+                              {participants.map((p) => {
+                                const isAssigned = assigned?.id === p.id;
+                                return (
+                                  <button
+                                    key={p.id}
+                                    onClick={() => assignCharacter(p.id, c.name, c.color)}
+                                    className={`text-xs px-2.5 py-1 rounded-full font-medium transition-all border ${
+                                      isAssigned
+                                        ? "text-white border-current"
+                                        : "bg-white/5 text-white/50 border-white/10 hover:border-current hover:text-white"
+                                    }`}
+                                    style={isAssigned ? { backgroundColor: c.color, borderColor: c.color } : {}}
+                                  >
+                                    {p.user_name?.split(" ")[0]} {p.user_id === user.id && "(Anda)"}
+                                  </button>
+                                );
+                              })}
+                              {participants.length === 0 && <span className="text-xs text-white/20 italic">Belum ada peserta</span>}
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
                   </div>
                 )}
 
+                {/* Start button (host) */}
+                {isHost && (
+                  <Button
+                    variant="primary"
+                    size="lg"
+                    onClick={startSession}
+                    disabled={participants.length < 1}
+                    className="w-full text-base"
+                  >
+                    <PlayCircle className="w-5 h-5" />
+                    Mulai Sesi Baca Bersama
+                  </Button>
+                )}
+
                 {!isHost && (
-                  <p className="text-sm text-muted">
-                    Menunggu guru memulai sesi...
-                  </p>
+                  <div className="text-center py-4">
+                    <Loader2 className="w-6 h-6 animate-spin text-primary mx-auto mb-2" />
+                    <p className="text-sm text-white/40">Menunggu guru memulai sesi...</p>
+                  </div>
                 )}
               </div>
             </div>
@@ -625,7 +698,7 @@ export default function LiveSessionRoomPage() {
               </div>
 
               {/* Navigation (host only, others follow) */}
-              <div className="bg-white border-t border-border px-4 py-3">
+          <div className="bg-gray-950 border-t border-white/10 px-4 py-3">
                 <div className="max-w-4xl mx-auto flex items-center justify-between">
                   {isHost ? (
                     <>
@@ -704,13 +777,13 @@ export default function LiveSessionRoomPage() {
 
       {/* Role assignment modal */}
       {showRoleModal && (
-        <div className="fixed inset-0 z-[100] bg-black/50 flex items-center justify-center p-4">
-          <div className="bg-white rounded-2xl shadow-xl w-full max-w-sm p-6">
-            <div className="flex items-center justify-between mb-4">
-              <h3 className="font-bold text-base">Atur Peran</h3>
+        <div className="fixed inset-0 z-[100] bg-black/70 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="bg-gray-900 border border-white/10 rounded-2xl shadow-xl w-full max-w-sm p-6">
+            <div className="flex items-center justify-between mb-1">
+              <h3 className="font-bold text-base text-white">Atur Peran Peserta</h3>
               <button
                 onClick={() => setShowRoleModal(false)}
-                className="text-muted hover:text-foreground"
+                className="text-white/40 hover:text-white"
               >
                 <X className="w-5 h-5" />
               </button>
@@ -719,7 +792,12 @@ export default function LiveSessionRoomPage() {
             <div className="space-y-4">
               {/* Character selection */}
               <div>
-                <label className="block text-sm font-semibold mb-2">
+                {editingParticipantId && (
+                <p className="text-xs text-white/40 mb-4">
+                  Peserta: <span className="text-white font-semibold">{participants.find(p => p.id === editingParticipantId)?.user_name}</span>
+                </p>
+              )}
+              <label className="block text-sm font-semibold mb-2 text-white">
                   Pilih Karakter
                 </label>
                 <div className="grid grid-cols-2 gap-2">
@@ -732,11 +810,12 @@ export default function LiveSessionRoomPage() {
                       }}
                       className={`px-3 py-2 rounded-lg border-2 text-sm font-medium transition-all text-left ${
                         roleCharacter === c.name
-                          ? "border-primary bg-primary/5"
-                          : "border-border hover:border-primary/30"
+                          ? "border-current"
+                          : "border-white/10 hover:border-white/30"
                       }`}
+                      style={roleCharacter === c.name ? { borderColor: c.color, backgroundColor: `${c.color}20` } : {}}
                     >
-                      <div className="flex items-center gap-2">
+                      <div className="flex items-center gap-2 text-white">
                         <div
                           className="w-3 h-3 rounded-full"
                           style={{ backgroundColor: c.color }}
@@ -752,11 +831,11 @@ export default function LiveSessionRoomPage() {
                     }}
                     className={`px-3 py-2 rounded-lg border-2 text-sm font-medium transition-all text-left ${
                       roleCharacter === ""
-                        ? "border-primary bg-primary/5"
-                        : "border-border hover:border-primary/30"
+                        ? "border-white/30 bg-white/10"
+                        : "border-white/10 hover:border-white/30"
                     }`}
                   >
-                    <div className="flex items-center gap-2 text-muted">
+                    <div className="flex items-center gap-2 text-white/50">
                       <X className="w-3 h-3" />
                       Hapus Peran
                     </div>
@@ -772,9 +851,9 @@ export default function LiveSessionRoomPage() {
                       assignNarrator(editingParticipantId);
                     }
                   }}
-                  className="w-full px-3 py-2 rounded-lg border-2 border-border hover:border-primary/30 text-sm font-medium transition-all text-left"
+                  className="w-full px-3 py-2 rounded-lg border-2 border-white/10 hover:border-primary/30 text-sm font-medium transition-all text-left"
                 >
-                  <div className="flex items-center gap-2">
+                  <div className="flex items-center gap-2 text-white">
                     <Volume2 className="w-4 h-4 text-primary" />
                     Jadikan Narator
                   </div>
