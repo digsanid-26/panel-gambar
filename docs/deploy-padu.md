@@ -483,6 +483,7 @@ chmod +x ~/padu-edu/deploy.sh
 Jalankan deploy:
 
 ```bash
+ssh digsanid@103.55.37.232
 ~/padu-edu/deploy.sh
 ```
 

@@ -8,7 +8,7 @@ export async function GET() {
 
   const user = await prisma.user.findUnique({
     where: { id: session.user.id },
-    select: { id: true, email: true, name: true, role: true, avatarUrl: true, schoolId: true, school: true, createdAt: true },
+    select: { id: true, email: true, name: true, role: true, avatarUrl: true, bio: true, subjects: true, location: true, schoolId: true, school: true, createdAt: true },
   });
   if (!user) return NextResponse.json({ error: "Not found" }, { status: 404 });
 
@@ -18,6 +18,9 @@ export async function GET() {
     name: user.name,
     role: user.role,
     avatar_url: user.avatarUrl,
+    bio: user.bio,
+    subjects: user.subjects,
+    location: user.location,
     school_id: user.schoolId,
     school: user.school,
     created_at: user.createdAt,
@@ -32,6 +35,9 @@ export async function PATCH(request: NextRequest) {
   const data: any = {};
   if ("name" in body) data.name = body.name;
   if ("avatar_url" in body) data.avatarUrl = body.avatar_url;
+  if ("bio" in body) data.bio = body.bio;
+  if ("subjects" in body) data.subjects = body.subjects;
+  if ("location" in body) data.location = body.location;
   if ("school" in body) data.school = body.school;
   if ("school_id" in body) data.schoolId = body.school_id;
   if ("role" in body) {
@@ -40,5 +46,8 @@ export async function PATCH(request: NextRequest) {
   }
 
   const updated = await prisma.user.update({ where: { id: session.user.id }, data });
-  return NextResponse.json({ id: updated.id, email: updated.email, name: updated.name, role: updated.role });
+  return NextResponse.json({
+    id: updated.id, email: updated.email, name: updated.name, role: updated.role,
+    avatar_url: updated.avatarUrl, bio: updated.bio, subjects: updated.subjects, location: updated.location,
+  });
 }

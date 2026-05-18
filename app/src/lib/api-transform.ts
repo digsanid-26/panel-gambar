@@ -1,3 +1,30 @@
+export function transformPost(p: Record<string, unknown>) {
+  const { coverImageUrl, authorId, publishedAt, createdAt, updatedAt, author, ...rest } = p as any;
+  return {
+    ...rest,
+    cover_image_url: coverImageUrl,
+    author_id: authorId,
+    published_at: publishedAt,
+    created_at: createdAt,
+    updated_at: updatedAt,
+    ...(author !== undefined ? {
+      author: author ? { ...author, avatar_url: author.avatarUrl } : author,
+    } : {}),
+  };
+}
+
+export function transformPublicUser(u: Record<string, unknown>) {
+  const { avatarUrl, schoolId, createdAt, updatedAt, _count, ...rest } = u as any;
+  return {
+    ...rest,
+    avatar_url: avatarUrl,
+    school_id: schoolId,
+    created_at: createdAt,
+    updated_at: updatedAt,
+    ...(_count !== undefined ? { story_count: _count?.stories } : {}),
+  };
+}
+
 export function transformStory(s: Record<string, unknown>) {
   const {
     coverImageUrl, videoTrailerUrl, targetClass, displayMode, recordingMode,

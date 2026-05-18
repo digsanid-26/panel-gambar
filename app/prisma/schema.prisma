@@ -17,6 +17,9 @@ model User {
   passwordHash  String?   @map("password_hash")
   role          String    @default("siswa") // guru | siswa | admin
   avatarUrl     String?   @map("avatar_url")
+  bio           String?   @db.Text
+  subjects      String[]  @default([])
+  location      String?
   school        String?
   schoolId      String?   @map("school_id") @db.Uuid
   createdAt     DateTime  @default(now()) @map("created_at")
@@ -36,6 +39,7 @@ model User {
   elementAssets       ElementAsset[]
   arScenes            ArScene[]
   assets              Asset[]
+  posts               Post[]
 
   @@map("users")
 }
@@ -444,4 +448,25 @@ model Asset {
   owner User @relation(fields: [ownerId], references: [id], onDelete: Cascade)
 
   @@map("assets")
+}
+
+// ─── BLOG / DOCS ──────────────────────────────────────────────────────────────
+
+model Post {
+  id             String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  title          String
+  slug           String    @unique
+  content        String    @default("") @db.Text
+  excerpt        String?   @db.Text
+  coverImageUrl  String?   @map("cover_image_url")
+  type           String    @default("artikel") // artikel | panduan
+  status         String    @default("draft")   // draft | published
+  authorId       String    @map("author_id") @db.Uuid
+  publishedAt    DateTime? @map("published_at")
+  createdAt      DateTime  @default(now()) @map("created_at")
+  updatedAt      DateTime  @updatedAt @map("updated_at")
+
+  author User @relation(fields: [authorId], references: [id], onDelete: Cascade)
+
+  @@map("posts")
 }
