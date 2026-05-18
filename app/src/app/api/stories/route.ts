@@ -1,5 +1,6 @@
 import { auth } from "@/auth";
 import { prisma } from "@/lib/db";
+import { transformStory } from "@/lib/api-transform";
 import { NextRequest, NextResponse } from "next/server";
 
 export async function GET(request: NextRequest) {
@@ -36,20 +37,7 @@ export async function GET(request: NextRequest) {
       },
     });
 
-    const mapped = stories.map((s) => ({
-      ...s,
-      author_id: s.authorId,
-      cover_image_url: s.coverImageUrl,
-      video_trailer_url: s.videoTrailerUrl,
-      target_class: s.targetClass,
-      display_mode: s.displayMode,
-      recording_mode: s.recordingMode,
-      created_at: s.createdAt,
-      updated_at: s.updatedAt,
-      panels: Array.from({ length: s._count.panels }),
-    }));
-
-    return NextResponse.json(mapped);
+    return NextResponse.json(stories.map((s) => transformStory(s as any)));
   } catch (err) {
     console.error(err);
     return NextResponse.json({ error: "Server error" }, { status: 500 });
@@ -76,7 +64,7 @@ export async function POST(request: NextRequest) {
         coverImageUrl: body.cover_image_url ?? null,
       },
     });
-    return NextResponse.json({ ...story, author_id: story.authorId });
+    return NextResponse.json(transformStory(story as any));
   } catch (err) {
     console.error(err);
     return NextResponse.json({ error: "Server error" }, { status: 500 });
