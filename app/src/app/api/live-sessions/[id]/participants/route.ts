@@ -10,7 +10,13 @@ export async function GET(_: NextRequest, { params }: { params: Promise<{ id: st
   });
   return NextResponse.json(
     participants.map(({ user, ...p }) => ({
-      ...p,
+      id: p.id,
+      session_id: p.sessionId,
+      user_id: p.userId,
+      assigned_character: p.assignedCharacter,
+      assigned_color: p.assignedColor,
+      is_narrator: p.isNarrator,
+      joined_at: p.joinedAt,
       user_name: user?.name,
       user_role: user?.role,
     }))
@@ -27,5 +33,17 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
     create: { sessionId: id, userId: session.user.id },
     update: {},
   });
+
+  // Broadcast participant_update so other clients reload immediately
+  await prisma.sessionSignal.create({
+    data: {
+      sessionId: id,
+      fromUserId: session.user.id,
+      toUserId: null,
+      event: "session-event",
+      payload: { type: "participant_update" },
+    },
+  });
+
   return NextResponse.json(participant);
 }

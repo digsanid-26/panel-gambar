@@ -59,7 +59,20 @@ export function useLiveSession(
   const [error, setError] = useState<string | null>(null);
   const [highlightedDialog, setHighlightedDialog] = useState<string | null>(null);
 
-  const isHost = session?.host_id === user.id;
+  const isHost = !!(user.id && session && (session?.host_id === user.id || (session as any)?.hostId === user.id));
+
+  // Derive presence from participants list (everyone who joined is considered online)
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  useEffect(() => {
+    setPresenceList(
+      participants.map((p) => ({
+        user_id: p.user_id,
+        user_name: p.user_name || "",
+        user_role: p.user_role || "",
+        online_at: new Date().toISOString(),
+      }))
+    );
+  }, [participants]);
 
   // Load session data
   useEffect(() => {
@@ -83,13 +96,13 @@ export function useLiveSession(
     loadParticipants();
   }, [loadParticipants]);
 
-  // Join as participant
+  // Join as participant (only when user.id is available)
   useEffect(() => {
-    if (!session) return;
+    if (!session || !user.id) return;
     fetch(`/api/live-sessions/${sessionId}/participants`, { method: "POST" })
       .then(() => loadParticipants())
       .catch(() => {});
-  }, [session, user.id]);
+  }, [session?.id, user.id]);
 
   // Setup polling channel for presence + broadcast
   useEffect(() => {
@@ -116,8 +129,14 @@ export function useLiveSession(
       }
     });
 
+    // Broadcast: participant joined/updated
+    channel.on("broadcast", { event: "session-event" }, (msg: any) => {
+      const evt = (msg?.payload || msg) as BroadcastEvent;
+      if (evt.type === "participant_update") loadParticipants();
+    });
+
     // Poll participants periodically
-    const pollInterval = setInterval(() => loadParticipants(), 4000);
+    const pollInterval = setInterval(() => loadParticipants(), 3000);
 
     channel.subscribe(() => setIsConnected(true));
     channelRef.current = channel;

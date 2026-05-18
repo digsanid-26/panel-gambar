@@ -12,7 +12,13 @@ export async function GET(_: NextRequest, { params }: { params: Promise<{ id: st
     },
   });
   if (!ls) return NextResponse.json({ error: "Not found" }, { status: 404 });
-  return NextResponse.json({ ...ls, host_name: ls.host?.name });
+  return NextResponse.json({
+    ...ls,
+    host_id: ls.hostId,
+    story_id: ls.storyId,
+    current_panel_index: ls.currentPanelIndex,
+    host_name: ls.host?.name,
+  });
 }
 
 export async function PATCH(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
