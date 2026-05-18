@@ -110,6 +110,7 @@ export default function EditStoryPage() {
   const [uploadingVideo, setUploadingVideo] = useState(false);
   const [autoSaveStatus, setAutoSaveStatus] = useState<"idle" | "saving" | "saved">("idle");
   const autoSaveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const [imagePanelPickerId, setImagePanelPickerId] = useState<string | null>(null);
 
   // Dynamic options from DB
   const [themes, setThemes] = useState<Theme[]>([]);
@@ -1320,6 +1321,7 @@ export default function EditStoryPage() {
                     <SimplePanelEditor
                       panel={panel}
                       onUploadImage={(file) => uploadPanelImage(panel.id, file)}
+                      onPickFromLibrary={() => setImagePanelPickerId(panel.id)}
                       onDialogPositionChange={updateDialogPosition}
                       onNarrationOverlayChange={(overlay) => saveNarrationOverlay(panel.id, overlay)}
                     />
@@ -1927,6 +1929,20 @@ export default function EditStoryPage() {
           </div>
         </div>
       </main>
+
+      {/* Asset library picker for panel image */}
+      <AssetPickerModal
+        open={!!imagePanelPickerId}
+        onClose={() => setImagePanelPickerId(null)}
+        onPick={async (asset) => {
+          if (imagePanelPickerId) {
+            await updatePanelField(imagePanelPickerId, "image_url", asset.url);
+          }
+          setImagePanelPickerId(null);
+        }}
+        type="image"
+        title="Pilih Gambar Panel dari Galeri"
+      />
 
       {/* Asset library picker for narration / background / dialog audio */}
       <AssetPickerModal

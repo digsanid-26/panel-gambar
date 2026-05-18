@@ -2,12 +2,13 @@
 
 import { useState, useRef, useCallback, useEffect } from "react";
 import type { Panel, Dialog, NarrationOverlay } from "@/lib/types";
-import { Upload, Image as ImageIcon, Move, Type } from "lucide-react";
+import { Upload, Image as ImageIcon, FolderOpen, Move, Type } from "lucide-react";
 import { Button } from "@/components/ui/button";
 
 interface SimplePanelEditorProps {
   panel: Panel;
   onUploadImage: (file: File) => void;
+  onPickFromLibrary?: () => void;
   onDialogPositionChange: (dialogId: string, posX: number, posY: number) => void;
   onNarrationOverlayChange: (overlay: NarrationOverlay) => void;
 }
@@ -37,6 +38,7 @@ type DragTarget = { type: "dialog"; id: string } | { type: "narration" };
 export function SimplePanelEditor({
   panel,
   onUploadImage,
+  onPickFromLibrary,
   onDialogPositionChange,
   onNarrationOverlayChange,
 }: SimplePanelEditorProps) {
@@ -164,7 +166,18 @@ export function SimplePanelEditor({
         {panel.image_url ? (
           <>
             <img src={panel.image_url} alt="Panel" className="w-full h-full object-cover" draggable={false} />
-            <div className="absolute bottom-2 right-2 z-30">
+            <div className="absolute bottom-2 right-2 z-30 flex gap-1">
+              {onPickFromLibrary && (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="bg-surface-card/90 backdrop-blur-sm"
+                  type="button"
+                  onClick={(e) => { e.stopPropagation(); onPickFromLibrary(); }}
+                >
+                  <FolderOpen className="w-4 h-4" /> Galeri
+                </Button>
+              )}
               <Button
                 variant="outline"
                 size="sm"
@@ -191,12 +204,24 @@ export function SimplePanelEditor({
             </div>
           </>
         ) : (
-          <label className="flex flex-col items-center justify-center w-full h-full cursor-pointer hover:bg-primary/5 transition-colors">
-            <Upload className="w-8 h-8 text-muted mb-2" />
-            <span className="text-sm text-muted">Klik untuk upload gambar</span>
-            <span className="text-xs text-muted mt-1">JPG, PNG, WebP · Max 5MB</span>
-            <input type="file" accept="image/*" className="hidden" onChange={(e) => { const f = e.target.files?.[0]; if (f) onUploadImage(f); }} />
-          </label>
+            <div className="flex flex-col items-center justify-center w-full h-full gap-3">
+            <label className="flex flex-col items-center justify-center cursor-pointer hover:bg-primary/5 transition-colors rounded-xl px-6 py-4 border-2 border-dashed border-border">
+              <Upload className="w-8 h-8 text-muted mb-2" />
+              <span className="text-sm text-muted">Upload dari perangkat</span>
+              <span className="text-xs text-muted mt-1">JPG, PNG, WebP · Max 5MB</span>
+              <input type="file" accept="image/*" className="hidden" onChange={(e) => { const f = e.target.files?.[0]; if (f) onUploadImage(f); }} />
+            </label>
+            {onPickFromLibrary && (
+              <button
+                type="button"
+                onClick={(e) => { e.stopPropagation(); onPickFromLibrary(); }}
+                className="flex items-center gap-2 px-4 py-2 rounded-xl border border-border text-sm text-muted hover:text-foreground hover:bg-surface-alt transition-colors"
+              >
+                <FolderOpen className="w-4 h-4" />
+                Ambil dari Galeri Aset
+              </button>
+            )}
+          </div>
         )}
 
         {/* Draggable dialog bubbles */}
