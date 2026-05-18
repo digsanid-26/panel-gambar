@@ -12,7 +12,7 @@ import Image from "next/image";
 export default function RoleSelectPage() {
   const router = useRouter();
   const { data: session, status } = useSession();
-  const [role, setRole] = useState<"guru" | "siswa">("guru");
+  const [role, setRole] = useState<"guru" | "member">("member");
   const [name, setName] = useState("");
   const [loading, setLoading] = useState(false);
   const [checking, setChecking] = useState(true);
@@ -26,9 +26,9 @@ export default function RoleSelectPage() {
     }
     // Pre-fill name from OAuth profile
     setName(session.user.name ?? "");
-    // Check if role already set
+    // Check if role already set — redirect away if already guru/admin
     const userRole = (session.user as any).role;
-    if (userRole && userRole !== "siswa") {
+    if (userRole === "guru" || userRole === "admin") {
       router.push("/dashboard");
       return;
     }
@@ -97,7 +97,7 @@ export default function RoleSelectPage() {
                   Saya adalah
                 </label>
                 <div className="grid grid-cols-2 gap-2">
-                  {(["guru", "siswa"] as const).map((r) => (
+                  {(["guru", "member"] as const).map((r) => (
                     <button
                       key={r}
                       type="button"
@@ -108,10 +108,13 @@ export default function RoleSelectPage() {
                           : "border-border text-muted hover:border-primary/30"
                       }`}
                     >
-                      {r === "guru" ? "👩‍🏫 Guru" : "👦 Siswa"}
+                      {r === "guru" ? "👩‍🏫 Guru" : "� Member"}
                     </button>
                   ))}
                 </div>
+                <p className="text-xs text-muted mt-1.5">
+                  Akun <strong>Siswa</strong> hanya bisa dibuat oleh Guru melalui pengaturan kelas.
+                </p>
               </div>
 
               <Input

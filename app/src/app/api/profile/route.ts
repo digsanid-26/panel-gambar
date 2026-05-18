@@ -41,7 +41,7 @@ export async function PATCH(request: NextRequest) {
   if ("school" in body) data.school = body.school;
   if ("school_id" in body) data.schoolId = body.school_id;
   if ("role" in body) {
-    const allowedRoles = ["guru", "siswa"];
+    const allowedRoles = ["guru", "member"];
     if (allowedRoles.includes(body.role)) data.role = body.role;
   }
 

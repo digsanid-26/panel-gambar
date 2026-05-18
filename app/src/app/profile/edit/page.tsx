@@ -29,6 +29,7 @@ export default function ProfileEditPage() {
   const [avatarUrl, setAvatarUrl] = useState("");
   const [subjects, setSubjects] = useState<string[]>([]);
   const [subjectInput, setSubjectInput] = useState("");
+  const [role, setRole] = useState("member");
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
@@ -51,6 +52,7 @@ export default function ProfileEditPage() {
       setSchool(data.school ?? "");
       setAvatarUrl(data.avatar_url ?? "");
       setSubjects(data.subjects ?? []);
+      setRole(data.role ?? "member");
     }
     setLoading(false);
   }
@@ -74,7 +76,7 @@ export default function ProfileEditPage() {
     const res = await fetch("/api/profile", {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ name, bio, location, school, avatar_url: avatarUrl || null, subjects }),
+      body: JSON.stringify({ name, bio, location, school, avatar_url: avatarUrl || null, subjects, role }),
     });
     if (res.ok) {
       setSaved(true);
@@ -174,6 +176,30 @@ export default function ProfileEditPage() {
             )}
           </div>
 
+          {/* Role upgrade for member */}
+          {profile && (profile.role === "member" || role !== profile.role) && (
+            <div className="bg-surface-card border border-border rounded-2xl p-5">
+              <h2 className="font-semibold mb-1">Peran Akun</h2>
+              <p className="text-xs text-muted mb-3">Akun Guru dapat membuat cerita, mengelola kelas, dan menambahkan siswa.</p>
+              <div className="grid grid-cols-2 gap-2">
+                {(["member", "guru"] as const).map((r) => (
+                  <button
+                    key={r}
+                    type="button"
+                    onClick={() => setRole(r)}
+                    className={`px-4 py-3 rounded-xl border-2 text-sm font-semibold transition-all ${
+                      role === r
+                        ? "border-primary bg-primary/15 text-primary"
+                        : "border-border text-muted hover:border-primary/30"
+                    }`}
+                  >
+                    {r === "guru" ? "👩\u200d🏫 Guru" : "👤 Member"}
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
+
           {/* Account info */}
           {profile && (
             <div className="bg-surface-card border border-border rounded-2xl p-5">
@@ -184,10 +210,10 @@ export default function ProfileEditPage() {
                   <span className="font-medium">{profile.email}</span>
                 </div>
                 <div className="flex justify-between">
-                  <span className="text-muted">Peran</span>
+                  <span className="text-muted">Peran saat ini</span>
                   <span className="font-medium capitalize">{profile.role}</span>
                 </div>
-                {profile.id && (
+                {profile.role === "guru" && profile.id && (
                   <div className="flex justify-between">
                     <span className="text-muted">Halaman Profil Publik</span>
                     <Link href={`/teachers/${profile.id}`} className="text-primary hover:underline text-xs">Lihat profil publik →</Link>

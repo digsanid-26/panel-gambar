@@ -13,8 +13,8 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "Password minimal 6 karakter." }, { status: 400 });
     }
 
-    const allowedRoles = ["guru", "siswa"];
-    const userRole = allowedRoles.includes(role) ? role : "siswa";
+    const allowedRoles = ["guru", "member"];
+    const userRole = allowedRoles.includes(role) ? role : "member";
 
     const existing = await prisma.user.findUnique({ where: { email } });
     if (existing) {

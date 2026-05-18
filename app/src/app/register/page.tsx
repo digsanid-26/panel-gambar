@@ -15,7 +15,7 @@ export default function RegisterPage() {
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
-  const [role, setRole] = useState<"guru" | "siswa">("guru");
+  const [role, setRole] = useState<"guru" | "member">("member");
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
   const [googleEnabled, setGoogleEnabled] = useState(false);
@@ -117,7 +117,7 @@ export default function RegisterPage() {
                   Saya adalah
                 </label>
                 <div className="grid grid-cols-2 gap-2">
-                  {(["guru", "siswa"] as const).map((r) => (
+                  {(["guru", "member"] as const).map((r) => (
                     <button
                       key={r}
                       type="button"
@@ -128,10 +128,13 @@ export default function RegisterPage() {
                           : "border-border text-muted hover:border-primary/30"
                       }`}
                     >
-                      {r === "guru" ? "👩‍🏫 Guru" : "👦 Siswa"}
+                      {r === "guru" ? "👩‍🏫 Guru" : "� Member"}
                     </button>
                   ))}
                 </div>
+                <p className="text-xs text-muted mt-1.5">
+                  Akun <strong>Siswa</strong> hanya bisa dibuat oleh Guru melalui pengaturan kelas.
+                </p>
               </div>
 
               <Input
