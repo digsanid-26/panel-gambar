@@ -16,6 +16,7 @@ import {
   List,
   LogOut,
   Menu,
+  Pencil,
   PlusCircle,
   Radio,
   Settings,
@@ -32,10 +33,12 @@ export function Navbar() {
   const [mobileOpen, setMobileOpen] = useState(false);
   const [storiesDropdownOpen, setStoriesDropdownOpen] = useState(false);
   const [settingsDropdownOpen, setSettingsDropdownOpen] = useState(false);
+  const [userDropdownOpen, setUserDropdownOpen] = useState(false);
   const [mobileStoriesOpen, setMobileStoriesOpen] = useState(false);
   const [mobileSettingsOpen, setMobileSettingsOpen] = useState(false);
   const storiesDropdownRef = useRef<HTMLDivElement>(null);
   const settingsDropdownRef = useRef<HTMLDivElement>(null);
+  const userDropdownRef = useRef<HTMLDivElement>(null);
   const { data: session } = useSession();
 
   useEffect(() => {
@@ -57,6 +60,9 @@ export function Navbar() {
       }
       if (settingsDropdownRef.current && !settingsDropdownRef.current.contains(e.target as Node)) {
         setSettingsDropdownOpen(false);
+      }
+      if (userDropdownRef.current && !userDropdownRef.current.contains(e.target as Node)) {
+        setUserDropdownOpen(false);
       }
     }
     document.addEventListener("mousedown", handleClickOutside);
@@ -227,16 +233,52 @@ export function Navbar() {
           <div className="flex items-center gap-3">
             {user ? (
               <div className="hidden md:flex items-center gap-3">
-                <div className="flex items-center gap-2 px-3 py-1.5 bg-surface-alt border border-border rounded-xl">
-                  <User className="w-4 h-4 text-primary" />
-                  <span className="text-sm font-medium text-foreground">{user.name}</span>
-                  <span className="text-xs text-muted capitalize">
-                    ({user.role})
-                  </span>
+                <div className="relative" ref={userDropdownRef}>
+                  <button
+                    onClick={() => setUserDropdownOpen((v) => !v)}
+                    className="flex items-center gap-2 px-3 py-1.5 bg-surface-alt border border-border rounded-xl hover:border-primary/40 hover:bg-surface-card transition-all"
+                  >
+                    {user.avatar_url ? (
+                      <img src={user.avatar_url} alt="" className="w-6 h-6 rounded-full object-cover" />
+                    ) : (
+                      <User className="w-4 h-4 text-primary" />
+                    )}
+                    <span className="text-sm font-medium text-foreground">{user.name}</span>
+                    <span className="text-xs text-muted capitalize">({user.role})</span>
+                    <ChevronDown className={cn("w-3.5 h-3.5 text-muted transition-transform", userDropdownOpen && "rotate-180")} />
+                  </button>
+
+                  {userDropdownOpen && (
+                    <div className="absolute top-full right-0 mt-1 bg-surface-card border border-border rounded-xl shadow-lg py-1 min-w-[200px] z-50">
+                      <div className="px-4 py-2.5 border-b border-border">
+                        <p className="text-sm font-semibold truncate">{user.name}</p>
+                        <p className="text-xs text-muted capitalize">{user.role}</p>
+                      </div>
+                      <Link
+                        href={`/teachers/${user.id}`}
+                        onClick={() => setUserDropdownOpen(false)}
+                        className="flex items-center gap-2.5 px-4 py-2.5 text-sm text-muted hover:text-foreground hover:bg-surface-alt transition-colors"
+                      >
+                        <User className="w-4 h-4" /> Lihat Profil Publik
+                      </Link>
+                      <Link
+                        href="/profile/edit"
+                        onClick={() => setUserDropdownOpen(false)}
+                        className="flex items-center gap-2.5 px-4 py-2.5 text-sm text-muted hover:text-foreground hover:bg-surface-alt transition-colors"
+                      >
+                        <Pencil className="w-4 h-4" /> Edit Profil
+                      </Link>
+                      <div className="border-t border-border mt-1 pt-1">
+                        <button
+                          onClick={() => { setUserDropdownOpen(false); handleLogout(); }}
+                          className="flex items-center gap-2.5 px-4 py-2.5 text-sm text-danger hover:bg-danger/10 transition-colors w-full"
+                        >
+                          <LogOut className="w-4 h-4" /> Keluar
+                        </button>
+                      </div>
+                    </div>
+                  )}
                 </div>
-                <Button variant="ghost" size="icon" onClick={handleLogout}>
-                  <LogOut className="w-4 h-4" />
-                </Button>
               </div>
             ) : (
               <div className="hidden md:flex items-center gap-2">
@@ -368,15 +410,31 @@ export function Navbar() {
 
           {user ? (
             <>
-              <div className="flex items-center gap-2 px-4 py-2.5 text-sm text-muted">
-                <User className="w-4 h-4 text-primary" />
-                {user.name} ({user.role})
+              <div className="flex items-center gap-2 px-4 py-2.5 text-sm">
+                {user.avatar_url ? (
+                  <img src={user.avatar_url} alt="" className="w-6 h-6 rounded-full object-cover" />
+                ) : (
+                  <User className="w-4 h-4 text-primary" />
+                )}
+                <span className="font-medium">{user.name}</span>
+                <span className="text-muted capitalize text-xs">({user.role})</span>
               </div>
+              <Link
+                href={`/teachers/${user.id}`}
+                onClick={() => setMobileOpen(false)}
+                className="flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-medium text-muted hover:text-foreground hover:bg-surface-alt"
+              >
+                <User className="w-4 h-4" /> Lihat Profil Publik
+              </Link>
+              <Link
+                href="/profile/edit"
+                onClick={() => setMobileOpen(false)}
+                className="flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-medium text-muted hover:text-foreground hover:bg-surface-alt"
+              >
+                <Pencil className="w-4 h-4" /> Edit Profil
+              </Link>
               <button
-                onClick={() => {
-                  handleLogout();
-                  setMobileOpen(false);
-                }}
+                onClick={() => { handleLogout(); setMobileOpen(false); }}
                 className="flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-medium text-danger hover:bg-danger/10 w-full"
               >
                 <LogOut className="w-4 h-4" />
