@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, useMemo } from "react";
+import { useEffect, useState, useMemo, useRef, useCallback } from "react";
 import { useParams, useRouter } from "next/navigation";
 import Link from "next/link";
 import Image from "next/image";
@@ -29,6 +29,8 @@ import {
   Phone,
   PhoneOff,
   PlayCircle,
+  Square,
+  ExternalLink,
 } from "lucide-react";
 
 export default function LiveSessionRoomPage() {
@@ -46,6 +48,12 @@ export default function LiveSessionRoomPage() {
   const [roleColor, setRoleColor] = useState("#3b82f6");
   const [editingParticipantId, setEditingParticipantId] = useState<string | null>(null);
   const [assigningCharacter, setAssigningCharacter] = useState<{ name: string; color: string } | null>(null);
+  const [recordingDialogId, setRecordingDialogId] = useState<string | null>(null);
+  const [recordingToken, setRecordingToken] = useState<string | null>(null);
+  const [uploadingDialogId, setUploadingDialogId] = useState<string | null>(null);
+  const [savedDialogIds, setSavedDialogIds] = useState<Set<string>>(new Set());
+  const mediaRecorderRef = useRef<MediaRecorder | null>(null);
+  const recordingChunksRef = useRef<BlobPart[]>([]);
 
   // Load auth user
   useEffect(() => {
@@ -161,6 +169,71 @@ export default function LiveSessionRoomPage() {
     setEditingParticipantId(null);
   }
 
+  async function startDialogRecording(dialogId: string) {
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      recordingChunksRef.current = [];
+      const recorder = new MediaRecorder(stream, { mimeType: "audio/webm" });
+      recorder.ondataavailable = (e) => { if (e.data.size > 0) recordingChunksRef.current.push(e.data); };
+      recorder.onstop = async () => {
+        stream.getTracks().forEach((t) => t.stop());
+        const blob = new Blob(recordingChunksRef.current, { type: "audio/webm" });
+        await uploadDialogRecording(dialogId, blob);
+      };
+      recorder.start();
+      mediaRecorderRef.current = recorder;
+      setRecordingDialogId(dialogId);
+    } catch {
+      alert("Izin mikrofon diperlukan untuk merekam.");
+    }
+  }
+
+  function stopDialogRecording() {
+    mediaRecorderRef.current?.stop();
+    mediaRecorderRef.current = null;
+    setRecordingDialogId(null);
+  }
+
+  async function uploadDialogRecording(dialogId: string, blob: Blob) {
+    if (!session || !user) return;
+    setUploadingDialogId(dialogId);
+    try {
+      const formData = new FormData();
+      formData.append("file", blob, `dialog-${dialogId}-${Date.now()}.webm`);
+      formData.append("bucket", "audio");
+      const uploadRes = await fetch("/api/upload", { method: "POST", body: formData });
+      const { url } = await uploadRes.json();
+
+      const panel = panels.find((p) => p.dialogs?.some((d) => d.id === dialogId));
+      await fetch("/api/recordings", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          dialog_id: dialogId,
+          panel_id: panel?.id,
+          story_id: session.story_id,
+          session_id: sessionId,
+          audio_url: url,
+          type: "dialog",
+        }),
+      });
+      setSavedDialogIds((prev) => new Set([...prev, dialogId]));
+    } finally {
+      setUploadingDialogId(null);
+    }
+  }
+
+  async function handleEndSession() {
+    const res = await fetch(`/api/live-sessions/${sessionId}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ status: "finished" }),
+    });
+    const data = await res.json();
+    if (data.recording_token) setRecordingToken(data.recording_token);
+    endSession();
+  }
+
   if (authLoading || !user) {
     return (
       <div className="min-h-screen flex flex-col bg-gray-950">
@@ -208,10 +281,22 @@ export default function LiveSessionRoomPage() {
             <div className="w-16 h-16 rounded-full bg-accent/10 flex items-center justify-center mx-auto mb-4">
               <Check className="w-8 h-8 text-accent" />
             </div>
-            <h2 className="text-xl font-bold mb-2">Sesi Telah Berakhir</h2>
-            <p className="text-muted text-sm mb-6">
+            <h2 className="text-xl font-bold mb-2 text-white">Sesi Telah Berakhir</h2>
+            <p className="text-white/50 text-sm mb-6">
               Sesi baca bersama untuk &ldquo;{session.story?.title}&rdquo; sudah selesai. Terima kasih sudah berpartisipasi!
             </p>
+            {recordingToken && (
+              <div className="mb-6 bg-gray-800 border border-white/10 rounded-2xl p-4">
+                <p className="text-xs text-white/40 mb-2">🎙️ Hasil rekaman sesi tersimpan</p>
+                <p className="text-xs text-white/30 mb-3">Link ini bersifat private. Bagikan hanya ke yang berwenang.</p>
+                <Link href={`/play/${recordingToken}`} target="_blank">
+                  <Button variant="primary" className="w-full gap-2">
+                    <ExternalLink className="w-4 h-4" />
+                    Lihat & Putar Hasil Rekaman
+                  </Button>
+                </Link>
+              </div>
+            )}
             <div className="flex gap-3 justify-center">
               <Link href="/live">
                 <Button variant="outline">Kembali</Button>
@@ -306,7 +391,7 @@ export default function LiveSessionRoomPage() {
               </Button>
             )}
             {isHost && session.status === "active" && (
-              <Button variant="danger" size="sm" onClick={endSession}>
+              <Button variant="danger" size="sm" onClick={handleEndSession}>
                 Akhiri Sesi
               </Button>
             )}
@@ -634,10 +719,35 @@ export default function LiveSessionRoomPage() {
                             {dialog.text}
                           </p>
                           {isMyDialog && (
-                            <div className="mt-1.5 flex items-center gap-1">
+                            <div className="mt-1.5 flex items-center gap-1 flex-wrap">
                               <Badge variant="primary" className="text-[8px] py-0">
                                 Peran Anda
                               </Badge>
+                              {uploadingDialogId === dialog.id ? (
+                                <span className="text-[9px] text-muted flex items-center gap-0.5">
+                                  <Loader2 className="w-2.5 h-2.5 animate-spin" /> Menyimpan...
+                                </span>
+                              ) : savedDialogIds.has(dialog.id) ? (
+                                <span className="text-[9px] text-green-600 flex items-center gap-0.5">
+                                  <Check className="w-2.5 h-2.5" /> Terekam
+                                </span>
+                              ) : recordingDialogId === dialog.id ? (
+                                <button
+                                  onClick={stopDialogRecording}
+                                  className="flex items-center gap-0.5 text-[9px] font-bold text-red-500 animate-pulse"
+                                >
+                                  <Square className="w-2.5 h-2.5 fill-red-500" /> Stop
+                                </button>
+                              ) : (
+                                <button
+                                  onClick={() => startDialogRecording(dialog.id)}
+                                  disabled={!!recordingDialogId}
+                                  className="flex items-center gap-0.5 text-[9px] font-bold text-primary hover:text-primary/80 disabled:opacity-30"
+                                  title="Rekam bacaan Anda"
+                                >
+                                  <Mic className="w-2.5 h-2.5" /> Rekam
+                                </button>
+                              )}
                             </div>
                           )}
                           {dialog.audio_url && (

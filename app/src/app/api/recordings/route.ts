@@ -33,8 +33,9 @@ export async function POST(request: NextRequest) {
       storyId: body.story_id,
       panelId: body.panel_id,
       dialogId: body.dialog_id ?? null,
-      type: body.type ?? "narration",
+      type: body.type ?? "dialog",
       audioUrl: body.audio_url,
+      ...(body.session_id && { sessionId: body.session_id }),
     },
   });
   return NextResponse.json(recording);

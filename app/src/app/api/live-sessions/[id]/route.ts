@@ -27,13 +27,16 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
 
   const { id } = await params;
   const body = await request.json();
+  const isFinishing = body.status === "finished";
+  const recordingToken = isFinishing ? crypto.randomUUID() : undefined;
+
   const ls = await prisma.liveSession.update({
     where: { id },
     data: {
       ...(body.status !== undefined && { status: body.status }),
       ...(body.current_panel_index !== undefined && { currentPanelIndex: body.current_panel_index }),
-      ...(body.status === "finished" && { endedAt: new Date() }),
+      ...(isFinishing && { endedAt: new Date(), recordingToken }),
     },
   });
-  return NextResponse.json(ls);
+  return NextResponse.json({ ...ls, recording_token: ls.recordingToken });
 }
