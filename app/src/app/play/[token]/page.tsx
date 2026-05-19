@@ -58,7 +58,6 @@ interface SessionResult {
     panels: Panel[];
   };
   participants: Participant[];
-  recordings_by_dialog: Record<string, string>;
   ended_at: string;
 }
 
@@ -194,8 +193,7 @@ export default function PlayPage() {
                     {/* Dialog bubbles */}
                     {currentPanel.dialogs?.map((dialog) => {
                       const participant = getAssignedParticipant(dialog.character_name);
-                      const recordedAudio = result.recordings_by_dialog[dialog.id];
-                      return (
+                                          return (
                         <div
                           key={dialog.id}
                           className="absolute bg-white shadow-md border-2 px-3 py-2 max-w-[190px]"
@@ -218,13 +216,12 @@ export default function PlayPage() {
                             )}
                           </div>
                           <p className="text-xs leading-relaxed">{dialog.text}</p>
-                          {/* Recorded audio takes priority over original */}
-                          {(recordedAudio || dialog.audio_url) && (
+                          {dialog.audio_url && (
                             <div className="mt-1.5">
                               <AudioPlayer
-                                src={recordedAudio || dialog.audio_url!}
+                                src={dialog.audio_url}
                                 compact
-                                label={recordedAudio ? "🎙️" : "🔊"}
+                                label="🎙️"
                               />
                             </div>
                           )}

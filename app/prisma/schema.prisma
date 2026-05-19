@@ -166,7 +166,8 @@ model Story {
   panels        Panel[]
   recordings    Recording[]
   assignments   Assignment[]
-  liveSessions  LiveSession[]
+  liveSessions  LiveSession[]  @relation("LiveSessionOriginalStory")
+  sessionLiveSessions LiveSession[] @relation("LiveSessionSessionStory")
   elementAssets ElementAsset[]
 
   @@map("stories")
@@ -277,7 +278,10 @@ model LiveSession {
 
   recordingToken String?   @unique @map("recording_token")
 
-  story        Story                @relation(fields: [storyId], references: [id], onDelete: Cascade)
+  sessionStoryId String?   @map("session_story_id") @db.Uuid
+
+  story        Story                @relation("LiveSessionOriginalStory", fields: [storyId], references: [id], onDelete: Cascade)
+  sessionStory Story?               @relation("LiveSessionSessionStory", fields: [sessionStoryId], references: [id], onDelete: SetNull)
   host         User                 @relation(fields: [hostId], references: [id], onDelete: Cascade)
   participants SessionParticipant[]
   signals      SessionSignal[]

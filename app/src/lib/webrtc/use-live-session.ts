@@ -126,6 +126,9 @@ export function useLiveSession(
         case "session_end":
           setSession((s) => (s ? { ...s, status: "finished" } : s));
           break;
+        case "dialog_updated":
+          window.dispatchEvent(new CustomEvent("live-dialog-updated"));
+          break;
       }
     });
 

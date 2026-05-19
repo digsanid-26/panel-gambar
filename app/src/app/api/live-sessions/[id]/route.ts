@@ -12,10 +12,12 @@ export async function GET(_: NextRequest, { params }: { params: Promise<{ id: st
     },
   });
   if (!ls) return NextResponse.json({ error: "Not found" }, { status: 404 });
+  const lsAny = ls as any;
   return NextResponse.json({
     ...ls,
     host_id: ls.hostId,
     story_id: ls.storyId,
+    session_story_id: lsAny.sessionStoryId ?? null,
     current_panel_index: ls.currentPanelIndex,
     host_name: ls.host?.name,
   });

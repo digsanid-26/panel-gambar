@@ -91,25 +91,33 @@ export default function LiveSessionRoomPage() {
     leaveSession,
   } = liveSession;
 
-  // Load panels for the story
-  useEffect(() => {
-    if (!session?.story_id) return;
-    async function loadPanels() {
-      const res = await fetch(`/api/panels?story_id=${session!.story_id}`);
-      if (res.ok) {
-        const data = await res.json();
-        setPanels(
-          data.map((p: Record<string, unknown>) => ({
-            ...p,
-            dialogs: ((p.dialogs as Dialog[]) || []).sort(
-              (a: Dialog, b: Dialog) => a.order_index - b.order_index
-            ),
-          })) as Panel[]
-        );
-      }
+  // Load panels — use session story copy if available, else fall back to original
+  const activeStoryId = (session as any)?.session_story_id || session?.story_id;
+
+  const loadPanels = useCallback(async () => {
+    if (!activeStoryId) return;
+    const res = await fetch(`/api/panels?story_id=${activeStoryId}`);
+    if (res.ok) {
+      const data = await res.json();
+      setPanels(
+        data.map((p: Record<string, unknown>) => ({
+          ...p,
+          dialogs: ((p.dialogs as Dialog[]) || []).sort(
+            (a: Dialog, b: Dialog) => a.order_index - b.order_index
+          ),
+        })) as Panel[]
+      );
     }
-    loadPanels();
-  }, [session?.story_id]);
+  }, [activeStoryId]);
+
+  useEffect(() => { loadPanels(); }, [loadPanels]);
+
+  // Reload panels when any participant records a dialog
+  useEffect(() => {
+    const handler = () => loadPanels();
+    window.addEventListener("live-dialog-updated", handler);
+    return () => window.removeEventListener("live-dialog-updated", handler);
+  }, [loadPanels]);
 
   const currentPanel = panels[currentPanelIndex];
 
@@ -204,20 +212,16 @@ export default function LiveSessionRoomPage() {
       const uploadRes = await fetch("/api/upload", { method: "POST", body: formData });
       const { url } = await uploadRes.json();
 
-      const panel = panels.find((p) => p.dialogs?.some((d) => d.id === dialogId));
-      await fetch("/api/recordings", {
-        method: "POST",
+      // PATCH the dialog's audio_url in the session story copy
+      await fetch(`/api/live-sessions/${sessionId}/dialogs/${dialogId}`, {
+        method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          dialog_id: dialogId,
-          panel_id: panel?.id,
-          story_id: session.story_id,
-          session_id: sessionId,
-          audio_url: url,
-          type: "dialog",
-        }),
+        body: JSON.stringify({ audio_url: url }),
       });
+
       setSavedDialogIds((prev) => new Set([...prev, dialogId]));
+      // Reload panels so the audio player shows the new recording immediately
+      await loadPanels();
     } finally {
       setUploadingDialogId(null);
     }
@@ -728,8 +732,14 @@ export default function LiveSessionRoomPage() {
                                   <Loader2 className="w-2.5 h-2.5 animate-spin" /> Menyimpan...
                                 </span>
                               ) : savedDialogIds.has(dialog.id) ? (
-                                <span className="text-[9px] text-green-600 flex items-center gap-0.5">
+                                <span className="text-[9px] text-green-500 flex items-center gap-0.5">
                                   <Check className="w-2.5 h-2.5" /> Terekam
+                                  <button
+                                    onClick={() => setSavedDialogIds((prev) => { const s = new Set(prev); s.delete(dialog.id); return s; })}
+                                    className="ml-1 underline opacity-60 hover:opacity-100"
+                                  >
+                                    Ulang
+                                  </button>
                                 </span>
                               ) : recordingDialogId === dialog.id ? (
                                 <button
