@@ -6,8 +6,9 @@ import { NextRequest, NextResponse } from "next/server";
 export async function GET(_req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
 
+  const isUUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id);
   const post = await prisma.post.findFirst({
-    where: { OR: [{ id }, { slug: id }] },
+    where: isUUID ? { OR: [{ id }, { slug: id }] } : { slug: id },
     include: { author: { select: { id: true, name: true, avatarUrl: true } } },
   });
 
