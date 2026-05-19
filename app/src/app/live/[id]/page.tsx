@@ -48,6 +48,7 @@ export default function LiveSessionRoomPage() {
   const [roleColor, setRoleColor] = useState("#3b82f6");
   const [editingParticipantId, setEditingParticipantId] = useState<string | null>(null);
   const [assigningCharacter, setAssigningCharacter] = useState<{ name: string; color: string } | null>(null);
+  const [activeDialogIndex, setActiveDialogIndex] = useState(0);
   const [recordingDialogId, setRecordingDialogId] = useState<string | null>(null);
   const [recordingNarrationPanelId, setRecordingNarrationPanelId] = useState<string | null>(null);
   const [uploadingDialogId, setUploadingDialogId] = useState<string | null>(null);
@@ -78,6 +79,7 @@ export default function LiveSessionRoomPage() {
     presenceList,
     peers,
     currentPanelIndex,
+    highlightedDialog,
     isMuted,
     isHost,
     isConnected,
@@ -86,6 +88,7 @@ export default function LiveSessionRoomPage() {
     startVoice,
     toggleMute,
     navigatePanel,
+    highlightDialog,
     assignCharacter,
     assignNarrator,
     startSession,
@@ -113,6 +116,16 @@ export default function LiveSessionRoomPage() {
   }, [activeStoryId]);
 
   useEffect(() => { loadPanels(); }, [loadPanels]);
+
+  // Reset active dialog index when panel changes
+  useEffect(() => { setActiveDialogIndex(0); }, [currentPanelIndex]);
+
+  // Sync activeDialogIndex when host broadcasts highlight_dialog (for non-host participants)
+  useEffect(() => {
+    if (!highlightedDialog || !currentPanel) return;
+    const idx = currentPanel.dialogs?.findIndex((d) => d.id === highlightedDialog) ?? -1;
+    if (idx >= 0) setActiveDialogIndex(idx);
+  }, [highlightedDialog]);
 
   // Reload panels when any participant records a dialog
   useEffect(() => {
@@ -602,7 +615,7 @@ export default function LiveSessionRoomPage() {
                     <div className="flex items-center gap-2 mb-4">
                       <UserCog className="w-4 h-4 text-primary" />
                       <h3 className="text-sm font-bold text-white">Pembagian Peran</h3>
-                      <span className="text-xs text-white/30 ml-auto">Klik karakter → pilih peserta</span>
+                      <span className="text-xs text-white/30 ml-auto">Pilih peserta dari dropdown</span>
                     </div>
                     <div className="space-y-2">
                       {/* Narrator row */}
@@ -611,25 +624,18 @@ export default function LiveSessionRoomPage() {
                           <Volume2 className="w-4 h-4 text-primary shrink-0" />
                           <span className="text-sm font-semibold text-white">Narator</span>
                         </div>
-                        <div className="flex flex-wrap gap-1.5 justify-end">
-                          {participants.map((p) => {
-                            const isNarrator = p.is_narrator;
-                            return (
-                              <button
-                                key={p.id}
-                                onClick={() => assignNarrator(p.id)}
-                                className={`text-xs px-2.5 py-1 rounded-full font-medium transition-all border ${
-                                  isNarrator
-                                    ? "bg-primary text-white border-primary"
-                                    : "bg-white/5 text-white/50 border-white/10 hover:border-primary/50 hover:text-white"
-                                }`}
-                              >
-                                {p.user_name?.split(" ")[0]} {p.user_id === user.id && "(Anda)"}
-                              </button>
-                            );
-                          })}
-                          {participants.length === 0 && <span className="text-xs text-white/20 italic">Belum ada peserta</span>}
-                        </div>
+                        <select
+                          value={participants.find((p) => p.is_narrator)?.id ?? ""}
+                          onChange={(e) => { if (e.target.value) assignNarrator(e.target.value); }}
+                          className="text-xs bg-white/10 border border-white/20 rounded-lg px-2 py-1.5 text-white min-w-[160px] max-w-[220px]"
+                        >
+                          <option value="">— Pilih narator —</option>
+                          {participants.map((p) => (
+                            <option key={p.id} value={p.id} className="text-black">
+                              {p.user_name || "(tanpa nama)"}{p.user_id === user.id ? " (Anda)" : ""}
+                            </option>
+                          ))}
+                        </select>
                       </div>
 
                       {/* Character rows */}
@@ -648,26 +654,19 @@ export default function LiveSessionRoomPage() {
                               <div className="w-3.5 h-3.5 rounded-full shrink-0" style={{ backgroundColor: c.color }} />
                               <span className="text-sm font-semibold" style={{ color: c.color }}>{c.name}</span>
                             </div>
-                            <div className="flex flex-wrap gap-1.5 justify-end">
-                              {participants.map((p) => {
-                                const isAssigned = assigned?.id === p.id;
-                                return (
-                                  <button
-                                    key={p.id}
-                                    onClick={() => assignCharacter(p.id, c.name, c.color)}
-                                    className={`text-xs px-2.5 py-1 rounded-full font-medium transition-all border ${
-                                      isAssigned
-                                        ? "text-white border-current"
-                                        : "bg-white/5 text-white/50 border-white/10 hover:border-current hover:text-white"
-                                    }`}
-                                    style={isAssigned ? { backgroundColor: c.color, borderColor: c.color } : {}}
-                                  >
-                                    {p.user_name?.split(" ")[0]} {p.user_id === user.id && "(Anda)"}
-                                  </button>
-                                );
-                              })}
-                              {participants.length === 0 && <span className="text-xs text-white/20 italic">Belum ada peserta</span>}
-                            </div>
+                            <select
+                              value={assigned?.id ?? ""}
+                              onChange={(e) => { if (e.target.value) assignCharacter(e.target.value, c.name, c.color); }}
+                              className="text-xs bg-white/10 border border-white/20 rounded-lg px-2 py-1.5 text-white min-w-[160px] max-w-[220px]"
+                              style={assigned ? { borderColor: c.color, backgroundColor: `${c.color}22` } : {}}
+                            >
+                              <option value="">— Pilih peserta —</option>
+                              {participants.map((p) => (
+                                <option key={p.id} value={p.id} className="text-black">
+                                  {p.user_name || "(tanpa nama)"}{p.user_id === user.id ? " (Anda)" : ""}
+                                </option>
+                              ))}
+                            </select>
                           </div>
                         );
                       })}
@@ -725,37 +724,40 @@ export default function LiveSessionRoomPage() {
                     )}
 
                     {/* Dialog bubbles */}
-                    {currentPanel.dialogs?.map((dialog) => {
+                    {currentPanel.dialogs?.map((dialog, dIdx) => {
                       const assigned = getAssignedUser(dialog.character_name);
-                      const isMyDialog =
-                        assigned?.user_id === user.id;
-                      const peerSpeaking =
-                        assigned && peers.find((pr) => pr.userId === assigned.user_id)?.speaking;
+                      const isMyDialog = assigned?.user_id === user.id;
+                      const peerSpeaking = assigned && peers.find((pr) => pr.userId === assigned.user_id)?.speaking;
+                      const isActive = highlightedDialog === dialog.id || (!highlightedDialog && dIdx === 0);
+                      const hasHighlight = !!highlightedDialog;
+                      const isCurrentActive = dIdx === activeDialogIndex;
 
                       return (
                         <div
                           key={dialog.id}
-                          className={`absolute ${getBubbleClass(dialog.bubble_style)} bg-white shadow-md border-2 px-4 py-3 max-w-[200px] transition-all ${
-                            isMyDialog
-                              ? "ring-2 ring-primary ring-offset-2"
-                              : ""
+                          className={`absolute ${getBubbleClass(dialog.bubble_style)} bg-white shadow-md border-2 px-4 py-3 max-w-[200px] transition-all duration-300 ${
+                            isMyDialog ? "ring-2 ring-primary ring-offset-2" : ""
                           } ${
-                            peerSpeaking
-                              ? "ring-2 ring-accent ring-offset-1 scale-105"
-                              : ""
+                            peerSpeaking ? "ring-2 ring-accent ring-offset-1" : ""
+                          } ${
+                            hasHighlight && !isActive ? "opacity-30 scale-95" : "opacity-100"
                           }`}
                           style={{
                             left: `${dialog.position_x}%`,
                             top: `${dialog.position_y}%`,
                             borderColor: dialog.character_color,
-                            transform: `translate(-50%, -50%)${peerSpeaking ? " scale(1.05)" : ""}`,
+                            transform: `translate(-50%, -50%)`,
                           }}
                         >
+                          {/* Order number badge */}
+                          <span
+                            className="absolute -top-2 -right-2 w-5 h-5 rounded-full text-[9px] font-bold flex items-center justify-center text-white shadow-sm"
+                            style={{ backgroundColor: dialog.character_color }}
+                          >
+                            {dIdx + 1}
+                          </span>
                           <div className="flex items-center gap-1.5 mb-1">
-                            <p
-                              className="text-xs font-bold"
-                              style={{ color: dialog.character_color }}
-                            >
+                            <p className="text-xs font-bold" style={{ color: dialog.character_color }}>
                               {dialog.character_name}
                             </p>
                             {assigned && (
@@ -764,9 +766,7 @@ export default function LiveSessionRoomPage() {
                               </span>
                             )}
                             {peerSpeaking && (
-                              <Volume2
-                                className="w-3 h-3 text-accent animate-pulse"
-                              />
+                              <Volume2 className="w-3 h-3 text-accent animate-pulse" />
                             )}
                           </div>
                           <p className="text-sm leading-relaxed">
@@ -819,6 +819,65 @@ export default function LiveSessionRoomPage() {
                       );
                     })}
                   </div>
+
+                  {/* Dialog navigation bar — host controls, others follow */}
+                  {currentPanel.dialogs && currentPanel.dialogs.length > 1 && (
+                    <div className="mt-3 flex items-center gap-2 bg-gray-100 rounded-xl px-3 py-2">
+                      <button
+                        onClick={() => {
+                          const prev = Math.max(0, activeDialogIndex - 1);
+                          setActiveDialogIndex(prev);
+                          if (isHost) highlightDialog(currentPanel.dialogs![prev].id);
+                        }}
+                        disabled={activeDialogIndex === 0 || !isHost}
+                        className="p-1 rounded-lg bg-white border border-gray-200 hover:bg-gray-50 disabled:opacity-30 disabled:cursor-not-allowed shrink-0"
+                      >
+                        <ArrowLeft className="w-3.5 h-3.5 text-gray-600" />
+                      </button>
+
+                      <div className="flex-1 flex items-center gap-1.5 flex-wrap justify-center">
+                        {currentPanel.dialogs.map((d, i) => {
+                          const dAssigned = getAssignedUser(d.character_name);
+                          const isCurrent = i === activeDialogIndex;
+                          return (
+                            <button
+                              key={d.id}
+                              onClick={() => {
+                                if (!isHost) return;
+                                setActiveDialogIndex(i);
+                                highlightDialog(d.id);
+                              }}
+                              title={`Dialog ${i + 1}: ${d.character_name}${dAssigned ? " (" + dAssigned.user_name?.split(" ")[0] + ")" : ""}`}
+                              className={`flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold border transition-all ${
+                                isCurrent
+                                  ? "text-white border-transparent shadow-sm"
+                                  : "bg-white border-gray-200 text-gray-400 hover:border-gray-400"
+                              } ${!isHost ? "cursor-default" : ""}`}
+                              style={isCurrent ? { backgroundColor: d.character_color, borderColor: d.character_color } : {}}
+                            >
+                              {i + 1}
+                            </button>
+                          );
+                        })}
+                      </div>
+
+                      <button
+                        onClick={() => {
+                          const next = Math.min(currentPanel.dialogs!.length - 1, activeDialogIndex + 1);
+                          setActiveDialogIndex(next);
+                          if (isHost) highlightDialog(currentPanel.dialogs![next].id);
+                        }}
+                        disabled={activeDialogIndex === (currentPanel.dialogs?.length ?? 1) - 1 || !isHost}
+                        className="p-1 rounded-lg bg-white border border-gray-200 hover:bg-gray-50 disabled:opacity-30 disabled:cursor-not-allowed shrink-0"
+                      >
+                        <ArrowRight className="w-3.5 h-3.5 text-gray-600" />
+                      </button>
+
+                      {!isHost && (
+                        <span className="text-[10px] text-gray-400 shrink-0">Guru mengontrol</span>
+                      )}
+                    </div>
+                  )}
 
                   {/* Narration */}
                   {currentPanel.narration_text && (

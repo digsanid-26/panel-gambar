@@ -28,6 +28,7 @@ export interface UseLiveSessionReturn {
   isHost: boolean;
   isConnected: boolean;
   voiceReady: boolean;
+  highlightedDialog: string | null;
   error: string | null;
   // Actions
   startVoice: () => Promise<void>;
@@ -308,6 +309,7 @@ export function useLiveSession(
     presenceList,
     peers,
     currentPanelIndex,
+    highlightedDialog,
     isMuted,
     isHost,
     isConnected,
