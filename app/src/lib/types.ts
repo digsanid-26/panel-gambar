@@ -394,6 +394,8 @@ export interface LiveSession {
   current_panel_index: number;
   created_at: string;
   ended_at?: string;
+  recording_token?: string;
+  session_story_id?: string;
   story?: Story;
   host_name?: string;
   participants?: SessionParticipant[];

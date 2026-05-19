@@ -18,6 +18,7 @@ export async function GET(_: NextRequest, { params }: { params: Promise<{ id: st
     host_id: ls.hostId,
     story_id: ls.storyId,
     session_story_id: lsAny.sessionStoryId ?? null,
+    recording_token: lsAny.recordingToken ?? null,
     current_panel_index: ls.currentPanelIndex,
     host_name: ls.host?.name,
   });

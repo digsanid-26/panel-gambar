@@ -75,16 +75,15 @@ export function useLiveSession(
   }, [participants]);
 
   // Load session data
-  useEffect(() => {
-    async function loadSession() {
-      const res = await fetch(`/api/live-sessions/${sessionId}`);
-      if (!res.ok) { setError("Sesi tidak ditemukan."); return; }
-      const data = await res.json();
-      setSession(data as LiveSession);
-      setCurrentPanelIndex(data.currentPanelIndex ?? data.current_panel_index ?? 0);
-    }
-    loadSession();
+  const loadSession = useCallback(async () => {
+    const res = await fetch(`/api/live-sessions/${sessionId}`);
+    if (!res.ok) { setError("Sesi tidak ditemukan."); return; }
+    const data = await res.json();
+    setSession(data as LiveSession);
+    setCurrentPanelIndex(data.currentPanelIndex ?? data.current_panel_index ?? 0);
   }, [sessionId]);
+
+  useEffect(() => { loadSession(); }, [loadSession]);
 
   // Load participants
   const loadParticipants = useCallback(async () => {
@@ -124,7 +123,8 @@ export function useLiveSession(
           setSession((s) => (s ? { ...s, status: "active" } : s));
           break;
         case "session_end":
-          setSession((s) => (s ? { ...s, status: "finished" } : s));
+          // Re-fetch session so recording_token is available for all participants
+          loadSession();
           break;
         case "dialog_updated":
           window.dispatchEvent(new CustomEvent("live-dialog-updated"));

@@ -49,7 +49,6 @@ export default function LiveSessionRoomPage() {
   const [editingParticipantId, setEditingParticipantId] = useState<string | null>(null);
   const [assigningCharacter, setAssigningCharacter] = useState<{ name: string; color: string } | null>(null);
   const [recordingDialogId, setRecordingDialogId] = useState<string | null>(null);
-  const [recordingToken, setRecordingToken] = useState<string | null>(null);
   const [uploadingDialogId, setUploadingDialogId] = useState<string | null>(null);
   const [savedDialogIds, setSavedDialogIds] = useState<Set<string>>(new Set());
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
@@ -228,13 +227,12 @@ export default function LiveSessionRoomPage() {
   }
 
   async function handleEndSession() {
-    const res = await fetch(`/api/live-sessions/${sessionId}`, {
+    await fetch(`/api/live-sessions/${sessionId}`, {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ status: "finished" }),
     });
-    const data = await res.json();
-    if (data.recording_token) setRecordingToken(data.recording_token);
+    // endSession() broadcasts session_end → all clients call loadSession() → get recording_token
     endSession();
   }
 
@@ -289,11 +287,11 @@ export default function LiveSessionRoomPage() {
             <p className="text-white/50 text-sm mb-6">
               Sesi baca bersama untuk &ldquo;{session.story?.title}&rdquo; sudah selesai. Terima kasih sudah berpartisipasi!
             </p>
-            {recordingToken && (
+            {session?.recording_token && (
               <div className="mb-6 bg-gray-800 border border-white/10 rounded-2xl p-4">
                 <p className="text-xs text-white/40 mb-2">🎙️ Hasil rekaman sesi tersimpan</p>
                 <p className="text-xs text-white/30 mb-3">Link ini bersifat private. Bagikan hanya ke yang berwenang.</p>
-                <Link href={`/play/${recordingToken}`} target="_blank">
+                <Link href={`/play/${session.recording_token}`} target="_blank">
                   <Button variant="primary" className="w-full gap-2">
                     <ExternalLink className="w-4 h-4" />
                     Lihat & Putar Hasil Rekaman
