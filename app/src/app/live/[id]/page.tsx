@@ -49,8 +49,11 @@ export default function LiveSessionRoomPage() {
   const [editingParticipantId, setEditingParticipantId] = useState<string | null>(null);
   const [assigningCharacter, setAssigningCharacter] = useState<{ name: string; color: string } | null>(null);
   const [recordingDialogId, setRecordingDialogId] = useState<string | null>(null);
+  const [recordingNarrationPanelId, setRecordingNarrationPanelId] = useState<string | null>(null);
   const [uploadingDialogId, setUploadingDialogId] = useState<string | null>(null);
+  const [uploadingNarrationPanelId, setUploadingNarrationPanelId] = useState<string | null>(null);
   const [savedDialogIds, setSavedDialogIds] = useState<Set<string>>(new Set());
+  const [savedNarrationPanelIds, setSavedNarrationPanelIds] = useState<Set<string>>(new Set());
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const recordingChunksRef = useRef<BlobPart[]>([]);
 
@@ -199,6 +202,55 @@ export default function LiveSessionRoomPage() {
     mediaRecorderRef.current?.stop();
     mediaRecorderRef.current = null;
     setRecordingDialogId(null);
+  }
+
+  async function startNarrationRecording(panelId: string) {
+    if (recordingDialogId || recordingNarrationPanelId) return; // one recording at a time
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      recordingChunksRef.current = [];
+      const recorder = new MediaRecorder(stream, { mimeType: "audio/webm" });
+      recorder.ondataavailable = (e) => { if (e.data.size > 0) recordingChunksRef.current.push(e.data); };
+      recorder.onstop = async () => {
+        stream.getTracks().forEach((t) => t.stop());
+        const blob = new Blob(recordingChunksRef.current, { type: "audio/webm" });
+        await uploadNarrationRecording(panelId, blob);
+      };
+      recorder.start();
+      mediaRecorderRef.current = recorder;
+      setRecordingNarrationPanelId(panelId);
+    } catch {
+      alert("Izin mikrofon diperlukan untuk merekam.");
+    }
+  }
+
+  function stopNarrationRecording() {
+    mediaRecorderRef.current?.stop();
+    mediaRecorderRef.current = null;
+    setRecordingNarrationPanelId(null);
+  }
+
+  async function uploadNarrationRecording(panelId: string, blob: Blob) {
+    if (!session || !user) return;
+    setUploadingNarrationPanelId(panelId);
+    try {
+      const formData = new FormData();
+      formData.append("file", blob, `narration-${panelId}-${Date.now()}.webm`);
+      formData.append("bucket", "audio");
+      const uploadRes = await fetch("/api/upload", { method: "POST", body: formData });
+      const { url } = await uploadRes.json();
+
+      await fetch(`/api/live-sessions/${sessionId}/panels/${panelId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ narration_audio_url: url }),
+      });
+
+      setSavedNarrationPanelIds((prev) => new Set([...prev, panelId]));
+      await loadPanels();
+    } finally {
+      setUploadingNarrationPanelId(null);
+    }
   }
 
   async function uploadDialogRecording(dialogId: string, blob: Blob) {
@@ -773,16 +825,52 @@ export default function LiveSessionRoomPage() {
                     <div className="mt-4 bg-white rounded-xl border border-border p-4">
                       <div className="flex items-start gap-3">
                         <div className="flex-1">
-                          <div className="flex items-center gap-2 mb-1">
+                          <div className="flex items-center gap-2 mb-1 flex-wrap">
                             <span className="text-xs font-bold text-muted">Narasi</span>
                             {(() => {
                               const narrator = participants.find((p) => p.is_narrator);
+                              const isMyNarration = narrator?.user_id === user.id || isHost;
                               if (narrator) {
                                 return (
-                                  <Badge variant="primary" className="text-[8px] py-0">
-                                    {narrator.user_name?.split(" ")[0]}
-                                    {narrator.user_id === user.id && " (Anda)"}
-                                  </Badge>
+                                  <>
+                                    <Badge variant="primary" className="text-[8px] py-0">
+                                      {narrator.user_name?.split(" ")[0]}
+                                      {narrator.user_id === user.id && " (Anda)"}
+                                    </Badge>
+                                    {isMyNarration && session.status === "active" && (
+                                      uploadingNarrationPanelId === currentPanel.id ? (
+                                        <span className="text-[9px] text-muted flex items-center gap-0.5">
+                                          <Loader2 className="w-2.5 h-2.5 animate-spin" /> Menyimpan...
+                                        </span>
+                                      ) : savedNarrationPanelIds.has(currentPanel.id) ? (
+                                        <span className="text-[9px] text-green-600 flex items-center gap-0.5">
+                                          <Check className="w-2.5 h-2.5" /> Terekam
+                                          <button
+                                            onClick={() => setSavedNarrationPanelIds((prev) => { const s = new Set(prev); s.delete(currentPanel.id); return s; })}
+                                            className="ml-1 underline opacity-60 hover:opacity-100"
+                                          >
+                                            Ulang
+                                          </button>
+                                        </span>
+                                      ) : recordingNarrationPanelId === currentPanel.id ? (
+                                        <button
+                                          onClick={stopNarrationRecording}
+                                          className="flex items-center gap-0.5 text-[9px] font-bold text-red-500 animate-pulse"
+                                        >
+                                          <Square className="w-2.5 h-2.5 fill-red-500" /> Stop
+                                        </button>
+                                      ) : (
+                                        <button
+                                          onClick={() => startNarrationRecording(currentPanel.id)}
+                                          disabled={!!recordingDialogId || !!recordingNarrationPanelId}
+                                          className="flex items-center gap-0.5 text-[9px] font-bold text-primary hover:text-primary/80 disabled:opacity-30"
+                                          title="Rekam narasi"
+                                        >
+                                          <Mic className="w-2.5 h-2.5" /> Rekam Narasi
+                                        </button>
+                                      )
+                                    )}
+                                  </>
                                 );
                               }
                               return null;
@@ -796,7 +884,7 @@ export default function LiveSessionRoomPage() {
                           <AudioPlayer
                             src={currentPanel.narration_audio_url}
                             compact
-                            label="Dengar"
+                            label="🎙️"
                           />
                         )}
                       </div>
