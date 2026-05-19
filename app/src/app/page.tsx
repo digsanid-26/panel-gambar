@@ -5,6 +5,9 @@ import { useEffect, useRef, useState } from "react";
 import { Navbar } from "@/components/layout/navbar";
 import {
   BookOpen,
+  BookMarked,
+  Clock,
+  FileText,
   Mic,
   Image as ImageIcon,
   Monitor,
@@ -29,10 +32,30 @@ interface StoryPreview {
   author_name?: string;
 }
 
+interface PostPreview {
+  id: string;
+  title: string;
+  slug: string;
+  type: string;
+  excerpt?: string;
+  cover_image_url?: string;
+  published_at?: string;
+  author?: { name: string };
+}
+
 export default function HomePage() {
   const heroRef = useRef<HTMLDivElement>(null);
   const featuresRef = useRef<HTMLDivElement>(null);
   const [stories, setStories] = useState<StoryPreview[]>([]);
+  const [posts, setPosts] = useState<PostPreview[]>([]);
+  const [postFilter, setPostFilter] = useState<"all" | "artikel" | "panduan">("all");
+
+  useEffect(() => {
+    fetch("/api/posts?status=published&limit=9")
+      .then((r) => r.json())
+      .then((data: PostPreview[]) => setPosts(data))
+      .catch(() => {});
+  }, []);
 
   useEffect(() => {
     fetch("/api/stories?limit=6")
@@ -281,6 +304,117 @@ export default function HomePage() {
               </div>
             ))}
           </div>
+        </div>
+      </section>
+
+      {/* Blog Terbaru */}
+      <section className="py-20 sm:py-24">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6">
+          <div className="flex flex-col sm:flex-row sm:items-end justify-between gap-4 mb-8">
+            <div>
+              <span className="text-primary text-sm font-semibold uppercase tracking-widest">Blog</span>
+              <h2 className="text-3xl sm:text-4xl font-bold mt-2">Blog Terbaru</h2>
+              {/* Type filter */}
+              <div className="flex items-center gap-2 mt-4">
+                {(["all", "artikel", "panduan"] as const).map((t) => (
+                  <button
+                    key={t}
+                    onClick={() => setPostFilter(t)}
+                    className={`px-4 py-1.5 rounded-full text-sm font-medium transition-colors border ${
+                      postFilter === t
+                        ? "bg-primary text-white border-primary"
+                        : "bg-transparent border-border text-muted hover:text-foreground hover:border-primary/40"
+                    }`}
+                  >
+                    {t === "all" ? "Semua" : t === "artikel" ? "Artikel" : "Panduan"}
+                  </button>
+                ))}
+              </div>
+            </div>
+            <Link
+              href="/blog"
+              className="text-sm text-primary font-medium flex items-center gap-1 hover:gap-2 transition-all shrink-0"
+            >
+              Lihat Semua <ChevronRight className="w-4 h-4" />
+            </Link>
+          </div>
+
+          {(() => {
+            const filtered = postFilter === "all" ? posts : posts.filter((p) => p.type === postFilter);
+            if (posts.length === 0) return (
+              <div className="text-center py-16 text-muted">
+                <FileText className="w-10 h-10 mx-auto mb-3 opacity-30" />
+                <p className="text-sm">Belum ada artikel yang diterbitkan.</p>
+              </div>
+            );
+            if (filtered.length === 0) return (
+              <div className="text-center py-16 text-muted">
+                <p className="text-sm">Tidak ada {postFilter} yang diterbitkan.</p>
+              </div>
+            );
+            return (
+              <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-6">
+                {filtered.map((post) => (
+                  <Link
+                    key={post.id}
+                    href={`/blog/${post.slug}`}
+                    className="group bg-surface-card border border-border rounded-2xl overflow-hidden hover:border-primary/40 hover:shadow-lg hover:shadow-primary/10 transition-all duration-300 flex flex-col"
+                  >
+                    {/* Cover */}
+                    <div className="aspect-video bg-surface-alt relative overflow-hidden">
+                      {post.cover_image_url ? (
+                        <img
+                          src={post.cover_image_url}
+                          alt={post.title}
+                          className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
+                        />
+                      ) : (
+                        <div className="w-full h-full flex items-center justify-center">
+                          {post.type === "panduan" ? (
+                            <BookMarked className="w-10 h-10 text-muted/30" />
+                          ) : (
+                            <FileText className="w-10 h-10 text-muted/30" />
+                          )}
+                        </div>
+                      )}
+                      <div className="absolute top-3 left-3">
+                        <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${
+                          post.type === "panduan"
+                            ? "bg-accent/90 text-white"
+                            : "bg-primary/90 text-white"
+                        }`}>
+                          {post.type === "panduan" ? "Panduan" : "Artikel"}
+                        </span>
+                      </div>
+                    </div>
+
+                    {/* Body */}
+                    <div className="p-5 flex flex-col flex-1">
+                      <h3 className="font-bold text-base text-foreground group-hover:text-primary transition-colors line-clamp-2 leading-snug">
+                        {post.title}
+                      </h3>
+                      {post.excerpt && (
+                        <p className="text-sm text-muted mt-2 line-clamp-2 leading-relaxed flex-1">
+                          {post.excerpt}
+                        </p>
+                      )}
+                      <div className="flex items-center gap-3 mt-4 text-xs text-muted">
+                        {post.author && (
+                          <span className="truncate max-w-[120px]">oleh {post.author.name}</span>
+                        )}
+                        {post.published_at && (
+                          <span className="flex items-center gap-1 shrink-0 ml-auto">
+                            <Clock className="w-3 h-3" />
+                            {new Date(post.published_at).toLocaleDateString("id-ID", { day: "numeric", month: "short", year: "numeric" })}
+                          </span>
+                        )}
+                      </div>
+                    </div>
+                  </Link>
+                ))}
+              </div>
+            );
+          })()}
         </div>
       </section>
 
