@@ -4,7 +4,6 @@ import { useState, useEffect } from "react";
 import { useRouter, useParams } from "next/navigation";
 import { useSession } from "next-auth/react";
 import Link from "next/link";
-import { Navbar } from "@/components/layout/navbar";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
@@ -38,10 +37,8 @@ export default function EditPostPage() {
 
   useEffect(() => {
     if (status === "loading") return;
-    if (!session?.user) { router.push("/login"); return; }
-    if ((session.user as any).role !== "admin") { router.push("/dashboard"); return; }
     loadPost();
-  }, [session, status]);
+  }, [status]);
 
   async function loadPost() {
     const res = await fetch(`/api/posts/${postId}`);
@@ -94,16 +91,11 @@ export default function EditPostPage() {
   }
 
   if (loading) return (
-    <div className="min-h-screen flex flex-col bg-background">
-      <Navbar />
-      <div className="flex-1 flex items-center justify-center"><Loader2 className="w-6 h-6 animate-spin text-muted" /></div>
-    </div>
+    <div className="flex-1 flex items-center justify-center py-20"><Loader2 className="w-6 h-6 animate-spin text-muted" /></div>
   );
 
   return (
-    <div className="min-h-screen flex flex-col bg-background">
-      <Navbar />
-      <main className="flex-1 max-w-4xl mx-auto w-full px-4 sm:px-6 py-8">
+    <div className="max-w-4xl mx-auto w-full px-4 sm:px-6 py-8">
         <div className="flex items-center gap-3 mb-6">
           <Link href="/admin/posts">
             <Button variant="ghost" size="icon"><ArrowLeft className="w-5 h-5" /></Button>
@@ -175,7 +167,6 @@ export default function EditPostPage() {
             </div>
           </div>
         </div>
-      </main>
     </div>
   );
 }

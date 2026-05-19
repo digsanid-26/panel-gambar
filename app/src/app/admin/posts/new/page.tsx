@@ -4,7 +4,6 @@ import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { useSession } from "next-auth/react";
 import Link from "next/link";
-import { Navbar } from "@/components/layout/navbar";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
@@ -28,11 +27,6 @@ export default function NewPostPage() {
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
 
-  useEffect(() => {
-    if (status === "loading") return;
-    if (!session?.user) { router.push("/login"); return; }
-    if ((session.user as any).role !== "admin") { router.push("/dashboard"); return; }
-  }, [session, status]);
 
   useEffect(() => {
     if (!slugManual) {
@@ -66,9 +60,7 @@ export default function NewPostPage() {
   }
 
   return (
-    <div className="min-h-screen flex flex-col bg-background">
-      <Navbar />
-      <main className="flex-1 max-w-4xl mx-auto w-full px-4 sm:px-6 py-8">
+    <div className="max-w-4xl mx-auto w-full px-4 sm:px-6 py-8">
         <div className="flex items-center gap-3 mb-6">
           <Link href="/admin/posts">
             <Button variant="ghost" size="icon"><ArrowLeft className="w-5 h-5" /></Button>
@@ -135,7 +127,6 @@ export default function NewPostPage() {
             </div>
           </div>
         </div>
-      </main>
     </div>
   );
 }

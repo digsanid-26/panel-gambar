@@ -4,7 +4,6 @@ import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useSession } from "next-auth/react";
 import Link from "next/link";
-import { Navbar } from "@/components/layout/navbar";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import {
@@ -33,10 +32,8 @@ export default function AdminPostsPage() {
 
   useEffect(() => {
     if (status === "loading") return;
-    if (!session?.user) { router.push("/login"); return; }
-    if ((session.user as any).role !== "admin") { router.push("/dashboard"); return; }
     load();
-  }, [session, status]);
+  }, [status]);
 
   async function load() {
     setLoading(true);
@@ -56,11 +53,9 @@ export default function AdminPostsPage() {
   const filtered = typeFilter === "all" ? posts : posts.filter((p) => p.type === typeFilter);
 
   return (
-    <div className="min-h-screen flex flex-col bg-background">
-      <Navbar />
-      <main className="flex-1 max-w-5xl mx-auto w-full px-4 sm:px-6 py-8">
+    <div className="max-w-5xl mx-auto w-full px-4 sm:px-6 py-8">
         <div className="flex items-center gap-3 mb-6">
-          <Link href="/dashboard">
+          <Link href="/admin/dashboard">
             <Button variant="ghost" size="icon"><ArrowLeft className="w-5 h-5" /></Button>
           </Link>
           <div className="flex-1">
@@ -138,7 +133,6 @@ export default function AdminPostsPage() {
             ))}
           </div>
         )}
-      </main>
     </div>
   );
 }
