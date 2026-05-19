@@ -486,7 +486,18 @@ Jalankan deploy:
 ssh digsanid@103.55.37.232
 ~/padu-edu/deploy.sh
 ```
+```bash
+# Masuk ke container PostgreSQL
+docker exec -it panel_postgres psql -U postgres -d panel_gambar
 
+# Lihat daftar user
+SELECT id, email, name, role FROM users;
+
+# Ubah role user tertentu jadi admin (ganti email sesuai akun Anda)
+UPDATE users SET role = 'admin' WHERE email = 'email-anda@contoh.com';
+
+# Keluar
+\q
 ---
 
 ## Monitoring & Logs
@@ -596,3 +607,206 @@ sudo systemctl start nginx
 | **Total** | **~500–800 MB** | aman di 4 GB |
 
 > Server 2 vCPU / 4 GB RAM cukup untuk **±100 pengguna concurrent**.
+
+---
+
+## Multi-Domain — Akses dari Beberapa Domain
+
+Aplikasi ini sudah siap multi-domain karena:
+- `trustHost: true` sudah diset di `auth.config.ts` → NextAuth menerima request dari domain manapun
+- `NEXTAUTH_URL` tidak perlu diisi (atau bisa dihapus dari `.env`)
+
+Satu instance Next.js (port 3000) melayani semua domain sekaligus. Nginx yang menjadi pintu masuk per domain.
+
+### Gambaran Arsitektur
+
+```
+padu.digsan.id  ──┐
+padu.sekolah.id ──┤─→ Nginx :443 ──→ Next.js :3000 ──→ PostgreSQL
+custom.domain   ──┘
+```
+
+---
+
+### Langkah 1 — Arahkan DNS setiap domain ke IP server
+
+Di panel DNS masing-masing domain, tambahkan A record:
+
+```
+Type : A
+Name : @  (atau subdomain yang diinginkan, misal: padu)
+Value: 103.55.37.232
+TTL  : 3600
+```
+
+Verifikasi:
+
+```bash
+nslookup domain-baru.com
+# Expected: Address: 103.55.37.232
+```
+
+---
+
+### Langkah 2 — Tambah domain ke konfigurasi Nginx
+
+**Cara A — Gabung di file yang sudah ada (paling mudah)**
+
+Edit file Nginx yang sudah ada:
+
+```bash
+sudo nano /etc/nginx/sites-available/padu.digsan.id
+```
+
+Tambahkan domain baru di `server_name`:
+
+```nginx
+server {
+    listen 80;
+    server_name padu.digsan.id padu.sekolah.id custom.domain.com;
+    # ... sisa konfigurasi tetap sama ...
+}
+```
+
+Setelah certbot dijalankan, blok HTTPS juga perlu diupdate dengan domain baru (lihat Langkah 3).
+
+---
+
+**Cara B — File terpisah per domain (jika perlu konfigurasi berbeda)**
+
+```bash
+sudo nano /etc/nginx/sites-available/custom.domain.com
+```
+
+Isi (sama persis dengan `padu.digsan.id`, ganti `server_name`):
+
+```nginx
+server {
+    listen 80;
+    server_name custom.domain.com;
+
+    client_max_body_size 50M;
+
+    location /uploads/ {
+        alias /home/digsanid/padu-edu/app/public/uploads/;
+        expires 30d;
+        add_header Cache-Control "public, immutable";
+    }
+
+    location / {
+        proxy_pass http://127.0.0.1:3000;
+        proxy_http_version 1.1;
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection 'upgrade';
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_buffer_size 128k;
+        proxy_buffers 4 256k;
+        proxy_busy_buffers_size 256k;
+        proxy_read_timeout 30s;
+        proxy_send_timeout 30s;
+    }
+}
+```
+
+Aktifkan:
+
+```bash
+sudo ln -s /etc/nginx/sites-available/custom.domain.com /etc/nginx/sites-enabled/
+sudo nginx -t
+sudo systemctl reload nginx
+```
+
+---
+
+### Langkah 3 — Pasang SSL untuk semua domain sekaligus
+
+**Cara A** (jika semua domain di satu file Nginx):
+
+```bash
+sudo certbot --nginx -d padu.digsan.id -d padu.sekolah.id -d custom.domain.com
+```
+
+> Certbot akan otomatis update blok HTTPS di file konfigurasi Nginx yang sama.
+
+**Cara B** (file terpisah per domain):
+
+```bash
+# Jalankan certbot satu per domain
+sudo certbot --nginx -d custom.domain.com
+```
+
+Verifikasi:
+
+```bash
+sudo nginx -t && sudo systemctl reload nginx
+sudo certbot certificates   # lihat semua sertifikat aktif
+```
+
+---
+
+### Langkah 4 — Update `.env` (opsional)
+
+Karena `trustHost: true` sudah aktif, tidak perlu ubah `NEXTAUTH_URL`. Tapi jika ingin email/callback NextAuth menggunakan domain tertentu sebagai primary:
+
+```bash
+nano ~/padu-edu/app/.env
+```
+
+```env
+# Biarkan kosong atau gunakan domain utama
+# NEXTAUTH_URL tidak dibutuhkan jika trustHost=true
+NEXTAUTH_URL=https://padu.digsan.id
+```
+
+---
+
+### Langkah 5 — Google OAuth (jika menggunakan login Google)
+
+Di [Google Cloud Console](https://console.cloud.google.com) → **APIs & Services → Credentials → OAuth 2.0 Client**:
+
+Tambahkan setiap domain baru di:
+
+**Authorized JavaScript origins:**
+```
+https://padu.digsan.id
+https://padu.sekolah.id
+https://custom.domain.com
+```
+
+**Authorized redirect URIs:**
+```
+https://padu.digsan.id/api/auth/callback/google
+https://padu.sekolah.id/api/auth/callback/google
+https://custom.domain.com/api/auth/callback/google
+```
+
+---
+
+### Verifikasi Akhir
+
+```bash
+# Cek semua domain bisa diakses
+curl -I https://padu.digsan.id
+curl -I https://custom.domain.com
+
+# Cek SSL valid
+echo | openssl s_client -connect custom.domain.com:443 2>/dev/null | openssl x509 -noout -dates
+
+# Cek Nginx config bersih
+sudo nginx -t
+```
+
+---
+
+### Catatan Penting
+
+| Hal | Keterangan |
+|---|---|
+| **Satu database** | Semua domain berbagi database yang sama — user dan data adalah global |
+| **Satu instance app** | Tidak ada isolasi antar domain; semua mengakses konten yang sama |
+| **Upload files** | URL file upload menggunakan `Host` header dari request — link akan menggunakan domain yang sedang diakses |
+| **Session cookie** | Cookie login bersifat per-domain (tidak bisa SSO antar domain berbeda) |
+| **Wildcard SSL** | Untuk subdomain tak terbatas (misal `*.digsan.id`), gunakan `certbot --manual --preferred-challenges dns -d *.digsan.id` |
