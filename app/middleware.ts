@@ -9,17 +9,14 @@ export default auth((req) => {
   const user = req.auth?.user;
   const role = (user as any)?.role as string | undefined;
 
-  // Admin-only routes — must be authenticated AND have admin role
+  // Admin routes — only check authentication here.
+  // Role verification is done in the admin layout after calling useSession().update()
+  // which re-reads the role from DB (handles stale JWTs from DB role changes).
   if (pathname.startsWith("/admin")) {
     if (!user) {
       const url = req.nextUrl.clone();
       url.pathname = "/login";
       url.searchParams.set("redirect", pathname);
-      return NextResponse.redirect(url);
-    }
-    if (role !== "admin") {
-      const url = req.nextUrl.clone();
-      url.pathname = "/dashboard";
       return NextResponse.redirect(url);
     }
     return NextResponse.next();

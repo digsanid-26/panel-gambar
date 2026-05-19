@@ -25,16 +25,21 @@ const NAV_ITEMS = [
 export default function AdminLayout({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
   const router = useRouter();
-  const { data: session, status } = useSession();
+  const { data: session, status, update } = useSession();
   const [userDropdownOpen, setUserDropdownOpen] = useState(false);
+  const [refreshed, setRefreshed] = useState(false);
   const dropdownRef = useRef<HTMLDivElement>(null);
 
-  // Guard: redirect non-admin
+  // On first load, force-refresh the session so the JWT picks up the latest role from DB
   useEffect(() => {
-    if (status === "loading") return;
-    if (!session?.user) { router.push("/login"); return; }
-    if ((session.user as any).role !== "admin") { router.push("/dashboard"); return; }
-  }, [session, status, router]);
+    if (status === "loading" || refreshed) return;
+    update().then((fresh) => {
+      setRefreshed(true);
+      const role = (fresh?.user as any)?.role;
+      if (!fresh?.user) { router.push("/login"); return; }
+      if (role !== "admin") { router.push("/dashboard"); return; }
+    });
+  }, [status]);
 
   // Close dropdown on outside click
   useEffect(() => {
@@ -47,7 +52,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
     return () => document.removeEventListener("mousedown", handler);
   }, []);
 
-  if (status === "loading") {
+  if (status === "loading" || !refreshed) {
     return <div className="min-h-screen bg-background" />;
   }
 
