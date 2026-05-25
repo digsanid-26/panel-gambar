@@ -351,10 +351,11 @@ export function PanelTimelineEditor({ panel, timelineData, onChange }: PanelTime
 
     setItems((prev) => {
       const panelItem = prev.find((it) => it.type === "panel");
+      // Exclude background-audio from targetDur so a long bg-audio file never inflates the panel
       const targetDur = Math.max(
         5,
         panelItem?.duration ?? 5,
-        ...prev.map((it) => it.start + it.duration)
+        ...prev.filter((it) => it.type !== "background-audio").map((it) => it.start + it.duration)
       );
       let changed = false;
       const next = prev.map((item) => {

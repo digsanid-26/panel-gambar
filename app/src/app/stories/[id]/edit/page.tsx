@@ -324,12 +324,23 @@ export default function EditStoryPage() {
       updated = [...existing, newItem];
     }
 
-    // Expand panel duration if needed
     const panelItem = updated.find((it) => it.type === "panel");
-    const maxEnd = Math.max(...updated.map((it) => it.start + it.duration));
-    if (panelItem && panelItem.duration < maxEnd) {
-      const idx = updated.indexOf(panelItem);
-      updated[idx] = { ...panelItem, duration: Math.ceil(maxEnd) };
+    if (audioType === "background") {
+      // Background audio is static: cap its duration to the panel duration, never expand the panel
+      if (panelItem) {
+        updated = updated.map((it) =>
+          it.type === "background-audio"
+            ? { ...it, duration: Math.min(it.duration, panelItem.duration - it.start) }
+            : it
+        );
+      }
+    } else {
+      // Narration/dialog audio: expand panel duration if the audio exceeds it
+      const maxEnd = Math.max(...updated.map((it) => it.start + it.duration));
+      if (panelItem && panelItem.duration < maxEnd) {
+        const idx = updated.indexOf(panelItem);
+        updated[idx] = { ...panelItem, duration: Math.ceil(maxEnd) };
+      }
     }
 
     await saveTimelineData(panelId, updated);
