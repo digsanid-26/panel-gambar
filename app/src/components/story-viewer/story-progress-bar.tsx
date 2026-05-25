@@ -42,6 +42,7 @@ export function StoryProgressBar({
   const [panelProgress, setPanelProgress] = useState(0);
   const [activeAudioIdx, setActiveAudioIdx] = useState<number | null>(null);
   const audioRef = useRef<HTMLAudioElement | null>(null);
+  const bgAudioRef = useRef<HTMLAudioElement | null>(null);
   const timerRef = useRef<number | null>(null);
   const progressRef = useRef(0);
   // Track which dialog IDs have already been paused-on for the current panel
@@ -155,7 +156,7 @@ export function StoryProgressBar({
     pausedDialogsRef.current = new Set();
   }, [currentIndex]);
 
-  // Create narration audio when panel changes
+  // Create narration + background audio when panel changes
   useEffect(() => {
     // Stop & discard previous audio
     if (audioRef.current) {
@@ -164,13 +165,27 @@ export function StoryProgressBar({
       audioRef.current = null;
       setActiveAudioIdx(null);
     }
+    if (bgAudioRef.current) {
+      bgAudioRef.current.pause();
+      bgAudioRef.current.src = "";
+      bgAudioRef.current = null;
+    }
 
     const panel = panels[currentIndex];
-    if (!panel?.narration_audio_url) return;
 
-    const audio = new Audio(panel.narration_audio_url);
-    audioRef.current = audio;
-    audio.onended = () => setActiveAudioIdx(null);
+    if (panel?.narration_audio_url) {
+      const audio = new Audio(panel.narration_audio_url);
+      audioRef.current = audio;
+      audio.onended = () => setActiveAudioIdx(null);
+    }
+
+    // Background audio: only for simple panels, plays at 40% volume
+    if (panel?.background_audio_url && panel.panel_type === "simple") {
+      const bgAudio = new Audio(panel.background_audio_url);
+      bgAudio.volume = 0.4;
+      bgAudio.loop = true;
+      bgAudioRef.current = bgAudio;
+    }
 
     return () => {
       if (audioRef.current) {
@@ -178,22 +193,35 @@ export function StoryProgressBar({
         audioRef.current.src = "";
         audioRef.current = null;
       }
+      if (bgAudioRef.current) {
+        bgAudioRef.current.pause();
+        bgAudioRef.current.src = "";
+        bgAudioRef.current = null;
+      }
     };
   }, [currentIndex, panels]);
 
-  // Pause / resume narration audio when isPlaying changes
+  // Pause / resume narration + background audio when isPlaying changes
   useEffect(() => {
     const audio = audioRef.current;
-    if (!audio) return;
-
-    if (isPlaying) {
-      // Only play if not already ended
-      if (audio.paused && audio.currentTime < (audio.duration || Infinity)) {
-        setActiveAudioIdx(currentIndex);
-        audio.play().catch(() => {});
+    if (audio) {
+      if (isPlaying) {
+        if (audio.paused && audio.currentTime < (audio.duration || Infinity)) {
+          setActiveAudioIdx(currentIndex);
+          audio.play().catch(() => {});
+        }
+      } else {
+        audio.pause();
       }
-    } else {
-      audio.pause();
+    }
+
+    const bgAudio = bgAudioRef.current;
+    if (bgAudio) {
+      if (isPlaying) {
+        bgAudio.play().catch(() => {});
+      } else {
+        bgAudio.pause();
+      }
     }
   }, [isPlaying, currentIndex]);
 

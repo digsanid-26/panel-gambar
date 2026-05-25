@@ -551,7 +551,10 @@ export default function EditStoryPage() {
       const field = type === "narration" ? "narration_audio_url" : "background_audio_url";
       await updatePanelField(panelId, field, url);
       const dur = await getAudioDurationFromBlob(blob);
-      await ensureTimelineAudioEntry(panelId, type, dur > 0 ? dur : undefined);
+      const isSimplePanel = panelsRef.current.find((p) => p.id === panelId)?.panel_type === "simple";
+      if (!(type === "background" && isSimplePanel)) {
+        await ensureTimelineAudioEntry(panelId, type, dur > 0 ? dur : undefined);
+      }
     }
     setSaving(false);
     setShowNarrationRecorder(null);
@@ -771,7 +774,10 @@ export default function EditStoryPage() {
       const field = type === "narration" ? "narration_audio_url" : "background_audio_url";
       await updatePanelField(panelId, field, url);
       const dur = await getAudioDurationFromBlob(file);
-      await ensureTimelineAudioEntry(panelId, type, dur > 0 ? dur : undefined);
+      const isSimplePanel = panelsRef.current.find((p) => p.id === panelId)?.panel_type === "simple";
+      if (!(type === "background" && isSimplePanel)) {
+        await ensureTimelineAudioEntry(panelId, type, dur > 0 ? dur : undefined);
+      }
     }
     setSaving(false);
     setShowNarrationRecorder(null);
@@ -862,7 +868,10 @@ export default function EditStoryPage() {
         const field = target.type === "narration" ? "narration_audio_url" : "background_audio_url";
         await updatePanelField(target.panelId, field, asset.url);
         const dur = await getAudioDurationFromUrl(asset.url);
-        await ensureTimelineAudioEntry(target.panelId, target.type, dur > 0 ? dur : undefined);
+        const isSimplePanel = panelsRef.current.find((p) => p.id === target.panelId)?.panel_type === "simple";
+        if (!(target.type === "background" && isSimplePanel)) {
+          await ensureTimelineAudioEntry(target.panelId, target.type, dur > 0 ? dur : undefined);
+        }
       } else {
         await patchDialog(target.dialogId, { audio_url: asset.url });
         setPanels(prev =>
@@ -1434,6 +1443,12 @@ export default function EditStoryPage() {
                       <Music className="w-4 h-4 inline mr-1" />
                       Suara Latar (Opsional)
                     </label>
+                    {panel.panel_type === "simple" && (
+                      <p className="text-xs text-teal-600 dark:text-teal-400 bg-teal-50 dark:bg-teal-900/20 border border-teal-200 dark:border-teal-800 rounded-lg px-3 py-1.5 mb-2 flex items-center gap-1.5">
+                        <Volume2 className="w-3 h-3 shrink-0" />
+                        Diputar otomatis saat cerita berjalan (volume 40%), berhenti sesuai durasi timeline panel — tidak perlu diatur di timeline.
+                      </p>
+                    )}
                     {panel.background_audio_url ? (
                       <div className="flex items-center gap-2">
                         <AudioPlayer src={panel.background_audio_url} label="Suara Latar" className="flex-1" />

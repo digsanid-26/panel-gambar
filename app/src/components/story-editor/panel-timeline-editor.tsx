@@ -82,8 +82,9 @@ function buildDefaultTimeline(panel: Panel): PanelTimelineItem[] {
     });
   }
 
-  // Background audio
-  if (panel.background_audio_url) {
+  // Background audio — only for complete panels.
+  // Simple panels auto-play it at 40% volume via the progress bar; no timeline entry needed.
+  if (panel.background_audio_url && panel.panel_type !== "simple") {
     items.push({
       id: generateId(),
       type: "background-audio",
@@ -291,7 +292,7 @@ export function PanelTimelineEditor({ panel, timelineData, onChange }: PanelTime
         const dur = await getAudioDurationFromUrl(panel.narration_audio_url);
         if (dur > 0) updates.push({ type: "narration-audio", duration: dur });
       }
-      if (panel.background_audio_url) {
+      if (panel.background_audio_url && panel.panel_type !== "simple") {
         const dur = await getAudioDurationFromUrl(panel.background_audio_url);
         if (dur > 0) updates.push({ type: "background-audio", duration: dur });
       }
@@ -516,7 +517,7 @@ export function PanelTimelineEditor({ panel, timelineData, onChange }: PanelTime
     const duration = panelItem ? panelItem.duration : totalDuration;
 
     // Collect audio items with their source URLs
-    const audioSchedule: { start: number; end: number; src: string }[] = [];
+    const audioSchedule: { start: number; end: number; src: string; volume?: number }[] = [];
 
     items.forEach((it) => {
       if (it.type === "narration-audio" && panel.narration_audio_url) {
@@ -533,10 +534,16 @@ export function PanelTimelineEditor({ panel, timelineData, onChange }: PanelTime
       }
     });
 
+    // For simple panels: background audio plays at 40% volume for the full panel duration
+    if (panel.panel_type === "simple" && panel.background_audio_url) {
+      audioSchedule.push({ start: 0, end: duration, src: panel.background_audio_url, volume: 0.4 });
+    }
+
     // Pre-create Audio elements
     const audioEntries = audioSchedule.map((s) => {
       const audio = new Audio(s.src);
       audio.preload = "auto";
+      if (s.volume !== undefined) audio.volume = s.volume;
       return { ...s, audio, started: false };
     });
     previewAudiosRef.current = audioEntries.map((e) => e.audio);
