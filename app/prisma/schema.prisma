@@ -99,16 +99,22 @@ model ClassroomMember {
 // ─── SCHOOLS ─────────────────────────────────────────────────────────────────
 
 model School {
-  id          String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  name        String
-  address     String   @default("")
-  city        String?
-  province    String?
-  postalCode  String?  @map("postal_code")
-  phone       String?
-  logoUrl     String?  @map("logo_url")
-  teacherId   String   @map("teacher_id") @db.Uuid
-  createdAt   DateTime @default(now()) @map("created_at")
+  id            String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  name          String
+  address       String   @default("")
+  kelurahan     String?
+  kecamatan     String?
+  city          String?
+  province      String?
+  provinsiCode  String?  @map("provinsi_code")
+  kabupatenCode String?  @map("kabupaten_code")
+  kecamatanCode String?  @map("kecamatan_code")
+  kelurahanCode String?  @map("kelurahan_code")
+  postalCode    String?  @map("postal_code")
+  phone         String?
+  logoUrl       String?  @map("logo_url")
+  teacherId     String   @map("teacher_id") @db.Uuid
+  createdAt     DateTime @default(now()) @map("created_at")
 
   teacher    User        @relation("SchoolTeacher", fields: [teacherId], references: [id], onDelete: Cascade)
   profiles   User[]      @relation("UserSchool")

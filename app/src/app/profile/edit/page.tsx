@@ -9,13 +9,33 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { CoverImageUploader } from "@/components/ui/cover-image-uploader";
-import { ArrowLeft, Save, Loader2, Plus, X, User } from "lucide-react";
+import { ArrowLeft, Save, Loader2, Plus, X, User, Building2, Phone, MapPin } from "lucide-react";
+import { RegionCascade, emptyRegion } from "@/components/ui/region-cascade";
+import type { RegionValue } from "@/components/ui/region-cascade";
+import { SchoolSearch } from "@/components/ui/school-search";
+import type { SchoolRecord } from "@/components/ui/school-search";
 
 interface UserProfile {
   id: string; name: string; email: string; role: string;
   avatar_url?: string; bio?: string; subjects: string[];
   location?: string; school?: string;
+  school_id?: string;
 }
+
+interface SchoolForm {
+  id?: string;
+  name: string;
+  address: string;
+  phone: string;
+  region: RegionValue;
+  isOwner: boolean;
+}
+
+const emptySchoolForm: SchoolForm = {
+  name: "", address: "", phone: "",
+  region: emptyRegion,
+  isOwner: false,
+};
 
 export default function ProfileEditPage() {
   const router = useRouter();
@@ -34,6 +54,10 @@ export default function ProfileEditPage() {
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
   const [error, setError] = useState("");
+  const [schoolForm, setSchoolForm] = useState<SchoolForm>(emptySchoolForm);
+  const [savingSchool, setSavingSchool] = useState(false);
+  const [schoolSaved, setSchoolSaved] = useState(false);
+  const [schoolError, setSchoolError] = useState("");
 
   useEffect(() => {
     if (status === "loading") return;
@@ -53,8 +77,86 @@ export default function ProfileEditPage() {
       setAvatarUrl(data.avatar_url ?? "");
       setSubjects(data.subjects ?? []);
       setRole(data.role ?? "member");
+
+      if (data.school_id) {
+        const schoolRes = await fetch(`/api/schools/${data.school_id}`);
+        if (schoolRes.ok) {
+          const s = await schoolRes.json();
+          setSchoolForm({
+            id: s.id,
+            name: s.name ?? "",
+            address: s.address ?? "",
+            phone: s.phone ?? "",
+            region: {
+              provinsi: s.province ?? "",
+              provinsiCode: s.provinsiCode ?? "",
+              kabupaten: s.city ?? "",
+              kabupatenCode: s.kabupatenCode ?? "",
+              kecamatan: s.kecamatan ?? "",
+              kecamatanCode: s.kecamatanCode ?? "",
+              kelurahan: s.kelurahan ?? "",
+              kelurahanCode: s.kelurahanCode ?? "",
+            },
+            isOwner: s.teacherId === data.id,
+          });
+        }
+      }
     }
     setLoading(false);
+  }
+
+  async function handleSaveSchool() {
+    if (!schoolForm.name.trim()) { setSchoolError("Nama sekolah wajib diisi."); return; }
+    setSchoolError("");
+    setSavingSchool(true);
+
+    const payload = {
+      name: schoolForm.name,
+      address: schoolForm.address,
+      phone: schoolForm.phone || null,
+      province: schoolForm.region.provinsi || null,
+      provinsiCode: schoolForm.region.provinsiCode || null,
+      city: schoolForm.region.kabupaten || null,
+      kabupatenCode: schoolForm.region.kabupatenCode || null,
+      kecamatan: schoolForm.region.kecamatan || null,
+      kecamatanCode: schoolForm.region.kecamatanCode || null,
+      kelurahan: schoolForm.region.kelurahan || null,
+      kelurahanCode: schoolForm.region.kelurahanCode || null,
+    };
+
+    let schoolId = schoolForm.id;
+
+    if (schoolForm.id && schoolForm.isOwner) {
+      await fetch(`/api/schools/${schoolForm.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+    } else if (!schoolForm.id) {
+      const res = await fetch("/api/schools", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+      if (res.ok) {
+        const created = await res.json();
+        schoolId = created.id;
+        setSchoolForm((f) => ({ ...f, id: created.id, isOwner: true }));
+      }
+    }
+
+    if (schoolId) {
+      await fetch("/api/profile", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ school_id: schoolId, school: schoolForm.name }),
+      });
+      setSchool(schoolForm.name);
+    }
+
+    setSavingSchool(false);
+    setSchoolSaved(true);
+    setTimeout(() => setSchoolSaved(false), 3000);
   }
 
   async function handleAvatarUpload(file: File) {
@@ -136,7 +238,6 @@ export default function ProfileEditPage() {
           <div className="bg-surface-card border border-border rounded-2xl p-5 space-y-4">
             <h2 className="font-semibold">Informasi Dasar</h2>
             <Input label="Nama Lengkap" value={name} onChange={(e) => setName(e.target.value)} placeholder="Nama Anda..." />
-            <Input label="Sekolah / Institusi" value={school} onChange={(e) => setSchool(e.target.value)} placeholder="Nama sekolah..." />
             <Input label="Kota / Lokasi" value={location} onChange={(e) => setLocation(e.target.value)} placeholder="Misal: Surabaya, Jawa Timur" />
             <Textarea
               label="Bio Singkat"
@@ -146,6 +247,104 @@ export default function ProfileEditPage() {
               rows={3}
             />
           </div>
+
+          {/* School Profile */}
+          {(role === "guru" || role === "admin") && (
+          <div className="bg-surface-card border border-border rounded-2xl p-5">
+            <div className="flex items-center justify-between mb-4">
+              <div>
+                <h2 className="font-semibold flex items-center gap-2"><Building2 className="w-4 h-4 text-primary" />Profil Sekolah</h2>
+                <p className="text-xs text-muted mt-0.5">Data sekolah bisa digunakan bersama oleh guru di sekolah yang sama</p>
+              </div>
+              <button
+                type="button"
+                onClick={handleSaveSchool}
+                disabled={savingSchool}
+                className="flex items-center gap-1.5 px-3 py-1.5 bg-primary text-white rounded-xl text-sm font-semibold hover:bg-primary/90 transition-colors disabled:opacity-50"
+              >
+                {savingSchool ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Save className="w-3.5 h-3.5" />}
+                {schoolSaved ? "Tersimpan ✓" : "Simpan Sekolah"}
+              </button>
+            </div>
+
+            {schoolError && (
+              <div className="mb-4 p-3 bg-danger/10 border border-danger/20 rounded-xl text-sm text-danger">{schoolError}</div>
+            )}
+
+            {schoolForm.id && !schoolForm.isOwner && (
+              <div className="mb-4 p-3 bg-primary/10 border border-primary/20 rounded-xl text-xs text-primary/80">
+                Anda bergabung ke sekolah ini. Hanya pendaftar pertama yang dapat mengubah data sekolah.
+              </div>
+            )}
+
+            <div className="space-y-4">
+              {/* Region Cascade */}
+              <RegionCascade
+                value={schoolForm.region}
+                onChange={(region) => setSchoolForm((f) => ({ ...f, region }))}
+              />
+
+              {/* School name search */}
+              <SchoolSearch
+                value={schoolForm.name}
+                selectedId={schoolForm.id}
+                region={schoolForm.region}
+                onChange={(name) => setSchoolForm((f) => ({ ...f, name }))}
+                onSelect={(s) => {
+                  if (s) {
+                    setSchoolForm({
+                      id: s.id,
+                      name: s.name,
+                      address: s.address ?? "",
+                      phone: s.phone ?? "",
+                      region: {
+                        provinsi: s.province ?? "",
+                        provinsiCode: s.provinsiCode ?? "",
+                        kabupaten: s.city ?? "",
+                        kabupatenCode: s.kabupatenCode ?? "",
+                        kecamatan: s.kecamatan ?? "",
+                        kecamatanCode: s.kecamatanCode ?? "",
+                        kelurahan: s.kelurahan ?? "",
+                        kelurahanCode: s.kelurahanCode ?? "",
+                      },
+                      isOwner: false,
+                    });
+                  } else {
+                    setSchoolForm((f) => ({ ...f, id: undefined, isOwner: false }));
+                  }
+                }}
+              />
+
+              {/* Address + Phone */}
+              <div>
+                <label className="block text-sm font-medium text-foreground mb-1.5">
+                  <MapPin className="w-3.5 h-3.5 inline mr-1" />Alamat Sekolah
+                </label>
+                <textarea
+                  value={schoolForm.address}
+                  onChange={(e) => setSchoolForm((f) => ({ ...f, address: e.target.value }))}
+                  disabled={!!(schoolForm.id && !schoolForm.isOwner)}
+                  rows={2}
+                  placeholder="Jalan, nomor, RT/RW..."
+                  className="w-full px-3 py-2.5 bg-background border border-border rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-primary/30 disabled:opacity-50 resize-none"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-foreground mb-1.5">
+                  <Phone className="w-3.5 h-3.5 inline mr-1" />Telepon Sekolah
+                </label>
+                <input
+                  type="tel"
+                  value={schoolForm.phone}
+                  onChange={(e) => setSchoolForm((f) => ({ ...f, phone: e.target.value }))}
+                  disabled={!!(schoolForm.id && !schoolForm.isOwner)}
+                  placeholder="Misal: 031-12345678"
+                  className="w-full px-3 py-2.5 bg-background border border-border rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-primary/30 disabled:opacity-50"
+                />
+              </div>
+            </div>
+          </div>
+          )}
 
           {/* Subjects */}
           <div className="bg-surface-card border border-border rounded-2xl p-5">
