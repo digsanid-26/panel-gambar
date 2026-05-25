@@ -810,3 +810,257 @@ sudo nginx -t
 | **Upload files** | URL file upload menggunakan `Host` header dari request — link akan menggunakan domain yang sedang diakses |
 | **Session cookie** | Cookie login bersifat per-domain (tidak bisa SSO antar domain berbeda) |
 | **Wildcard SSL** | Untuk subdomain tak terbatas (misal `*.digsan.id`), gunakan `certbot --manual --preferred-challenges dns -d *.digsan.id` |
+
+---
+
+## Panduan Update Aplikasi
+
+Panduan ini digunakan setiap kali ada perubahan kode (fitur baru, perbaikan bug, perubahan schema database) yang perlu di-deploy ke server produksi.
+
+---
+
+### Update Cepat (Cara Normal)
+
+Skenario paling umum: push kode dari lokal, lalu jalankan deploy di server.
+
+**1. Push dari lokal ke GitHub:**
+
+```bash
+# Di komputer lokal (PowerShell / terminal)
+cd C:\Users\MANAKreatif\CascadeProjects\panel-gambar\app
+git add -A
+git commit -m "feat: deskripsi perubahan"
+git push padu main
+```
+
+**2. Jalankan deploy di server:**
+
+```bash
+ssh digsanid@103.55.37.232
+~/padu-edu/deploy.sh
+```
+
+Script otomatis menjalankan: `git pull` → `npm install` → `prisma generate` → `prisma db push` → `npm run build` → `pm2 reload`.
+
+**3. Verifikasi:**
+
+```bash
+pm2 status
+pm2 logs panel-gambar --lines 30
+curl -I https://padu.digsan.id
+```
+
+---
+
+### Update dengan Perubahan Schema Database
+
+Jika ada perubahan pada `prisma/schema.prisma` (tambah tabel, kolom baru, dll), `deploy.sh` sudah menjalankan `prisma db push` secara otomatis. Namun perlu diperhatikan:
+
+```bash
+# Sebelum push, cek terlebih dahulu apa yang akan berubah di schema
+# (jalankan di lokal bila db lokal tersedia)
+npx prisma db push --preview-feature
+
+# Di server, bila ingin melihat diff schema sebelum apply:
+ssh digsanid@103.55.37.232
+cd ~/padu-edu/app
+git pull origin main
+npx prisma migrate diff \
+  --from-schema-datasource prisma/schema.prisma \
+  --to-schema-datamodel prisma/schema.prisma \
+  --script
+```
+
+> ⚠️ **Hati-hati** dengan perubahan yang bersifat **destructive** (hapus kolom, rename tabel). `prisma db push` akan menolak jika ada risiko data hilang — gunakan flag `--accept-data-loss` hanya jika benar-benar yakin.
+
+```bash
+# Paksa push schema meski ada data loss (gunakan dengan sangat hati-hati!)
+cd ~/padu-edu/app
+npx prisma db push --accept-data-loss
+```
+
+---
+
+### Update File `.env` di Server
+
+Jika ada variabel lingkungan baru (API key, konfigurasi baru):
+
+```bash
+ssh digsanid@103.55.37.232
+nano ~/padu-edu/app/.env
+```
+
+Setelah simpan, restart PM2 agar `.env` baru dibaca:
+
+```bash
+pm2 reload panel-gambar --update-env
+pm2 save
+```
+
+Untuk menambah domain baru ke `NEXTAUTH_URL` atau konfigurasi multi-domain, lihat section **Menambah Domain Baru** di atas.
+
+---
+
+### Rollback ke Versi Sebelumnya
+
+Jika deploy terbaru bermasalah dan perlu kembali ke commit sebelumnya:
+
+```bash
+ssh digsanid@103.55.37.232
+cd ~/padu-edu/app
+
+# Lihat daftar commit terakhir
+git log --oneline -10
+
+# Kembali ke commit tertentu (ganti <hash> dengan SHA commit)
+git checkout <hash>
+
+# Rebuild dan restart
+cd ~/padu-edu/app
+npm install
+npx prisma generate
+npm run build
+pm2 reload panel-gambar --update-env
+
+# Setelah stabil, kembali ke main
+git checkout main
+```
+
+> **Catatan:** Rollback schema database lebih kompleks. Jika schema sudah berubah, rollback kode saja mungkin tidak cukup — pertimbangkan untuk memperbaiki bug di commit baru daripada rollback.
+
+---
+
+### Memeriksa Log & Status Setelah Update
+
+```bash
+# Status semua proses PM2
+pm2 status
+
+# Log real-time (Ctrl+C untuk keluar)
+pm2 logs panel-gambar
+
+# Log 50 baris terakhir
+pm2 logs panel-gambar --lines 50
+
+# Log error saja
+pm2 logs panel-gambar --err --lines 50
+
+# Restart manual jika app crash
+pm2 restart panel-gambar
+
+# Reload tanpa downtime (zero-downtime restart)
+pm2 reload panel-gambar --update-env
+```
+
+---
+
+### Memperbarui Script `deploy.sh`
+
+Jika perlu memodifikasi script deploy itu sendiri:
+
+```bash
+ssh digsanid@103.55.37.232
+nano ~/padu-edu/deploy.sh
+```
+
+Template deploy.sh terkini (referensi):
+
+```bash
+#!/bin/bash
+set -e
+
+APP_DIR="/home/digsanid/padu-edu"
+
+echo "==> Pulling latest code..."
+cd "$APP_DIR"
+git pull origin main
+
+echo "==> Installing dependencies..."
+cd "$APP_DIR/app"
+npm install
+
+echo "==> Generating Prisma client..."
+npx prisma generate
+
+echo "==> Pushing schema (jika ada perubahan)..."
+npx prisma db push
+
+echo "==> Building..."
+npm run build
+
+echo "==> Restarting PM2..."
+pm2 reload panel-gambar --update-env || pm2 start "$APP_DIR/ecosystem.config.js"
+pm2 save
+
+echo ""
+echo "✅ Deploy selesai! https://padu.digsan.id"
+```
+
+---
+
+### Pembaruan Dependensi (npm packages)
+
+Untuk memperbarui paket npm ke versi terbaru yang kompatibel:
+
+```bash
+ssh digsanid@103.55.37.232
+cd ~/padu-edu/app
+
+# Lihat paket yang outdated
+npm outdated
+
+# Update semua ke versi terbaru yang sesuai semver di package.json
+npm update
+
+# Update paket tertentu ke versi terbaru
+npm install next@latest react@latest react-dom@latest
+
+# Rebuild setelah update
+npm run build
+pm2 reload panel-gambar --update-env
+```
+
+> Selalu test di lokal dulu sebelum update dependensi besar di server produksi.
+
+---
+
+### Pembaruan SSL Certificate
+
+Sertifikat Let's Encrypt berlaku 90 hari. Certbot biasanya sudah terdaftar sebagai cron job otomatis. Untuk cek dan renew manual:
+
+```bash
+# Cek tanggal expire semua sertifikat
+sudo certbot certificates
+
+# Renew manual semua sertifikat yang mendekati expire
+sudo certbot renew
+
+# Renew sertifikat domain tertentu
+sudo certbot renew --cert-name padu.digsan.id
+
+# Reload Nginx setelah renew
+sudo nginx -t && sudo systemctl reload nginx
+```
+
+Verifikasi cron auto-renew aktif:
+
+```bash
+sudo systemctl status certbot.timer
+# atau
+sudo crontab -l | grep certbot
+```
+
+---
+
+### Checklist Update Rutin
+
+Gunakan checklist ini setiap kali melakukan update:
+
+- [ ] Kode sudah ditest di lokal dan tidak ada error build (`npm run build`)
+- [ ] `git push` ke GitHub berhasil
+- [ ] `~/padu-edu/deploy.sh` dijalankan di server tanpa error
+- [ ] `pm2 status` menunjukkan `online` (bukan `errored`)
+- [ ] Buka `https://padu.digsan.id` di browser — halaman tampil normal
+- [ ] Cek fitur utama: login, buka cerita, live session
+- [ ] Jika ada perubahan schema: verifikasi data lama tidak hilang
+- [ ] Jika ada `.env` baru: `pm2 reload --update-env` sudah dijalankan

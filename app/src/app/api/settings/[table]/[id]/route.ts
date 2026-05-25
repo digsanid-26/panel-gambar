@@ -19,7 +19,10 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
   if (!model) return NextResponse.json({ error: "Invalid table" }, { status: 400 });
 
   const body = await request.json();
-  const updated = await (prisma[model] as any).update({ where: { id }, data: body });
+  const data: Record<string, unknown> = { ...body };
+  if ("is_active" in data) { data.isActive = data.is_active; delete data.is_active; }
+  if ("sort_order" in data) { data.sortOrder = data.sort_order; delete data.sort_order; }
+  const updated = await (prisma[model] as any).update({ where: { id }, data });
   return NextResponse.json(updated);
 }
 

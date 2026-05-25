@@ -19,6 +19,18 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
   if (!model) return NextResponse.json({ error: "Invalid table" }, { status: 400 });
 
   const body = await request.json();
-  const item = await (prisma[model] as any).create({ data: body });
-  return NextResponse.json(item);
+  const data = {
+    ...body,
+    ...("is_active" in body && { isActive: body.is_active }),
+    ...("sort_order" in body && { sortOrder: body.sort_order }),
+  };
+  delete data.is_active;
+  delete data.sort_order;
+  const item = await (prisma[model] as any).create({ data });
+  return NextResponse.json({
+    ...item,
+    is_active: item.isActive,
+    sort_order: item.sortOrder,
+    created_at: item.createdAt,
+  });
 }
