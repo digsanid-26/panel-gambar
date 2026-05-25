@@ -8,6 +8,10 @@ import { Navbar } from "@/components/layout/navbar";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
+import { RegionCascade, emptyRegion } from "@/components/ui/region-cascade";
+import type { RegionValue } from "@/components/ui/region-cascade";
+import { SchoolSearch } from "@/components/ui/school-search";
+import type { SchoolRecord } from "@/components/ui/school-search";
 import {
   Building2,
   ChevronDown,
@@ -15,6 +19,7 @@ import {
   Copy,
   GraduationCap,
   Loader2,
+  MapPin,
   Pencil,
   Plus,
   Save,
@@ -36,13 +41,17 @@ export default function SchoolPage() {
 
   // School
   const [school, setSchool] = useState<School | null>(null);
-  const [schoolForm, setSchoolForm] = useState({
+  const [schoolForm, setSchoolForm] = useState<{
+    id?: string;
+    name: string;
+    address: string;
+    phone: string;
+    region: RegionValue;
+  }>({
     name: "",
     address: "",
-    city: "",
-    province: "",
-    postal_code: "",
     phone: "",
+    region: emptyRegion,
   });
   const [editingSchool, setEditingSchool] = useState(false);
 
@@ -83,12 +92,20 @@ export default function SchoolPage() {
       if (schoolData) {
         setSchool(schoolData as School);
         setSchoolForm({
+          id: schoolData.id,
           name: schoolData.name || "",
           address: schoolData.address || "",
-          city: schoolData.city || "",
-          province: schoolData.province || "",
-          postal_code: schoolData.postalCode || "",
           phone: schoolData.phone || "",
+          region: {
+            provinsi: schoolData.province || "",
+            provinsiCode: schoolData.provinsiCode || "",
+            kabupaten: schoolData.city || "",
+            kabupatenCode: schoolData.kabupatenCode || "",
+            kecamatan: schoolData.kecamatan || "",
+            kecamatanCode: schoolData.kecamatanCode || "",
+            kelurahan: schoolData.kelurahan || "",
+            kelurahanCode: schoolData.kelurahanCode || "",
+          },
         });
       }
     }
@@ -114,18 +131,35 @@ export default function SchoolPage() {
     if (!user || !schoolForm.name.trim()) return;
     setSaving(true);
 
+    const schoolPayload = {
+      name: schoolForm.name,
+      address: schoolForm.address,
+      phone: schoolForm.phone || null,
+      province: schoolForm.region.provinsi || null,
+      provinsiCode: schoolForm.region.provinsiCode || null,
+      city: schoolForm.region.kabupaten || null,
+      kabupatenCode: schoolForm.region.kabupatenCode || null,
+      kecamatan: schoolForm.region.kecamatan || null,
+      kecamatanCode: schoolForm.region.kecamatanCode || null,
+      kelurahan: schoolForm.region.kelurahan || null,
+      kelurahanCode: schoolForm.region.kelurahanCode || null,
+    };
+
     if (school) {
       const res = await fetch(`/api/schools/${school.id}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(schoolForm),
+        body: JSON.stringify(schoolPayload),
       });
-      if (res.ok) setSchool({ ...school, ...schoolForm });
+      if (res.ok) {
+        const updated = await res.json();
+        setSchool(updated as School);
+      }
     } else {
       const res = await fetch("/api/schools", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(schoolForm),
+        body: JSON.stringify(schoolPayload),
       });
       if (res.ok) {
         const data = await res.json();
@@ -282,46 +316,67 @@ export default function SchoolPage() {
 
           {!school || editingSchool ? (
             <div className="p-5 space-y-3">
+              {/* Region cascade: Provinsi → Kabupaten → Kecamatan → Kelurahan */}
+              <RegionCascade
+                value={schoolForm.region}
+                onChange={(region) => setSchoolForm((f) => ({ ...f, region }))}
+              />
+
+              {/* School search by name, filtered by selected region */}
+              <div>
+                <label className="block text-sm font-medium mb-1.5">
+                  <SchoolIcon className="w-3.5 h-3.5 inline mr-1" />Nama Sekolah
+                </label>
+                <SchoolSearch
+                  value={schoolForm.name}
+                  selectedId={schoolForm.id}
+                  region={schoolForm.region}
+                  onChange={(name) => setSchoolForm((f) => ({ ...f, name }))}
+                  onSelect={(s: SchoolRecord | null) => {
+                    if (s) {
+                      setSchoolForm((f) => ({
+                        ...f,
+                        id: s.id,
+                        name: s.name,
+                        address: s.address ?? "",
+                        phone: s.phone ?? "",
+                        region: {
+                          provinsi: s.province ?? "",
+                          provinsiCode: s.provinsiCode ?? "",
+                          kabupaten: s.city ?? "",
+                          kabupatenCode: s.kabupatenCode ?? "",
+                          kecamatan: s.kecamatan ?? "",
+                          kecamatanCode: s.kecamatanCode ?? "",
+                          kelurahan: s.kelurahan ?? "",
+                          kelurahanCode: s.kelurahanCode ?? "",
+                        },
+                      }));
+                    } else {
+                      setSchoolForm((f) => ({ ...f, id: undefined }));
+                    }
+                  }}
+                />
+              </div>
+
+              {/* Address */}
+              <div>
+                <label className="block text-sm font-medium mb-1.5">
+                  <MapPin className="w-3.5 h-3.5 inline mr-1" />Alamat Sekolah
+                </label>
+                <Textarea
+                  placeholder="Alamat lengkap sekolah..."
+                  value={schoolForm.address}
+                  onChange={(e) => setSchoolForm({ ...schoolForm, address: e.target.value })}
+                />
+              </div>
+
+              {/* Phone */}
               <Input
-                label="Nama Sekolah"
-                placeholder="SDN Contoh 01"
-                value={schoolForm.name}
-                onChange={(e) => setSchoolForm({ ...schoolForm, name: e.target.value })}
-                required
+                label="Telepon"
+                placeholder="021-12345678"
+                value={schoolForm.phone}
+                onChange={(e) => setSchoolForm({ ...schoolForm, phone: e.target.value })}
               />
-              <Textarea
-                placeholder="Alamat lengkap sekolah..."
-                value={schoolForm.address}
-                onChange={(e) => setSchoolForm({ ...schoolForm, address: e.target.value })}
-              />
-              <div className="grid grid-cols-2 gap-3">
-                <Input
-                  label="Kota/Kabupaten"
-                  placeholder="Jakarta Selatan"
-                  value={schoolForm.city}
-                  onChange={(e) => setSchoolForm({ ...schoolForm, city: e.target.value })}
-                />
-                <Input
-                  label="Provinsi"
-                  placeholder="DKI Jakarta"
-                  value={schoolForm.province}
-                  onChange={(e) => setSchoolForm({ ...schoolForm, province: e.target.value })}
-                />
-              </div>
-              <div className="grid grid-cols-2 gap-3">
-                <Input
-                  label="Kode Pos"
-                  placeholder="12345"
-                  value={schoolForm.postal_code}
-                  onChange={(e) => setSchoolForm({ ...schoolForm, postal_code: e.target.value })}
-                />
-                <Input
-                  label="Telepon"
-                  placeholder="021-12345678"
-                  value={schoolForm.phone}
-                  onChange={(e) => setSchoolForm({ ...schoolForm, phone: e.target.value })}
-                />
-              </div>
               <div className="flex gap-2">
                 <Button variant="primary" size="sm" onClick={saveSchool} disabled={saving || !schoolForm.name.trim()}>
                   {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
@@ -336,10 +391,11 @@ export default function SchoolPage() {
             <div className="p-5">
               <h3 className="text-lg font-bold">{school.name}</h3>
               {school.address && <p className="text-sm text-muted mt-1">{school.address}</p>}
-              <div className="flex flex-wrap gap-3 mt-2 text-xs text-muted">
-                {school.city && <span>{school.city}</span>}
+              <div className="flex flex-wrap gap-2 mt-2 text-xs text-muted">
+                {school.kecamatan && <span>{school.kecamatan}</span>}
+                {school.city && <span>{school.kecamatan ? "·" : ""} {school.city}</span>}
                 {school.province && <span>· {school.province}</span>}
-                {school.postal_code && <span>· {school.postal_code}</span>}
+                {school.postalCode && <span>· {school.postalCode}</span>}
                 {school.phone && <span>· {school.phone}</span>}
               </div>
             </div>

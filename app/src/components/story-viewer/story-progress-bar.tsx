@@ -23,6 +23,8 @@ interface StoryProgressBarProps {
   onPanelTimeUpdate?: (time: number) => void;
   /** Called when playback auto-pauses on a dialog with audio */
   onDialogPause?: (dialogId: string) => void;
+  /** Called when story finishes playing through all panels naturally (not manual stop) */
+  onFinish?: () => void;
 }
 
 export function StoryProgressBar({
@@ -38,6 +40,7 @@ export function StoryProgressBar({
   className,
   onPanelTimeUpdate,
   onDialogPause,
+  onFinish,
 }: StoryProgressBarProps) {
   const [panelProgress, setPanelProgress] = useState(0);
   const [activeAudioIdx, setActiveAudioIdx] = useState<number | null>(null);
@@ -91,7 +94,7 @@ export function StoryProgressBar({
         if (currentIndex < panels.length - 1) {
           onIndexChange(currentIndex + 1);
         } else {
-          onStop();
+          onFinish ? onFinish() : onStop();
         }
         return;
       }

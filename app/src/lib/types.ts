@@ -313,7 +313,13 @@ export interface School {
   address: string;
   city?: string;
   province?: string;
-  postal_code?: string;
+  kecamatan?: string;
+  kelurahan?: string;
+  provinsiCode?: string;
+  kabupatenCode?: string;
+  kecamatanCode?: string;
+  kelurahanCode?: string;
+  postalCode?: string;
   phone?: string;
   logo_url?: string;
   teacher_id: string;

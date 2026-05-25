@@ -17,9 +17,12 @@ import {
   StoryCoverPage,
 } from "@/components/story-viewer";
 import {
+  BookOpen,
   ChevronLeft,
+  ChevronRight,
   Copy,
   Edit,
+  ExternalLink,
   Film,
   Loader2,
   Maximize,
@@ -42,6 +45,7 @@ export default function StoryViewerPage() {
   const [managedStudentId, setManagedStudentId] = useState<string | undefined>(undefined);
   const [duplicating, setDuplicating] = useState(false);
   const [showCover, setShowCover] = useState(true);
+  const [showSummaryModal, setShowSummaryModal] = useState(false);
 
   const { data: session } = useSession();
 
@@ -171,7 +175,7 @@ export default function StoryViewerPage() {
 
     switch (displayMode) {
       case "fade":
-        return <FadeViewer panels={panels} user={user} onSaveRecording={recHandler} storyCharacters={chars} managedStudentId={managedStudentId} />;
+        return <FadeViewer panels={panels} user={user} onSaveRecording={recHandler} storyCharacters={chars} managedStudentId={managedStudentId} onFinish={() => setShowSummaryModal(true)} />;
       case "continuous":
         return <ContinuousViewer panels={panels} user={user} onSaveRecording={recHandler} storyCharacters={chars} managedStudentId={managedStudentId} />;
       case "vertical-scroll":
@@ -180,7 +184,7 @@ export default function StoryViewerPage() {
         return <FlipBookViewer panels={panels} user={user} onSaveRecording={recHandler} storyCharacters={chars} managedStudentId={managedStudentId} />;
       case "slide":
       default:
-        return <SlideViewer panels={panels} user={user} onSaveRecording={recHandler} storyCharacters={chars} managedStudentId={managedStudentId} />;
+        return <SlideViewer panels={panels} user={user} onSaveRecording={recHandler} storyCharacters={chars} managedStudentId={managedStudentId} onFinish={() => setShowSummaryModal(true)} />;
     }
   }
 
@@ -274,6 +278,126 @@ export default function StoryViewerPage() {
           renderViewer()
         )}
       </main>
+      {/* ── Story Summary Modal ──────────────────────────────── */}
+      {showSummaryModal && (
+        <div className="fixed inset-0 z-[150] bg-black/80 backdrop-blur-sm flex items-center justify-center p-3 sm:p-6">
+          <div className="bg-surface-card border border-border rounded-2xl shadow-2xl w-full max-w-2xl max-h-[90vh] flex flex-col">
+            {/* Header */}
+            <div className="flex items-center justify-between px-5 py-4 border-b border-border shrink-0">
+              <div className="flex items-center gap-2">
+                <BookOpen className="w-5 h-5 text-primary" />
+                <div>
+                  <h2 className="font-bold text-base">Rangkuman Cerita</h2>
+                  <p className="text-xs text-muted">{story.title}</p>
+                </div>
+              </div>
+              <button onClick={() => setShowSummaryModal(false)} className="p-1.5 rounded-lg hover:bg-surface-alt text-muted hover:text-foreground transition-colors">
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            {/* Scrollable body */}
+            <div className="flex-1 overflow-y-auto px-5 py-4 space-y-5">
+              {/* Cover + description */}
+              {(story.cover_image_url || story.description) && (
+                <div className="flex gap-4">
+                  {story.cover_image_url && (
+                    <img src={story.cover_image_url} alt="Cover" className="w-24 h-24 rounded-xl object-cover shrink-0 shadow" />
+                  )}
+                  {story.description && (
+                    <p className="text-sm text-muted leading-relaxed">{story.description}</p>
+                  )}
+                </div>
+              )}
+
+              {/* Tujuan Pembelajaran */}
+              {story.tujuan_pembelajaran && story.tujuan_pembelajaran.length > 0 && (
+                <div>
+                  <h3 className="text-xs font-bold uppercase tracking-wider text-muted mb-2">Tujuan Pembelajaran</h3>
+                  <ul className="space-y-1">
+                    {story.tujuan_pembelajaran.map((t, i) => (
+                      <li key={i} className="flex gap-2 text-sm">
+                        <ChevronRight className="w-4 h-4 text-primary shrink-0 mt-0.5" />
+                        <span>{t}</span>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+
+              {/* Refleksi Siswa */}
+              {story.refleksi_siswa && story.refleksi_siswa.length > 0 && (
+                <div>
+                  <h3 className="text-xs font-bold uppercase tracking-wider text-muted mb-2">Refleksi Siswa</h3>
+                  <ul className="space-y-1">
+                    {story.refleksi_siswa.map((r, i) => (
+                      <li key={i} className="flex gap-2 text-sm">
+                        <span className="text-primary font-bold shrink-0">{i + 1}.</span>
+                        <span>{r}</span>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+
+              {/* Kata Kunci */}
+              {story.kata_kunci && story.kata_kunci.length > 0 && (
+                <div>
+                  <h3 className="text-xs font-bold uppercase tracking-wider text-muted mb-2">Kata Kunci</h3>
+                  <div className="flex flex-wrap gap-1.5">
+                    {story.kata_kunci.map((k, i) => (
+                      <span key={i} className="px-2.5 py-1 bg-primary/10 text-primary rounded-full text-xs font-medium">{k}</span>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* Glosarium */}
+              {story.glosarium && story.glosarium.length > 0 && (
+                <div>
+                  <h3 className="text-xs font-bold uppercase tracking-wider text-muted mb-2">Glosarium</h3>
+                  <div className="space-y-1">
+                    {story.glosarium.map((g, i) => (
+                      <div key={i} className="text-sm">
+                        <span className="font-semibold">{g.istilah}</span>
+                        <span className="text-muted"> — {g.definisi}</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* Link Quiz */}
+              {story.link_quiz && (
+                <div>
+                  <h3 className="text-xs font-bold uppercase tracking-wider text-muted mb-2">Kuis / Latihan</h3>
+                  <a href={story.link_quiz} target="_blank" rel="noreferrer"
+                    className="inline-flex items-center gap-1.5 text-sm text-primary hover:underline">
+                    <ExternalLink className="w-3.5 h-3.5" />
+                    Buka Kuis
+                  </a>
+                </div>
+              )}
+            </div>
+
+            {/* Footer */}
+            <div className="px-5 py-4 border-t border-border shrink-0 flex justify-end gap-2">
+              <button
+                onClick={() => { setShowSummaryModal(false); setShowCover(true); }}
+                className="px-4 py-2 text-sm rounded-lg bg-primary text-white hover:bg-primary/90 transition-colors font-semibold"
+              >
+                Baca Ulang
+              </button>
+              <button
+                onClick={() => setShowSummaryModal(false)}
+                className="px-4 py-2 text-sm rounded-lg hover:bg-surface-alt transition-colors"
+              >
+                Tutup
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

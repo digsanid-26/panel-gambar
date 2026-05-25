@@ -11,9 +11,10 @@ interface SlideViewerProps {
   onSaveRecording?: (panelId: string, blob: Blob, dialogId?: string) => void;
   storyCharacters?: StoryCharacter[];
   managedStudentId?: string;
+  onFinish?: () => void;
 }
 
-export function SlideViewer({ panels, user, onSaveRecording, storyCharacters, managedStudentId }: SlideViewerProps) {
+export function SlideViewer({ panels, user, onSaveRecording, storyCharacters, managedStudentId, onFinish }: SlideViewerProps) {
   const [currentIndex, setCurrentIndex] = useState(0);
   const [isPlaying, setIsPlaying] = useState(false);
   const [panelTime, setPanelTime] = useState(0);
@@ -60,6 +61,7 @@ export function SlideViewer({ panels, user, onSaveRecording, storyCharacters, ma
         isPlaying={isPlaying}
         onPlayPause={() => setIsPlaying(!isPlaying)}
         onStop={handleStop}
+        onFinish={onFinish}
         onPanelTimeUpdate={setPanelTime}
         onDialogPause={(dialogId) => {
           setIsPlaying(false);
