@@ -44,6 +44,7 @@ export default function LiveSessionRoomPage() {
   const [authLoading, setAuthLoading] = useState(true);
   const [copiedCode, setCopiedCode] = useState(false);
   const [showRoleModal, setShowRoleModal] = useState(false);
+  const [showSummaryModal, setShowSummaryModal] = useState(false);
   const [roleCharacter, setRoleCharacter] = useState("");
   const [roleColor, setRoleColor] = useState("#3b82f6");
   const [editingParticipantId, setEditingParticipantId] = useState<string | null>(null);
@@ -126,6 +127,11 @@ export default function LiveSessionRoomPage() {
     const idx = currentPanel.dialogs?.findIndex((d) => d.id === highlightedDialog) ?? -1;
     if (idx >= 0) setActiveDialogIndex(idx);
   }, [highlightedDialog]);
+
+  // Show summary modal when session finishes
+  useEffect(() => {
+    if (session?.status === "finished") setShowSummaryModal(true);
+  }, [session?.status]);
 
   // Reload panels when any participant records a dialog
   useEffect(() => {
@@ -338,8 +344,8 @@ export default function LiveSessionRoomPage() {
     );
   }
 
-  // Session ended
-  if (session.status === "finished") {
+  // Session ended — only show static page if user dismissed the summary modal
+  if (session.status === "finished" && !showSummaryModal) {
     return (
       <div className="min-h-screen flex flex-col bg-gray-950">
         <Navbar />
@@ -1039,6 +1045,279 @@ export default function LiveSessionRoomPage() {
           )}
         </main>
       </div>
+
+      {/* ── Story Summary Modal ─────────────────────────────────────── */}
+      {showSummaryModal && (
+        <div className="fixed inset-0 z-[150] bg-black/85 backdrop-blur-sm flex items-center justify-center p-3 sm:p-6">
+          <div className="bg-gray-900 border border-white/10 rounded-2xl shadow-2xl w-full max-w-3xl max-h-[92vh] flex flex-col">
+
+            {/* Header */}
+            <div className="flex items-center justify-between px-5 py-4 border-b border-white/10 shrink-0">
+              <div className="flex items-center gap-2.5">
+                <div className="w-7 h-7 rounded-full bg-accent/20 flex items-center justify-center">
+                  <Check className="w-4 h-4 text-accent" />
+                </div>
+                <div>
+                  <h2 className="font-bold text-base text-white leading-tight">Rangkuman Sesi</h2>
+                  <p className="text-[11px] text-white/40">{(session as any).story?.title}</p>
+                </div>
+              </div>
+              <button onClick={() => setShowSummaryModal(false)} className="p-1.5 rounded-lg hover:bg-white/10 text-white/40 hover:text-white transition-colors">
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            {/* Scrollable content */}
+            <div className="overflow-y-auto flex-1 px-5 py-5 space-y-5">
+
+              {/* Row 1: Cover 2:1 + Characters */}
+              <div className="grid grid-cols-3 gap-4">
+                {/* Cover (2/3 width) */}
+                <div className="col-span-2 relative rounded-xl overflow-hidden bg-gray-800 aspect-[3/2]">
+                  {(session as any).story?.coverImageUrl ? (
+                    <img
+                      src={(session as any).story.coverImageUrl}
+                      alt="Cover"
+                      className="w-full h-full object-cover"
+                    />
+                  ) : (
+                    <div className="w-full h-full flex items-center justify-center">
+                      <ImageIcon className="w-14 h-14 text-white/10" />
+                    </div>
+                  )}
+                  {/* Replay overlay */}
+                  <div className="absolute inset-0 flex items-center justify-center bg-black/20 hover:bg-black/40 transition-colors group cursor-pointer">
+                    {(session as any).recording_token ? (
+                      <Link href={`/play/${(session as any).recording_token}`} target="_blank">
+                        <div className="w-14 h-14 rounded-full bg-white/20 hover:bg-white/40 backdrop-blur-sm flex items-center justify-center transition-all group-hover:scale-110 border border-white/30">
+                          <PlayCircle className="w-8 h-8 text-white" />
+                        </div>
+                      </Link>
+                    ) : (
+                      <Link href={`/stories/${session.story_id}`}>
+                        <div className="w-14 h-14 rounded-full bg-white/20 hover:bg-white/40 backdrop-blur-sm flex items-center justify-center transition-all group-hover:scale-110 border border-white/30">
+                          <PlayCircle className="w-8 h-8 text-white" />
+                        </div>
+                      </Link>
+                    )}
+                  </div>
+                  {/* Bottom gradient info */}
+                  <div className="absolute bottom-0 left-0 right-0 px-3 py-2.5 bg-gradient-to-t from-black/80 to-transparent pointer-events-none">
+                    <p className="text-white font-bold text-sm leading-tight">{(session as any).story?.title}</p>
+                    <p className="text-white/50 text-[11px]">{(session as any).story?.level} · {(session as any).story?.targetClass || (session as any).story?.target_class}</p>
+                  </div>
+                </div>
+
+                {/* Characters (1/3 width) */}
+                <div className="col-span-1 flex flex-col">
+                  <h3 className="text-[10px] font-bold uppercase tracking-widest text-white/40 mb-3">Karakter &amp; Pemeran</h3>
+                  <div className="space-y-2 flex-1">
+                    {allCharacters.length === 0 ? (
+                      <p className="text-xs text-white/30">Tidak ada karakter.</p>
+                    ) : allCharacters.map((char) => {
+                      const assigned = getAssignedUser(char.name);
+                      return (
+                        <div key={char.name} className="flex items-center gap-2">
+                          <div
+                            className="w-7 h-7 rounded-full flex items-center justify-center shrink-0 text-[11px] font-bold text-white border-2 border-white/20"
+                            style={{ backgroundColor: char.color }}
+                          >
+                            {char.name.charAt(0).toUpperCase()}
+                          </div>
+                          <div className="min-w-0">
+                            <p className="text-xs font-semibold text-white/90 truncate leading-tight">{char.name}</p>
+                            <p className="text-[10px] text-white/40 truncate">
+                              {assigned ? assigned.user_name : "AI"}
+                            </p>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                  {/* Participants count */}
+                  <div className="mt-3 pt-3 border-t border-white/10">
+                    <p className="text-[10px] text-white/30">
+                      <span className="text-white/60 font-semibold">{participants.length}</span> peserta · <span className="text-white/60 font-semibold">{panels.length}</span> panel
+                    </p>
+                  </div>
+                </div>
+              </div>
+
+              {/* Row 2: Sinopsis */}
+              {(session as any).story?.description && (
+                <div className="bg-white/5 rounded-xl p-4">
+                  <h3 className="text-[10px] font-bold uppercase tracking-widest text-white/40 mb-2">Sinopsis Cerita</h3>
+                  <p className="text-sm text-white/80 leading-relaxed">{(session as any).story.description}</p>
+                </div>
+              )}
+
+              {/* Row 3: Educational details grid */}
+              <div className="grid sm:grid-cols-2 gap-3">
+
+                {/* Capaian Pembelajaran */}
+                {(session as any).story?.capaianPembelajaran && (
+                  <div className="bg-white/5 rounded-xl p-4">
+                    <h4 className="text-[10px] font-bold uppercase tracking-widest text-white/40 mb-2">Capaian Pembelajaran</h4>
+                    <p className="text-sm text-white/80 leading-relaxed">{(session as any).story.capaianPembelajaran}</p>
+                  </div>
+                )}
+
+                {/* Tujuan Pembelajaran */}
+                {((session as any).story?.tujuanPembelajaran?.length ?? 0) > 0 && (
+                  <div className="bg-white/5 rounded-xl p-4">
+                    <h4 className="text-[10px] font-bold uppercase tracking-widest text-white/40 mb-2">Tujuan Pembelajaran</h4>
+                    <ul className="space-y-1">
+                      {((session as any).story.tujuanPembelajaran as string[]).map((t, i) => (
+                        <li key={i} className="text-sm text-white/80 flex items-start gap-2">
+                          <span className="text-primary shrink-0 mt-0.5 font-bold">·</span>{t}
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
+
+                {/* Asesmen & Evaluasi */}
+                {((session as any).story?.asesmenJenis?.length > 0 || (session as any).story?.asesmenDeskripsi) && (
+                  <div className="bg-white/5 rounded-xl p-4">
+                    <h4 className="text-[10px] font-bold uppercase tracking-widest text-white/40 mb-2">Asesmen &amp; Evaluasi</h4>
+                    {((session as any).story?.asesmenJenis?.length ?? 0) > 0 && (
+                      <div className="flex flex-wrap gap-1.5 mb-2">
+                        {((session as any).story.asesmenJenis as string[]).map((j) => (
+                          <span key={j} className="px-2 py-0.5 bg-primary/20 text-primary text-[11px] rounded-full font-medium">{j}</span>
+                        ))}
+                      </div>
+                    )}
+                    {(session as any).story?.asesmenDeskripsi && (
+                      <p className="text-sm text-white/70">{(session as any).story.asesmenDeskripsi}</p>
+                    )}
+                  </div>
+                )}
+
+                {/* Pertanyaan Pemantik */}
+                {((session as any).story?.pertanyaanPemantik?.length ?? 0) > 0 && (
+                  <div className="bg-white/5 rounded-xl p-4">
+                    <h4 className="text-[10px] font-bold uppercase tracking-widest text-white/40 mb-2">Pertanyaan Pemantik</h4>
+                    <ul className="space-y-1.5">
+                      {((session as any).story.pertanyaanPemantik as string[]).map((q, i) => (
+                        <li key={i} className="text-sm text-white/80 flex items-start gap-2">
+                          <span className="text-yellow-400 shrink-0 font-bold text-xs mt-0.5">Q</span>{q}
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
+
+                {/* Refleksi Siswa */}
+                {((session as any).story?.refleksiSiswa?.length ?? 0) > 0 && (
+                  <div className="bg-white/5 rounded-xl p-4">
+                    <h4 className="text-[10px] font-bold uppercase tracking-widest text-white/40 mb-2">Refleksi Siswa</h4>
+                    <ul className="space-y-1.5">
+                      {((session as any).story.refleksiSiswa as string[]).map((r, i) => (
+                        <li key={i} className="text-sm text-white/80 flex items-start gap-2">
+                          <span className="text-accent shrink-0 font-bold text-xs mt-0.5">→</span>{r}
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
+
+                {/* Refleksi Guru */}
+                {((session as any).story?.refleksiGuru?.length ?? 0) > 0 && (
+                  <div className="bg-white/5 rounded-xl p-4">
+                    <h4 className="text-[10px] font-bold uppercase tracking-widest text-white/40 mb-2">Refleksi Guru</h4>
+                    <ul className="space-y-1.5">
+                      {((session as any).story.refleksiGuru as string[]).map((r, i) => (
+                        <li key={i} className="text-sm text-white/80 flex items-start gap-2">
+                          <span className="text-accent shrink-0 font-bold text-xs mt-0.5">→</span>{r}
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
+
+                {/* Kata Kunci */}
+                {((session as any).story?.kataKunci?.length ?? 0) > 0 && (
+                  <div className="bg-white/5 rounded-xl p-4">
+                    <h4 className="text-[10px] font-bold uppercase tracking-widest text-white/40 mb-2">Kata Kunci</h4>
+                    <div className="flex flex-wrap gap-1.5">
+                      {((session as any).story.kataKunci as string[]).map((k) => (
+                        <span key={k} className="px-2.5 py-1 bg-white/10 text-white/80 text-[11px] rounded-full">{k}</span>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {/* Glosarium */}
+                {Array.isArray((session as any).story?.glosarium) && ((session as any).story.glosarium as any[]).length > 0 && (
+                  <div className="bg-white/5 rounded-xl p-4">
+                    <h4 className="text-[10px] font-bold uppercase tracking-widest text-white/40 mb-2">Glosarium</h4>
+                    <dl className="space-y-2">
+                      {((session as any).story.glosarium as any[]).map((g, i) => (
+                        <div key={i}>
+                          <dt className="text-xs font-bold text-white/80">{g.kata ?? g.term ?? g.word ?? "-"}</dt>
+                          <dd className="text-xs text-white/50 pl-2 mt-0.5">{g.definisi ?? g.definition ?? ""}</dd>
+                        </div>
+                      ))}
+                    </dl>
+                  </div>
+                )}
+
+                {/* Sumber Belajar */}
+                {Array.isArray((session as any).story?.sumberBelajar) && ((session as any).story.sumberBelajar as any[]).length > 0 && (
+                  <div className="bg-white/5 rounded-xl p-4">
+                    <h4 className="text-[10px] font-bold uppercase tracking-widest text-white/40 mb-2">Sumber Belajar</h4>
+                    <ul className="space-y-1.5">
+                      {((session as any).story.sumberBelajar as any[]).map((s, i) => (
+                        <li key={i}>
+                          {s.url ? (
+                            <a href={s.url} target="_blank" rel="noopener noreferrer"
+                              className="text-sm text-primary hover:underline flex items-center gap-1.5">
+                              <ExternalLink className="w-3 h-3 shrink-0" />
+                              {s.judul ?? s.title ?? s.url}
+                            </a>
+                          ) : (
+                            <span className="text-sm text-white/70">{s.judul ?? s.title ?? JSON.stringify(s)}</span>
+                          )}
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
+              </div>
+            </div>
+
+            {/* Footer actions */}
+            <div className="shrink-0 px-5 py-4 border-t border-white/10 flex items-center justify-between gap-3">
+              <div className="flex items-center gap-2 flex-wrap">
+                {(session as any).story?.linkQuiz && (
+                  <a href={(session as any).story.linkQuiz} target="_blank" rel="noopener noreferrer">
+                    <Button variant="primary" size="sm">
+                      <ExternalLink className="w-4 h-4" />
+                      Mulai Kuis
+                    </Button>
+                  </a>
+                )}
+                {(session as any).recording_token && (
+                  <Link href={`/play/${(session as any).recording_token}`} target="_blank">
+                    <Button variant="outline" size="sm">
+                      <PlayCircle className="w-4 h-4" />
+                      Putar Rekaman
+                    </Button>
+                  </Link>
+                )}
+                <Link href={`/stories/${session.story_id}`}>
+                  <Button variant="ghost" size="sm">
+                    Lihat Cerita
+                  </Button>
+                </Link>
+              </div>
+              <Button variant="ghost" size="sm" onClick={() => setShowSummaryModal(false)}>
+                Tutup
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Role assignment modal */}
       {showRoleModal && (
