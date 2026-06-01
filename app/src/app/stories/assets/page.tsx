@@ -15,6 +15,7 @@ import {
 import { Navbar } from "@/components/layout/navbar";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { ImageLightbox } from "@/components/ui/image-lightbox";
 import {
   Search,
   Upload,
@@ -30,6 +31,10 @@ import {
   File,
   Trash2,
   FolderOpen,
+  Play,
+  Eye,
+  X,
+  Download,
 } from "lucide-react";
 
 const ALL_TYPES: AssetType[] = ["avatar", "image", "video", "audio", "model_3d", "document", "other"];
@@ -60,6 +65,7 @@ export default function SourceManagerPage() {
   const [query, setQuery] = useState("");
   const [uploading, setUploading] = useState(false);
   const [pendingUpload, setPendingUpload] = useState<{ file: File; type: AssetType } | null>(null);
+  const [previewAsset, setPreviewAsset] = useState<Asset | null>(null);
 
   const reload = useCallback(async () => {
     setLoading(true);
@@ -106,8 +112,13 @@ export default function SourceManagerPage() {
 
   async function handleToggleVisibility(asset: Asset) {
     const next: AssetVisibility = asset.visibility === "public" ? "private" : "public";
+    // Optimistic update — no reload needed
+    setAssets((prev) => prev.map((a) => a.id === asset.id ? { ...a, visibility: next } : a));
     const ok = await updateAsset(asset.id, { visibility: next });
-    if (ok) reload();
+    if (!ok) {
+      // Revert on failure
+      setAssets((prev) => prev.map((a) => a.id === asset.id ? { ...a, visibility: asset.visibility } : a));
+    }
   }
 
   async function handleDelete(asset: Asset) {
@@ -227,11 +238,16 @@ export default function SourceManagerPage() {
                 asset={a}
                 onToggleVisibility={() => handleToggleVisibility(a)}
                 onDelete={() => handleDelete(a)}
+                onPreview={() => setPreviewAsset(a)}
               />
             ))}
           </div>
         )}
       </main>
+
+      {previewAsset && (
+        <AssetPreviewModal asset={previewAsset} onClose={() => setPreviewAsset(null)} />
+      )}
 
       {pendingUpload && (
         <UploadDialog
@@ -250,10 +266,12 @@ function AssetTile({
   asset,
   onToggleVisibility,
   onDelete,
+  onPreview,
 }: {
   asset: Asset;
   onToggleVisibility: () => void;
   onDelete: () => void;
+  onPreview: () => void;
 }) {
   const { data: session } = useSession();
   const isOwner = session?.user?.id === asset.owner_id;
@@ -284,9 +302,9 @@ function AssetTile({
 
       {/* Visibility badge — clickable for owner */}
       <button
-        onClick={isOwner ? onToggleVisibility : undefined}
+        onClick={(e) => { e.stopPropagation(); if (isOwner) onToggleVisibility(); }}
         disabled={!isOwner}
-        className={`absolute top-1.5 left-1.5 transition-opacity ${isOwner ? "cursor-pointer hover:opacity-80 active:scale-95" : "cursor-default"}`}
+        className={`absolute top-1.5 left-1.5 z-10 transition-opacity ${isOwner ? "cursor-pointer hover:opacity-80 active:scale-95" : "cursor-default"}`}
         title={isOwner ? (asset.visibility === "public" ? "Klik untuk jadikan Privat" : "Klik untuk jadikan Publik") : (asset.visibility === "public" ? "Publik" : "Privat")}
       >
         {asset.visibility === "public" ? (
@@ -303,17 +321,115 @@ function AssetTile({
       {/* Delete (owner only) */}
       {isOwner && (
         <button
-          onClick={onDelete}
-          className="absolute top-1.5 right-1.5 opacity-0 group-hover:opacity-100 transition-opacity p-1.5 rounded-lg bg-black/60 text-white hover:bg-danger"
+          onClick={(e) => { e.stopPropagation(); onDelete(); }}
+          className="absolute top-1.5 right-1.5 z-10 opacity-0 group-hover:opacity-100 transition-opacity p-1.5 rounded-lg bg-black/60 text-white hover:bg-danger"
           title="Hapus"
         >
           <Trash2 className="w-3.5 h-3.5" />
         </button>
       )}
 
+      {/* Preview button — center on hover (z-0 so badge/delete stay on top) */}
+      <button
+        onClick={onPreview}
+        className="absolute inset-0 z-0 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity bg-black/30"
+        title="Preview"
+      >
+        {asset.type === "audio" ? (
+          <Play className="w-10 h-10 text-white drop-shadow-lg" />
+        ) : asset.type === "video" ? (
+          <Play className="w-10 h-10 text-white drop-shadow-lg" />
+        ) : (
+          <Eye className="w-8 h-8 text-white drop-shadow-lg" />
+        )}
+      </button>
+
       {/* Name */}
-      <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/80 to-transparent p-2 pt-8">
+      <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/80 to-transparent p-2 pt-8 pointer-events-none">
         <p className="text-white text-xs font-medium line-clamp-2">{asset.name}</p>
+      </div>
+    </div>
+  );
+}
+
+function AssetPreviewModal({ asset, onClose }: { asset: Asset; onClose: () => void }) {
+  const isImage = asset.type === "image" || asset.type === "avatar";
+  const isAudio = asset.type === "audio";
+  const isVideo = asset.type === "video";
+
+  if (isImage) {
+    return <ImageLightbox src={asset.url} alt={asset.name} onClose={onClose} />;
+  }
+
+  return (
+    <div
+      className="fixed inset-0 z-[150] bg-black/70 backdrop-blur-sm flex items-center justify-center p-4"
+      onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}
+    >
+      <div className="bg-surface-card rounded-2xl border border-border shadow-2xl w-full max-w-xl overflow-hidden">
+        {/* Header */}
+        <div className="flex items-center justify-between px-5 py-3 border-b border-border">
+          <div className="min-w-0">
+            <p className="font-semibold text-sm truncate">{asset.name}</p>
+            <p className="text-xs text-muted">
+              {ASSET_TYPE_LABELS[asset.type]}
+              <span className="mx-1">·</span>
+              {asset.visibility === "public" ? (
+                <span className="text-emerald-600">Publik</span>
+              ) : (
+                <span className="text-muted">Privat</span>
+              )}
+              {asset.size_bytes && (
+                <><span className="mx-1">·</span>{(Number(asset.size_bytes) / 1024).toFixed(1)} KB</>
+              )}
+            </p>
+          </div>
+          <button
+            onClick={onClose}
+            className="p-1.5 rounded-lg hover:bg-surface-alt text-muted hover:text-foreground transition-colors ml-3 shrink-0"
+          >
+            <X className="w-4 h-4" />
+          </button>
+        </div>
+
+        {/* Content */}
+        <div className="p-4">
+          {isAudio && (
+            <div className="flex flex-col items-center gap-4 py-4">
+              <div className="w-20 h-20 rounded-2xl bg-surface-alt flex items-center justify-center">
+                <MusicIcon className="w-10 h-10 text-primary" />
+              </div>
+              <audio controls className="w-full" autoPlay>
+                <source src={asset.url} type={asset.mime_type ?? undefined} />
+              </audio>
+            </div>
+          )}
+          {isVideo && (
+            <video controls className="w-full rounded-xl" autoPlay>
+              <source src={asset.url} type={asset.mime_type ?? undefined} />
+            </video>
+          )}
+          {!isAudio && !isVideo && (
+            <div className="flex flex-col items-center gap-3 py-6 text-muted">
+              <File className="w-12 h-12 opacity-40" />
+              <p className="text-sm">{asset.mime_type ?? asset.type}</p>
+            </div>
+          )}
+        </div>
+
+        {/* Footer */}
+        <div className="flex justify-end gap-2 px-5 py-3 border-t border-border">
+          <a
+            href={asset.url}
+            download={asset.name}
+            target="_blank"
+            rel="noreferrer"
+            className="inline-flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium rounded-lg border border-border hover:bg-surface-alt transition-colors"
+          >
+            <Download className="w-4 h-4" /> Unduh
+          </a>
+          <Button variant="outline" size="sm" onClick={onClose}>Tutup</Button>
+        </div>
       </div>
     </div>
   );
