@@ -7,15 +7,23 @@ export async function GET(request: NextRequest) {
   try {
     const session = await auth();
     const userId = session?.user?.id;
+    const isAdmin = (session?.user as any)?.role === "admin";
     const { searchParams } = new URL(request.url);
     const authorId = searchParams.get("author_id");
     const status = searchParams.get("status");
     const theme = searchParams.get("theme");
     const level = searchParams.get("level");
+    const search = searchParams.get("search");
     const limit = parseInt(searchParams.get("limit") ?? "100");
+    const page = parseInt(searchParams.get("page") ?? "1");
+    const skip = (page - 1) * limit;
 
     const where: any = {};
-    if (authorId) {
+
+    if (isAdmin) {
+      // Admin sees all stories regardless of status/visibility
+      if (authorId) where.authorId = authorId;
+    } else if (authorId) {
       where.authorId = authorId;
     } else {
       where.OR = [
@@ -23,21 +31,31 @@ export async function GET(request: NextRequest) {
         ...(userId ? [{ authorId: userId }] : []),
       ];
     }
+
     if (status) where.status = status;
     if (theme) where.theme = theme;
     if (level) where.level = level;
+    if (search) where.title = { contains: search, mode: "insensitive" };
 
-    const stories = await prisma.story.findMany({
-      where,
-      orderBy: { updatedAt: "desc" },
-      take: limit,
-      include: {
-        author: { select: { id: true, name: true, avatarUrl: true } },
-        _count: { select: { panels: true } },
-      },
-    });
+    const [stories, total] = await Promise.all([
+      prisma.story.findMany({
+        where,
+        orderBy: { updatedAt: "desc" },
+        take: limit,
+        skip,
+        include: {
+          author: { select: { id: true, name: true, avatarUrl: true } },
+          _count: { select: { panels: true } },
+        },
+      }),
+      isAdmin ? prisma.story.count({ where }) : Promise.resolve(0),
+    ]);
 
-    return NextResponse.json(stories.map((s) => transformStory(s as any)));
+    const result = stories.map((s) => transformStory(s as any));
+    if (isAdmin) {
+      return NextResponse.json({ stories: result, total, page, limit });
+    }
+    return NextResponse.json(result);
   } catch (err) {
     console.error(err);
     return NextResponse.json({ error: "Server error" }, { status: 500 });

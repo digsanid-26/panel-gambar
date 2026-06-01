@@ -7,6 +7,7 @@ import { useEffect, useRef, useState } from "react";
 import Image from "next/image";
 import {
   BarChart3,
+  BookOpen,
   ChevronDown,
   FileText,
   LayoutDashboard,
@@ -18,6 +19,7 @@ import {
 
 const NAV_ITEMS = [
   { href: "/admin/dashboard", label: "Dashboard", icon: LayoutDashboard },
+  { href: "/admin/stories", label: "Cerita", icon: BookOpen },
   { href: "/admin/posts", label: "Post", icon: FileText },
   { href: "/admin/settings", label: "Pengaturan", icon: Settings },
 ];
