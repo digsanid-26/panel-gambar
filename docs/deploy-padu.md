@@ -480,12 +480,18 @@ echo "✅ Deploy selesai! https://padu.digsan.id"
 chmod +x ~/padu-edu/deploy.sh
 ```
 
-Jalankan deploy:
+```bash
+# Push ke Git
+cd /C:/Users/MANAKreatif/CascadeProjects/panel-gambar/app
+git push padu main
+```
 
 ```bash
+# Pull dari Git dan build
 ssh digsanid@103.55.37.232
 ~/padu-edu/deploy.sh
 ```
+
 ```bash
 # Masuk ke container PostgreSQL
 docker exec -it panel_postgres psql -U postgres -d panel_gambar
