@@ -482,7 +482,7 @@ chmod +x ~/padu-edu/deploy.sh
 
 ```bash
 # Push ke Git
-cd /C:/Users/MANAKreatif/CascadeProjects/panel-gambar/app
+cd C:/Users/MANAKreatif/CascadeProjects/panel-gambar/app
 git push padu main
 ```
 

@@ -282,19 +282,19 @@ function AssetTile({
         )}
       </div>
 
-      {/* Visibility badge */}
+      {/* Visibility badge — clickable for owner */}
       <button
         onClick={isOwner ? onToggleVisibility : undefined}
         disabled={!isOwner}
-        className="absolute top-1.5 left-1.5"
-        title={isOwner ? "Klik untuk ubah visibilitas" : asset.visibility === "public" ? "Publik" : "Privat"}
+        className={`absolute top-1.5 left-1.5 transition-opacity ${isOwner ? "cursor-pointer hover:opacity-80 active:scale-95" : "cursor-default"}`}
+        title={isOwner ? (asset.visibility === "public" ? "Klik untuk jadikan Privat" : "Klik untuk jadikan Publik") : (asset.visibility === "public" ? "Publik" : "Privat")}
       >
         {asset.visibility === "public" ? (
-          <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded bg-emerald-500/90 text-white text-[10px] font-semibold">
+          <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded bg-emerald-500/90 text-white text-[10px] font-semibold shadow">
             <Globe2 className="w-3 h-3" /> Publik
           </span>
         ) : (
-          <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded bg-black/60 text-white text-[10px] font-semibold">
+          <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded bg-black/60 text-white text-[10px] font-semibold shadow">
             <Lock className="w-3 h-3" /> Privat
           </span>
         )}

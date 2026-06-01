@@ -2,6 +2,27 @@ import { auth } from "@/auth";
 import { prisma } from "@/lib/db";
 import { NextRequest, NextResponse } from "next/server";
 
+function toAssetDto(a: any) {
+  return {
+    id: a.id,
+    owner_id: a.ownerId,
+    name: a.name,
+    type: a.type,
+    url: a.url,
+    storage_path: a.storagePath ?? null,
+    storage_bucket: a.storageBucket ?? null,
+    thumbnail_url: a.thumbnailUrl ?? null,
+    mime_type: a.mimeType ?? null,
+    size_bytes: a.sizeBytes != null ? a.sizeBytes.toString() : null,
+    visibility: a.visibility,
+    tags: a.tags ?? [],
+    description: a.description ?? null,
+    metadata: a.metadata ?? {},
+    created_at: a.createdAt,
+    updated_at: a.updatedAt,
+  };
+}
+
 export async function GET(request: NextRequest) {
   const session = await auth();
   if (!session?.user?.id) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
@@ -20,7 +41,7 @@ export async function GET(request: NextRequest) {
     where,
     orderBy: { createdAt: "desc" },
   });
-  return NextResponse.json(assets.map(({ sizeBytes, ...a }) => ({ ...a, sizeBytes: sizeBytes?.toString() ?? null })));
+  return NextResponse.json(assets.map(toAssetDto));
 }
 
 export async function POST(request: NextRequest) {
@@ -44,6 +65,5 @@ export async function POST(request: NextRequest) {
       metadata: body.metadata ?? {},
     },
   });
-  const { sizeBytes, ...rest } = asset;
-  return NextResponse.json({ ...rest, sizeBytes: sizeBytes?.toString() ?? null });
+  return NextResponse.json(toAssetDto(asset));
 }
