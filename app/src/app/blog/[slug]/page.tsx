@@ -1,10 +1,11 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import Link from "next/link";
 import { Navbar } from "@/components/layout/navbar";
 import { Button } from "@/components/ui/button";
+import { ImageLightbox } from "@/components/ui/image-lightbox";
 import { ArrowLeft, Calendar, User, BookOpen, FileText, Loader2 } from "lucide-react";
 
 interface Post {
@@ -20,6 +21,8 @@ export default function BlogPostPage() {
   const slug = params.slug as string;
   const [post, setPost] = useState<Post | null>(null);
   const [loading, setLoading] = useState(true);
+  const [lightbox, setLightbox] = useState<{ src: string; alt: string } | null>(null);
+  const articleRef = useRef<HTMLElement>(null);
 
   useEffect(() => {
     fetch(`/api/posts/${slug}`)
@@ -27,6 +30,21 @@ export default function BlogPostPage() {
       .then((data) => { setPost(data); setLoading(false); })
       .catch(() => { router.push("/blog"); });
   }, [slug]);
+
+  // Attach lightbox click listeners to all images inside article content
+  useEffect(() => {
+    const el = articleRef.current;
+    if (!el) return;
+    const imgs = el.querySelectorAll<HTMLImageElement>("img");
+    const handlers: Array<() => void> = [];
+    imgs.forEach((img) => {
+      img.style.cursor = "zoom-in";
+      const handler = () => setLightbox({ src: img.src, alt: img.alt ?? "" });
+      img.addEventListener("click", handler);
+      handlers.push(() => img.removeEventListener("click", handler));
+    });
+    return () => handlers.forEach((fn) => fn());
+  }, [post]); // re-run when post HTML is set
 
   if (loading) return (
     <div className="min-h-screen flex flex-col bg-background">
@@ -85,15 +103,24 @@ export default function BlogPostPage() {
 
         {/* Article content */}
         <article
+          ref={articleRef}
           className="prose prose-sm sm:prose max-w-none
             prose-headings:font-bold prose-headings:text-foreground
             prose-p:text-foreground/90 prose-p:leading-relaxed
             prose-a:text-primary prose-a:underline
             prose-blockquote:border-l-primary prose-blockquote:text-muted
             prose-code:bg-surface-alt prose-code:px-1 prose-code:rounded
-            prose-img:rounded-xl prose-img:shadow"
+            prose-img:rounded-xl prose-img:shadow prose-img:cursor-zoom-in"
           dangerouslySetInnerHTML={{ __html: post.content }}
         />
+
+        {lightbox && (
+          <ImageLightbox
+            src={lightbox.src}
+            alt={lightbox.alt}
+            onClose={() => setLightbox(null)}
+          />
+        )}
       </main>
     </div>
   );
