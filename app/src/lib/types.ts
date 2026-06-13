@@ -1,4 +1,4 @@
-export type UserRole = "guru" | "siswa" | "member" | "admin";
+export type UserRole = "guru" | "siswa" | "member" | "admin" | "creator";
 
 export interface UserProfile {
   id: string;
@@ -119,6 +119,10 @@ export interface StoryCharacter {
   performed_by?: string;
   /** Student name (denormalized for display) */
   performed_by_name?: string;
+  /** TTS voice ID for this character (ElevenLabs/provider) */
+  voice_id?: string;
+  /** Override TTS provider for this character */
+  voice_provider?: string;
 }
 
 export type PanelType = "simple" | "complete";

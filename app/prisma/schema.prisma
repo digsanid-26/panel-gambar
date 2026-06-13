@@ -15,8 +15,12 @@ model User {
   name          String    @default("")
   image         String?
   passwordHash  String?   @map("password_hash")
-  role          String    @default("siswa") // guru | siswa | admin
+  role          String    @default("siswa") // guru | siswa | admin | creator
   avatarUrl     String?   @map("avatar_url")
+  creatorAiAccess      Boolean   @default(false) @map("creator_ai_access")
+  aiSubscriptionTier   String?   @map("ai_subscription_tier") // basic | pro | max
+  aiSubscriptionStart  DateTime? @map("ai_subscription_start")
+  aiSubscriptionEnd    DateTime? @map("ai_subscription_end")
   bio           String?   @db.Text
   subjects      String[]  @default([])
   location      String?
