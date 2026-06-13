@@ -655,6 +655,11 @@ const ai = useCreatorAi();
 - [ ] AI Story Wizard: isi 1 topik → draft cerita lengkap (judul, CP, TP, 5 panel, karakter)
 - [ ] AI Tanya Jawab di halaman viewer cerita (untuk siswa)
 - [ ] Log penggunaan AI (`ai_generation_log`) + estimasi biaya di dashboard admin
+- [ ] **AI Backsound Generator** per panel — generate musik instrumental via TopMediai Music Generator (lihat **Section 10.3**)
+  - Tombol "🎵 Generate Backsound" di samping field `background_audio_url` pada panel editor
+  - Style prompt otomatis berdasarkan suasana panel (dari narasi teks) + pilihan manual
+  - Implementasi async: POST generate → polling task → simpan URL ke `panel.background_audio_url`
+  - Opsi `instrumental: 1` (wajib) agar tidak ada vokal — murni musik latar
 
 ---
 
@@ -817,18 +822,84 @@ Content-Type: application/json
 | Voices | alloy, echo, fable, onyx, nova, shimmer (tidak bisa pilih bahasa spesifik) |
 | Cocok untuk | Jika sudah ada OpenAI API key dan tidak butuh voice Indonesia yang spesifik |
 
+#### Opsi D — TopMediai ⭐ (Alternatif Kuat)
+
+Docs: https://docs.topmediai.com/api-reference/text-to-speech
+
+```
+GET  https://api.topmediai.com/v1/voices_list
+POST https://api.topmediai.com/v1/text2speech
+X-API-Key: <TOPMEDIAI_API_KEY>
+Content-Type: application/json
+
+{
+  "text": "Teks narasi atau dialog",
+  "speaker": "00151554-3826-11ee-a861-00163e2ac61b",  // UUID dari voices_list
+  "emotion": "Cheerful"                                // opsional
+}
+```
+
+**Emotions yang didukung:** `Angry`, `Cheerful`, `Sad`, `Excited`, `Friendly`, `Terrified`, `Shouting`, `Unfriendly`, `Whispering`, `Hopeful`, `Soulful`, `Pleasant`, `Complaining`, `Surprised`, `Uneasy`, `Fearful`, `Disgust`, `Neutral`
+
+> ⚠️ Tidak semua voice mendukung emotion — cek field response `classnamearray` dari voices_list.
+
+**Voice List Response:**
+```json
+{
+  "Voice": [{
+    "Languagename": "Indonesian",
+    "speaker": "<uuid>",
+    "classnamearray": "Daily;Female;Cheerful",
+    "name": "<nama suara>",
+    "isFree": true,
+    "isvip": false,
+    "avatar_url": "<url>"
+  }]
+}
+```
+
+| Keterangan | Detail |
+|---|---|
+| Harga | Berlangganan / kredit (cek https://topmediai.com/pricing) |
+| Voices | 3200+ voices, 100+ bahasa termasuk `id-ID` |
+| Emotion control | ✅ 18+ emosi per request |
+| Voice cloning | ✅ `POST /v1/clone` (upload audio file) |
+| AI Voice Change | ✅ Ubah audio rekaman ke voice lain — fitur unik |
+| Cocok untuk | Karakter cerita dengan emosi berbeda-beda, voice cloning siswa |
+
+**Voice Cloning:**
+```
+POST https://api.topmediai.com/v1/clone
+Content-Type: multipart/form-data
+
+name=<nama_voice>
+files=<audio_file>       // rekaman suara asli
+description=<opsional>
+Query: ?model=Gen|HD
+```
+Response: `{ "speaker": "<new_uuid>" }` — simpan UUID ini sebagai `voice_id` karakter.
+
+> ⚠️ **Response format audio:** Docs tidak secara eksplisit mendokumentasikan format 200 response TTS (kemungkinan URL file atau binary stream). Perlu test terlebih dahulu sebelum integrasi.
+
 #### Perbandingan Cepat
 
-| | ElevenLabs | Google Cloud TTS | OpenAI TTS |
-|---|---|---|---|
-| Kualitas | ⭐⭐⭐⭐⭐ | ⭐⭐⭐⭐ | ⭐⭐⭐⭐ |
-| Dukungan `id-ID` | ✅ (multilingual) | ✅ (native) | ⚠️ (umum) |
-| Voice per karakter | ✅ (voice_id) | ⚠️ (terbatas) | ⚠️ (6 pilihan) |
-| Free tier | ✅ 10k kar/bln | ✅ 1M kar/bln | ❌ |
-| Voice cloning | ✅ | ❌ | ❌ |
-| Kompleksitas setup | Rendah | Sedang (GCP) | Rendah |
+| | ElevenLabs | Google Cloud TTS | OpenAI TTS | **TopMediai** |
+|---|---|---|---|---|
+| Kualitas | ⭐⭐⭐⭐⭐ | ⭐⭐⭐⭐ | ⭐⭐⭐⭐ | ⭐⭐⭐⭐ |
+| Dukungan `id-ID` | ✅ (multilingual) | ✅ (native) | ⚠️ (umum) | ✅ (3200+ voices) |
+| Voice per karakter | ✅ (voice_id) | ⚠️ (terbatas) | ⚠️ (6 pilihan) | ✅ (UUID per voice) |
+| Emotion control | ❌ | ⚠️ (SSML) | ❌ | ✅ 18+ emosi |
+| Free tier | ✅ 10k kar/bln | ✅ 1M kar/bln | ❌ | ⚠️ (perlu cek) |
+| Voice cloning | ✅ | ❌ | ❌ | ✅ |
+| AI Voice Change | ❌ | ❌ | ❌ | ✅ |
+| Kompleksitas setup | Rendah | Sedang (GCP) | Rendah | Rendah |
 
-**Rekomendasi:** Mulai dengan **ElevenLabs** (free tier cukup untuk fase pengembangan + kualitas & voice cloning terbaik untuk karakter cerita). Tambah Google Cloud TTS sebagai fallback jika sudah ada infrastruktur GCP.
+**Rekomendasi:**
+- Gunakan **TopMediai** jika ingin emotion control per dialog karakter (emosi kontekstual) dan voice cloning sejak awal.
+- Gunakan **ElevenLabs** sebagai alternatif jika kualitas suara adalah prioritas utama.
+- Gunakan **Google Cloud TTS** sebagai fallback volume tinggi jika sudah ada GCP project.
+
+> 💡 **Saran implementasi:** Buat provider TTS bisa dikonfigurasi per-admin di halaman settings (sudah ada key `ai_tts_provider`). Urutan prioritas yang disarankan: `topmediai` → `elevenlabs` → `google` → `openai`.
 
 #### Penambahan di `StoryCharacter` (types.ts)
 
@@ -842,8 +913,9 @@ export interface StoryCharacter {
   description?: string;
   performed_by?: string;
   performed_by_name?: string;
-  voice_id?: string;       // TTS voice ID untuk karakter ini (ElevenLabs/provider)
-  voice_provider?: string; // 'elevenlabs' | 'google' | 'openai' — override provider default
+  voice_id?: string;       // TTS voice ID untuk karakter ini
+  voice_provider?: string; // 'topmediai' | 'elevenlabs' | 'google' | 'openai' — override provider default
+  voice_emotion?: string;  // Emotion override untuk TopMediai (Cheerful, Sad, dll)
 }
 ```
 
@@ -851,9 +923,10 @@ export interface StoryCharacter {
 
 ```ts
 // POST /api/ai/tts
-// Body: { text: string, voice_id?: string, provider?: string }
-// 1. Tentukan provider: body.provider ?? settings.ai_tts_provider ?? 'elevenlabs'
+// Body: { text: string, voice_id?: string, provider?: string, emotion?: string }
+// 1. Tentukan provider: body.provider ?? settings.ai_tts_provider ?? 'topmediai'
 // 2. Tentukan voice: body.voice_id ?? settings.ai_tts_voice_id ?? <default per provider>
+// 3. Jika provider === 'topmediai' → kirim { text, speaker: voice_id, emotion }
 // 3. Panggil API provider → dapat binary audio
 // 4. Upload ke storage via internal upload → return { url: string }
 ```
@@ -1094,6 +1167,106 @@ Untuk pasar Indonesia, **Midtrans** adalah pilihan utama (mendukung transfer ban
 ```
 
 > Untuk fase awal (sebelum payment gateway siap), gunakan **mode manual**: guru menghubungi admin via WhatsApp/email → admin aktifkan via toggle di panel admin. Ini cukup untuk validasi pasar sebelum investasi ke integrasi payment.
+
+---
+
+### 10.3 TopMediai Music Generator (Backsound per Panel — Fase 6)
+
+> Docs: https://docs.topmediai.com/api-reference/ai-music-generator/v3-generate-music
+
+API ini bersifat **async/task-based** — berbeda dari TTS yang sinkron.
+
+#### Flow Generate Backsound
+
+```
+1. POST /v3/music/generate  →  dapat { task_id }
+2. Polling GET /v3/music/tasks?task_id=...  →  tunggu status selesai
+3. Dapat { audio_url }  →  simpan ke panel.background_audio_url
+```
+
+#### Request Generate
+
+```
+POST https://api.topmediai.com/v3/music/generate
+X-API-Key: <TOPMEDIAI_API_KEY>
+Content-Type: application/json
+
+{
+  "action": "auto",
+  "style": "Gentle children's background music, calm and educational, soft piano",
+  "mv": "v3.5",
+  "instrumental": 1      ← WAJIB 1 agar tidak ada vokal
+}
+```
+
+**Parameter penting:**
+
+| Field | Nilai | Keterangan |
+|---|---|---|
+| `action` | `"auto"` | Generate otomatis dari prompt style |
+| `style` | free-text | Prompt suasana musik, misal `"Cheerful children adventure, upbeat, playful"` |
+| `mv` | `v3.5` / `v4.5` | v3.5: maks 4 menit, 1 credit/generasi; v4.5: kualitas lebih baik |
+| `instrumental` | `1` | **Wajib 1** — musik murni tanpa vokal |
+| `gender` | `male`/`female` | Hanya relevan jika `instrumental: 0` |
+
+#### Response Polling
+
+```
+GET https://api.topmediai.com/v3/music/tasks?task_id=<id>
+X-API-Key: <TOPMEDIAI_API_KEY>
+
+Response:
+[{
+  "id": "<task_id>",
+  "status": 2,            // 0=queued, 1=processing, 2=done, -1=failed
+  "audio_url": "https://...",
+  "duration": 180,        // detik
+  "title": "<judul auto>",
+  "style": "Gentle children background music"
+}]
+```
+
+#### Style Prompt Otomatis per Panel
+
+Bisa di-generate dari Claude berdasarkan narasi panel:
+
+```ts
+// Contoh system prompt ke /api/ai/text dengan task='backsound_style'
+// Input: panel.narration_text
+// Output: satu frasa style untuk music generator
+// Contoh: "Cheerful morning adventure, upbeat, children's theme, light percussion"
+```
+
+#### Route `/api/ai/music` yang akan dibutuhkan
+
+```ts
+// POST /api/ai/music
+// Body: { style: string, duration_hint?: 'short'|'medium', panel_id?: string }
+// 1. POST ke TopMediai /v3/music/generate → dapat task_id
+// 2. Return { task_id } — client polling
+
+// GET /api/ai/music/status?task_id=<id>
+// 1. GET ke TopMediai /v3/music/tasks
+// 2. Jika status === 2 → return { audio_url, duration }
+// 3. Jika status === -1 → return error
+```
+
+#### Pertimbangan UX
+
+- Karena async (~30–90 detik), tampilkan progress spinner di tombol "Generate Backsound"
+- Polling setiap 3 detik dengan batas maksimum 120 detik
+- Setelah audio_url tersedia, tawarkan preview + tombol "Gunakan sebagai Backsound Panel ini"
+- Simpan URL langsung ke `panel.background_audio_url`
+
+#### Biaya Estimasi
+
+| Model | Kredit per generasi | Keterangan |
+|---|---|---|
+| v3.0 | 1 kredit | Maks 2 menit |
+| v3.5 / v4.0 | 1 kredit | Maks 4 menit — **rekomendasi untuk backsound** |
+| v4.5 / v4.5+ | 1.5 kredit | Maks 8 menit, kualitas lebih tinggi |
+
+> Harga kredit TopMediai perlu dicek di https://topmediai.com/pricing sebelum implementasi.
 
 ---
 

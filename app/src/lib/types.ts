@@ -119,10 +119,12 @@ export interface StoryCharacter {
   performed_by?: string;
   /** Student name (denormalized for display) */
   performed_by_name?: string;
-  /** TTS voice ID for this character (ElevenLabs/provider) */
+  /** TTS voice ID for this character (UUID for TopMediai/ElevenLabs, voice name for Google/OpenAI) */
   voice_id?: string;
-  /** Override TTS provider for this character */
+  /** Override TTS provider for this character: 'topmediai' | 'elevenlabs' | 'google' | 'openai' */
   voice_provider?: string;
+  /** Emotion override for TopMediai TTS (Cheerful, Sad, Excited, Friendly, etc.) */
+  voice_emotion?: string;
 }
 
 export type PanelType = "simple" | "complete";
