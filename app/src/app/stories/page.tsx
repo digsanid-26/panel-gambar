@@ -22,6 +22,8 @@ import {
   Trash2,
   Pencil,
 } from "lucide-react";
+import { AiStoryWizard } from "@/components/ai/ai-story-wizard";
+import { useCreatorAi } from "@/hooks/use-creator-ai";
 
 const LEVELS = [
   { value: "", label: "Semua Level" },
@@ -42,6 +44,7 @@ export default function StoriesPage() {
   const menuRef = useRef<HTMLDivElement>(null);
 
   const { data: session } = useSession();
+  const ai = useCreatorAi();
 
   useEffect(() => {
     async function load() {
@@ -121,12 +124,17 @@ export default function StoriesPage() {
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-6">
           <h1 className="text-2xl font-bold">Cerita</h1>
           {userRole === "guru" && (
-            <Link href="/stories/create">
-              <Button variant="primary">
-                <PlusCircle className="w-4 h-4" />
-                Buat Cerita Baru
-              </Button>
-            </Link>
+            <div className="flex items-center gap-2">
+              {ai.user_can_text && (
+                <AiStoryWizard />
+              )}
+              <Link href="/stories/create">
+                <Button variant="primary">
+                  <PlusCircle className="w-4 h-4" />
+                  Buat Cerita Baru
+                </Button>
+              </Link>
+            </div>
           )}
         </div>
 
