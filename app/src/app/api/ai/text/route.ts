@@ -1,6 +1,7 @@
 import { auth } from "@/auth";
 import { prisma } from "@/lib/db";
 import { NextRequest, NextResponse } from "next/server";
+import { logAiUsage } from "@/lib/ai-logger";
 
 const AKLAUDE_BASE = "https://api.aklaude.xyz/api/proxy";
 
@@ -147,5 +148,14 @@ export async function POST(request: NextRequest) {
 
   const data = await response.json();
   const result = data.choices?.[0]?.message?.content ?? "";
+  const usage = data.usage;
+  void logAiUsage({
+    userId:       session.user.id,
+    feature:      "text",
+    model,
+    inputTokens:  usage?.input_tokens ?? usage?.prompt_tokens,
+    outputTokens: usage?.output_tokens ?? usage?.completion_tokens,
+    metadata:     { task },
+  });
   return NextResponse.json({ result });
 }

@@ -1,6 +1,7 @@
 import { auth } from "@/auth";
 import { prisma } from "@/lib/db";
 import { NextRequest, NextResponse } from "next/server";
+import { logAiUsage } from "@/lib/ai-logger";
 
 const AKLAUDE_VIDEOGEN = "https://api.aklaude.xyz/api/videogen/generate";
 
@@ -102,5 +103,12 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "Tidak ada video yang dihasilkan" }, { status: 502 });
   }
 
+  void logAiUsage({
+    userId:     session.user.id,
+    feature:    "video",
+    model:      body?.model ?? "veo-2",
+    videoCount: 1,
+    metadata:   { prompt: String(body?.prompt ?? "").slice(0, 100) },
+  });
   return NextResponse.json({ url: videoUrl });
 }

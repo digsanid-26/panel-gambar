@@ -14,14 +14,16 @@ import {
   LogOut,
   Settings,
   ShieldCheck,
+  Sparkles,
   User,
 } from "lucide-react";
 
 const NAV_ITEMS = [
-  { href: "/admin/dashboard", label: "Dashboard", icon: LayoutDashboard },
-  { href: "/admin/stories", label: "Cerita", icon: BookOpen },
-  { href: "/admin/posts", label: "Post", icon: FileText },
-  { href: "/admin/settings", label: "Pengaturan", icon: Settings },
+  { href: "/admin/dashboard", label: "Dashboard",  icon: LayoutDashboard },
+  { href: "/admin/stories",   label: "Cerita",      icon: BookOpen        },
+  { href: "/admin/posts",     label: "Post",        icon: FileText        },
+  { href: "/admin/ai-logs",   label: "Log AI",      icon: Sparkles        },
+  { href: "/admin/settings",  label: "Pengaturan",  icon: Settings        },
 ];
 
 export default function AdminLayout({ children }: { children: React.ReactNode }) {

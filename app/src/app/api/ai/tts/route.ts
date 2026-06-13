@@ -1,6 +1,7 @@
 import { auth } from "@/auth";
 import { prisma } from "@/lib/db";
 import { NextRequest, NextResponse } from "next/server";
+import { logAiUsage } from "@/lib/ai-logger";
 
 const TOPMEDIAI_TTS  = "https://api.topmediai.com/v1/text2speech";
 const ELEVENLABS_TTS = "https://api.elevenlabs.io/v1/text-to-speech";
@@ -178,5 +179,11 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "Gagal menyimpan file audio" }, { status: 500 });
   }
   const { url } = await uploadRes.json();
+  void logAiUsage({
+    userId:    session.user.id,
+    feature:   "tts",
+    charCount: text.length,
+    metadata:  { voice_id, provider: resolvedProvider },
+  });
   return NextResponse.json({ url });
 }

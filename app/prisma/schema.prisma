@@ -44,6 +44,7 @@ model User {
   arScenes            ArScene[]
   assets              Asset[]
   posts               Post[]
+  aiLogs              AiGenerationLog[]
 
   @@map("users")
 }
@@ -468,6 +469,29 @@ model Asset {
   owner User @relation(fields: [ownerId], references: [id], onDelete: Cascade)
 
   @@map("assets")
+}
+
+// ─── AI GENERATION LOG ──────────────────────────────────────────────────────
+
+model AiGenerationLog {
+  id               String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  userId           String   @map("user_id") @db.Uuid
+  feature          String   // text | image | video | tts | story-wizard | backsound
+  model            String?
+  inputTokens      Int?     @map("input_tokens")
+  outputTokens     Int?     @map("output_tokens")
+  charCount        Int?     @map("char_count")          // TTS: chars billed
+  estimatedCostUsd Decimal? @map("estimated_cost_usd") @db.Decimal(10, 6)
+  storyId          String?  @map("story_id") @db.Uuid
+  metadata         Json     @default("{}")
+  createdAt        DateTime @default(now()) @map("created_at")
+
+  user  User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([createdAt])
+  @@index([feature])
+  @@map("ai_generation_logs")
 }
 
 // ─── BLOG / DOCS ──────────────────────────────────────────────────────────────

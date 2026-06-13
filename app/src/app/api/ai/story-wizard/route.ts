@@ -2,6 +2,7 @@ import { auth } from "@/auth";
 import { prisma } from "@/lib/db";
 import { NextRequest, NextResponse } from "next/server";
 import { randomUUID } from "crypto";
+import { logAiUsage } from "@/lib/ai-logger";
 
 const AKLAUDE_API = "https://api.aklaude.xyz/api/proxy/v1/chat/completions";
 
@@ -204,5 +205,13 @@ Ketentuan:
     panels: (draft.panels ?? []).map((p) => ({ ...p, id: randomUUID() })),
   };
 
+  const usage = data.usage;
+  void logAiUsage({
+    userId:       session.user.id,
+    feature:      "story-wizard",
+    inputTokens:  usage?.input_tokens ?? usage?.prompt_tokens,
+    outputTokens: usage?.output_tokens ?? usage?.completion_tokens,
+    metadata:     { topic: body.topic, panel_count: body.panel_count },
+  });
   return NextResponse.json({ draft: draftWithIds });
 }

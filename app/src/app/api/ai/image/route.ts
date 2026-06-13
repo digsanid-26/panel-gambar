@@ -1,6 +1,7 @@
 import { auth } from "@/auth";
 import { prisma } from "@/lib/db";
 import { NextRequest, NextResponse } from "next/server";
+import { logAiUsage } from "@/lib/ai-logger";
 
 const AKLAUDE_BASE = "https://api.aklaude.xyz/api/imagegen";
 
@@ -102,5 +103,12 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "Tidak ada gambar yang dihasilkan" }, { status: 502 });
   }
 
+  void logAiUsage({
+    userId:     session.user.id,
+    feature:    "image",
+    model,
+    imageCount: 1,
+    metadata:   { prompt: prompt.slice(0, 100) },
+  });
   return NextResponse.json({ url: imageUrl });
 }
