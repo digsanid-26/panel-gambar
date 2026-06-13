@@ -23,6 +23,8 @@ import { PanelTimelineEditor } from "@/components/story-editor/panel-timeline-ed
 import { SimplePanelEditor } from "@/components/story-editor/simple-panel-editor";
 import { ElementManager } from "@/components/story-editor/element-manager";
 import { KurikulumMerdekaSection } from "@/components/story-editor/kurikulum-merdeka-section";
+import { AiTextButton } from "@/components/ai/ai-text-button";
+import { useCreatorAi } from "@/hooks/use-creator-ai";
 import {
   ArrowLeft,
   Check,
@@ -94,6 +96,7 @@ export default function EditStoryPage() {
   const [saving, setSaving] = useState(false);
   const [expandedPanel, setExpandedPanel] = useState<string | null>(null);
   const [showDialogForm, setShowDialogForm] = useState<string | null>(null);
+  const ai = useCreatorAi();
   const [editingDialogId, setEditingDialogId] = useState<string | null>(null);
   const [showNarrationRecorder, setShowNarrationRecorder] = useState<string | null>(null);
   const [showBgAudioRecorder, setShowBgAudioRecorder] = useState<string | null>(null);
@@ -1372,6 +1375,22 @@ export default function EditStoryPage() {
                       value={panel.narration_text || ""}
                       onCommit={(v) => updatePanelField(panel.id, "narration_text", v)}
                     />
+                    {ai.user_can_text && (
+                      <div className="mt-1">
+                        <AiTextButton
+                          task="narration"
+                          context={{
+                            story_title: story.title,
+                            story_theme: story.theme,
+                            level: story.level,
+                            panel_index: panels.findIndex((p) => p.id === panel.id) + 1,
+                          }}
+                          onAccept={(v) => updatePanelField(panel.id, "narration_text", v)}
+                          promptPlaceholder="Misal: narasikan adegan Budi menemukan buku di bawah pohon"
+                          label="Bantu tulis narasi"
+                        />
+                      </div>
+                    )}
                     <div className="mt-2">
                       {panel.narration_audio_url ? (
                         <div className="flex items-center gap-2">
@@ -1736,6 +1755,27 @@ export default function EditStoryPage() {
                           value={dialogText}
                           onChange={(e) => setDialogText(e.target.value)}
                         />
+                        {ai.user_can_text && (
+                          <div className="mt-1">
+                            <AiTextButton
+                              task="dialog"
+                              context={{
+                                story_title: story.title,
+                                story_theme: story.theme,
+                                panel_index: panels.findIndex((p) => p.id === showDialogForm) + 1,
+                                character_name: dialogCharName,
+                                character_gender: "other",
+                                narration: panels.find((p) => p.id === showDialogForm)?.narration_text,
+                                previous_dialogs: panels
+                                  .find((p) => p.id === showDialogForm)
+                                  ?.dialogs?.map((d) => `${d.character_name}: ${d.text}`) ?? [],
+                              }}
+                              onAccept={setDialogText}
+                              promptPlaceholder={`Misal: ${dialogCharName} menanyakan di mana perpustakaan`}
+                              label="Bantu tulis dialog"
+                            />
+                          </div>
+                        )}
                         <div className="grid grid-cols-2 gap-3">
                           <Input
                             label="Posisi X (%)"

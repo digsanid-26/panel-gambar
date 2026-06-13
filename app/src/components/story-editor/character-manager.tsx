@@ -6,6 +6,8 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Select } from "@/components/ui/select";
 import { Plus, Trash2, Upload, Pencil, X, User, Check } from "lucide-react";
+import { AiTextButton } from "@/components/ai/ai-text-button";
+import { useCreatorAi } from "@/hooks/use-creator-ai";
 
 interface CharacterManagerProps {
   characters: StoryCharacter[];
@@ -31,6 +33,7 @@ function generateId() {
 }
 
 export function CharacterManager({ characters, onChange, onUploadAvatar, availableStudents = [] }: CharacterManagerProps) {
+  const ai = useCreatorAi();
   const [editingId, setEditingId] = useState<string | null>(null);
   const [showAddForm, setShowAddForm] = useState(false);
 
@@ -249,6 +252,24 @@ export function CharacterManager({ characters, onChange, onUploadAvatar, availab
             />
           </div>
 
+          <div className="space-y-1">
+            <Input
+              label="Deskripsi (opsional)"
+              placeholder="Anak laki-laki kelas 3"
+              value={description}
+              onChange={(e) => setDescription(e.target.value)}
+            />
+            {ai.user_can_text && (
+              <AiTextButton
+                task="character_description"
+                context={{ character_name: name, character_gender: gender }}
+                onAccept={setDescription}
+                promptPlaceholder={`Misal: ${name || "karakter"} yang pemberani dan suka membantu teman`}
+                label="Bantu deskripsikan"
+              />
+            )}
+          </div>
+
           <div className="grid grid-cols-2 gap-3">
             <div>
               <label className="block text-xs font-medium mb-1">Warna</label>
@@ -273,12 +294,6 @@ export function CharacterManager({ characters, onChange, onUploadAvatar, availab
                 </div>
               </div>
             </div>
-            <Input
-              label="Deskripsi (opsional)"
-              placeholder="Anak laki-laki kelas 3"
-              value={description}
-              onChange={(e) => setDescription(e.target.value)}
-            />
           </div>
 
           {/* Performed by selector */}

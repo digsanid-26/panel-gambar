@@ -12,9 +12,12 @@ import { CoverImageUploader } from "@/components/ui/cover-image-uploader";
 import { VideoTrailerUploader } from "@/components/ui/video-trailer-uploader";
 import { ArrowLeft, Loader2, Save } from "lucide-react";
 import Link from "next/link";
+import { AiTextButton } from "@/components/ai/ai-text-button";
+import { useCreatorAi } from "@/hooks/use-creator-ai";
 
 export default function CreateStoryPage() {
   const router = useRouter();
+  const ai = useCreatorAi();
 
   const [title, setTitle] = useState("");
   const [description, setDescription] = useState("");
@@ -172,23 +175,45 @@ export default function CreateStoryPage() {
               onPickFromLibrary={(url) => { setCoverFile(null); setCoverPreview(null); setCoverUrlFromGallery(url); }}
             />
 
-            <Input
-              id="title"
-              label="Judul Cerita"
-              placeholder="Misal: Kelinci yang Rajin"
-              value={title}
-              onChange={(e) => setTitle(e.target.value)}
-              required
-            />
+            <div className="space-y-1">
+              <Input
+                id="title"
+                label="Judul Cerita"
+                placeholder="Misal: Kelinci yang Rajin"
+                value={title}
+                onChange={(e) => setTitle(e.target.value)}
+                required
+              />
+              {ai.user_can_text && (
+                <AiTextButton
+                  task="title"
+                  context={{ theme, target_class: targetClass, mata_pelajaran: mataPelajaran }}
+                  onAccept={(v) => setTitle(v.split("\n")[0].replace(/^\d+\.\s*/, "").replace(/^"|"$/g, ""))}
+                  promptPlaceholder="Misal: cerita tentang anak rajin yang suka membaca, untuk kelas 2 SD"
+                  label="Bantu buat judul"
+                />
+              )}
+            </div>
 
-            <Textarea
-              id="description"
-              label="Deskripsi Singkat"
-              placeholder="Ceritakan tentang apa cerita ini..."
-              value={description}
-              onChange={(e) => setDescription(e.target.value)}
-              required
-            />
+            <div className="space-y-1">
+              <Textarea
+                id="description"
+                label="Deskripsi Singkat"
+                placeholder="Ceritakan tentang apa cerita ini..."
+                value={description}
+                onChange={(e) => setDescription(e.target.value)}
+                required
+              />
+              {ai.user_can_text && (
+                <AiTextButton
+                  task="description"
+                  context={{ story_title: title, theme }}
+                  onAccept={setDescription}
+                  promptPlaceholder="Misal: cerita tentang kelinci rajin yang membantu teman-temannya"
+                  label="Bantu buat deskripsi"
+                />
+              )}
+            </div>
 
             <VideoTrailerUploader
               currentUrl={videoFile ? URL.createObjectURL(videoFile) : undefined}

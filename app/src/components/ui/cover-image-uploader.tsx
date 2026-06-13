@@ -5,6 +5,8 @@ import { Upload, X, ImageIcon, FolderOpen } from "lucide-react";
 import { Button } from "./button";
 import { AssetPickerModal } from "@/components/asset-library/asset-picker-modal";
 import type { Asset } from "@/lib/types";
+import { AiImageGenerator } from "@/components/ai/ai-image-generator";
+import { useCreatorAi } from "@/hooks/use-creator-ai";
 
 interface CoverImageUploaderProps {
   currentUrl?: string;
@@ -22,9 +24,11 @@ export function CoverImageUploader({
   uploading = false,
   onPickFromLibrary,
 }: CoverImageUploaderProps) {
+  const ai = useCreatorAi();
   const [dragOver, setDragOver] = useState(false);
   const [preview, setPreview] = useState<string | null>(null);
   const [pickerOpen, setPickerOpen] = useState(false);
+  const [showAiGenerator, setShowAiGenerator] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
 
   const handleFile = useCallback(
@@ -170,6 +174,32 @@ export function CoverImageUploader({
               if (f) handleFile(f);
             }}
           />
+        </div>
+      )}
+
+      {/* AI Image Generator */}
+      {ai.user_can_image && (
+        <div className="mt-2">
+          {showAiGenerator ? (
+            <AiImageGenerator
+              aspectRatio="16:9"
+              defaultPrompt=""
+              label="Generate Cover dengan AI"
+              onAccept={async (url) => {
+                setPreview(url);
+                setShowAiGenerator(false);
+                if (onPickFromLibrary) await onPickFromLibrary(url, { url } as Asset);
+              }}
+            />
+          ) : (
+            <button
+              type="button"
+              onClick={() => setShowAiGenerator(true)}
+              className="inline-flex items-center gap-1.5 text-xs font-medium rounded-md px-2 py-1 text-muted hover:text-primary hover:bg-primary/5 transition-colors"
+            >
+              <span>✨</span> Generate cover dengan AI
+            </button>
+          )}
         </div>
       )}
 

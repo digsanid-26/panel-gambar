@@ -20,6 +20,22 @@ import {
   X,
 } from "lucide-react";
 import { useState } from "react";
+import { AiTextButton } from "@/components/ai/ai-text-button";
+import { useCreatorAi } from "@/hooks/use-creator-ai";
+
+function parseNumberedList(text: string): string[] {
+  return text
+    .split("\n")
+    .map((l) => l.replace(/^\s*\d+[.)\s]+/, "").trim())
+    .filter(Boolean);
+}
+
+function parseCommaList(text: string): string[] {
+  return text
+    .split(/[,،\n]+/)
+    .map((l) => l.trim())
+    .filter(Boolean);
+}
 
 interface Props {
   story: Story;
@@ -42,6 +58,19 @@ const METODE_OPTIONS = [
 ];
 
 export function KurikulumMerdekaSection({ story, updateStoryField }: Props) {
+  const ai = useCreatorAi();
+
+  const aiCtx = {
+    story_title: story.title,
+    theme: story.theme,
+    level: story.level,
+    target_class: story.target_class,
+    mata_pelajaran: story.mata_pelajaran,
+    kurikulum: story.kurikulum,
+    capaian_pembelajaran: story.capaian_pembelajaran,
+    tujuan_pembelajaran: story.tujuan_pembelajaran,
+  };
+
   return (
     <div className="rounded-xl border border-border bg-surface-alt/40 p-4 space-y-5">
       <div>
@@ -56,22 +85,44 @@ export function KurikulumMerdekaSection({ story, updateStoryField }: Props) {
 
       {/* === KONTEN PEMBELAJARAN === */}
       <SubSection icon={<Target className="w-4 h-4" />} title="Konten Pembelajaran">
-        <DebouncedTextarea
-          id="km-cp"
-          label="Capaian Pembelajaran (CP)"
-          placeholder="Tuliskan capaian pembelajaran yang ingin dicapai..."
-          value={story.capaian_pembelajaran || ""}
-          onCommit={(v) => updateStoryField("capaian_pembelajaran", v)}
-          rows={3}
-        />
+        <div className="space-y-1">
+          <DebouncedTextarea
+            id="km-cp"
+            label="Capaian Pembelajaran (CP)"
+            placeholder="Tuliskan capaian pembelajaran yang ingin dicapai..."
+            value={story.capaian_pembelajaran || ""}
+            onCommit={(v) => updateStoryField("capaian_pembelajaran", v)}
+            rows={3}
+          />
+          {ai.user_can_text && (
+            <AiTextButton
+              task="cp"
+              context={aiCtx}
+              onAccept={(v) => updateStoryField("capaian_pembelajaran", v)}
+              promptPlaceholder=""
+              label="Generate CP"
+            />
+          )}
+        </div>
 
-        <NumberedListEditor
-          label="Tujuan Pembelajaran (TP)"
-          values={story.tujuan_pembelajaran || []}
-          placeholder="Tujuan pembelajaran"
-          addLabel="Tambah Tujuan"
-          onChange={(arr) => updateStoryField("tujuan_pembelajaran", arr)}
-        />
+        <div className="space-y-1">
+          <NumberedListEditor
+            label="Tujuan Pembelajaran (TP)"
+            values={story.tujuan_pembelajaran || []}
+            placeholder="Tujuan pembelajaran"
+            addLabel="Tambah Tujuan"
+            onChange={(arr) => updateStoryField("tujuan_pembelajaran", arr)}
+          />
+          {ai.user_can_text && (
+            <AiTextButton
+              task="tp"
+              context={aiCtx}
+              onAccept={(v) => updateStoryField("tujuan_pembelajaran", parseNumberedList(v))}
+              promptPlaceholder=""
+              label="Generate TP"
+            />
+          )}
+        </div>
 
         <DebouncedTextarea
           id="km-materi-pokok"
@@ -116,20 +167,42 @@ export function KurikulumMerdekaSection({ story, updateStoryField }: Props) {
 
       {/* === AKTIVITAS === */}
       <SubSection icon={<Lightbulb className="w-4 h-4" />} title="Aktivitas Pembelajaran">
-        <NumberedListEditor
-          label="Pertanyaan Pemantik"
-          values={story.pertanyaan_pemantik || []}
-          placeholder="Pertanyaan pembuka diskusi"
-          addLabel="Tambah Pertanyaan"
-          onChange={(arr) => updateStoryField("pertanyaan_pemantik", arr)}
-        />
+        <div className="space-y-1">
+          <NumberedListEditor
+            label="Pertanyaan Pemantik"
+            values={story.pertanyaan_pemantik || []}
+            placeholder="Pertanyaan pembuka diskusi"
+            addLabel="Tambah Pertanyaan"
+            onChange={(arr) => updateStoryField("pertanyaan_pemantik", arr)}
+          />
+          {ai.user_can_text && (
+            <AiTextButton
+              task="pertanyaan_pemantik"
+              context={aiCtx}
+              onAccept={(v) => updateStoryField("pertanyaan_pemantik", parseNumberedList(v))}
+              promptPlaceholder=""
+              label="Generate Pemantik"
+            />
+          )}
+        </div>
 
-        <TagListEditor
-          label="Kata Kunci"
-          values={story.kata_kunci || []}
-          placeholder="Ketik kata kunci & tekan Enter..."
-          onChange={(arr) => updateStoryField("kata_kunci", arr)}
-        />
+        <div className="space-y-1">
+          <TagListEditor
+            label="Kata Kunci"
+            values={story.kata_kunci || []}
+            placeholder="Ketik kata kunci & tekan Enter..."
+            onChange={(arr) => updateStoryField("kata_kunci", arr)}
+          />
+          {ai.user_can_text && (
+            <AiTextButton
+              task="kata_kunci"
+              context={aiCtx}
+              onAccept={(v) => updateStoryField("kata_kunci", parseCommaList(v))}
+              promptPlaceholder=""
+              label="Generate Kata Kunci"
+            />
+          )}
+        </div>
       </SubSection>
 
       {/* === ASESMEN & EVALUASI === */}
@@ -191,21 +264,43 @@ export function KurikulumMerdekaSection({ story, updateStoryField }: Props) {
 
       {/* === REFLEKSI === */}
       <SubSection icon={<MessageSquare className="w-4 h-4" />} title="Refleksi">
-        <NumberedListEditor
-          label="Refleksi Siswa"
-          values={story.refleksi_siswa || []}
-          placeholder="Pertanyaan refleksi untuk siswa"
-          addLabel="Tambah Pertanyaan"
-          onChange={(arr) => updateStoryField("refleksi_siswa", arr)}
-        />
+        <div className="space-y-1">
+          <NumberedListEditor
+            label="Refleksi Siswa"
+            values={story.refleksi_siswa || []}
+            placeholder="Pertanyaan refleksi untuk siswa"
+            addLabel="Tambah Pertanyaan"
+            onChange={(arr) => updateStoryField("refleksi_siswa", arr)}
+          />
+          {ai.user_can_text && (
+            <AiTextButton
+              task="refleksi_siswa"
+              context={aiCtx}
+              onAccept={(v) => updateStoryField("refleksi_siswa", parseNumberedList(v))}
+              promptPlaceholder=""
+              label="Generate Refleksi Siswa"
+            />
+          )}
+        </div>
 
-        <NumberedListEditor
-          label="Refleksi Guru"
-          values={story.refleksi_guru || []}
-          placeholder="Pertanyaan refleksi untuk guru"
-          addLabel="Tambah Pertanyaan"
-          onChange={(arr) => updateStoryField("refleksi_guru", arr)}
-        />
+        <div className="space-y-1">
+          <NumberedListEditor
+            label="Refleksi Guru"
+            values={story.refleksi_guru || []}
+            placeholder="Pertanyaan refleksi untuk guru"
+            addLabel="Tambah Pertanyaan"
+            onChange={(arr) => updateStoryField("refleksi_guru", arr)}
+          />
+          {ai.user_can_text && (
+            <AiTextButton
+              task="refleksi_guru"
+              context={aiCtx}
+              onAccept={(v) => updateStoryField("refleksi_guru", parseNumberedList(v))}
+              promptPlaceholder=""
+              label="Generate Refleksi Guru"
+            />
+          )}
+        </div>
       </SubSection>
 
       {/* === REFERENSI === */}
