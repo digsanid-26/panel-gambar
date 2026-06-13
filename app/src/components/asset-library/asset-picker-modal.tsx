@@ -8,6 +8,7 @@ import {
   ASSET_TYPE_LABELS,
   acceptForAssetType,
 } from "@/lib/asset-library";
+// uploadAsset kept for the Upload button — handleAiAccept uses URL directly
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import {
@@ -24,7 +25,10 @@ import {
   FileText,
   User as UserIcon,
   File,
+  Sparkles,
 } from "lucide-react";
+import { AiImageGenerator } from "@/components/ai/ai-image-generator";
+import { useCreatorAi } from "@/hooks/use-creator-ai";
 
 interface AssetPickerModalProps {
   open: boolean;
@@ -64,12 +68,14 @@ export function AssetPickerModal({
   allowUpload = true,
   title = "Pilih dari Galeri",
 }: AssetPickerModalProps) {
+  const ai = useCreatorAi();
   const [assets, setAssets] = useState<Asset[]>([]);
   const [loading, setLoading] = useState(false);
   const [scope, setScope] = useState<"mine" | "public" | "all">("all");
   const [query, setQuery] = useState("");
   const [activeType, setActiveType] = useState<AssetType | "all">("all");
   const [uploading, setUploading] = useState(false);
+  const [showAiGen, setShowAiGen] = useState(false);
 
   // Determine which type tabs to show. Memoized so the array identity is
   // stable across renders — otherwise the `reload` useCallback below would get
@@ -86,6 +92,10 @@ export function AssetPickerModal({
           : ["avatar", "image", "video", "audio", "model_3d", "document", "other"],
     [type]
   );
+
+  const isImageContext =
+    allowedTypes.every((t) => t === "image" || t === "avatar") ||
+    allowedTypes.includes("image") || allowedTypes.includes("avatar");
 
   const reload = useCallback(async () => {
     if (!open) return;
@@ -111,8 +121,23 @@ export function AssetPickerModal({
       setQuery("");
       setActiveType("all");
       setScope("all");
+      setShowAiGen(false);
     }
   }, [open]);
+
+  function handleAiAccept(imageUrl: string) {
+    const assetType: AssetType =
+      allowedTypes.length === 1 && allowedTypes[0] === "avatar" ? "avatar" : "image";
+    onPick({
+      id: `ai_${Date.now()}`,
+      url: imageUrl,
+      name: "AI Generated",
+      type: assetType,
+      visibility: "private",
+      created_at: new Date().toISOString(),
+    } as Asset);
+    setShowAiGen(false);
+  }
 
   async function handleUploadFile(file: File) {
     setUploading(true);
@@ -204,6 +229,19 @@ export function AssetPickerModal({
                 />
               </label>
             )}
+            {ai.user_can_image && isImageContext && (
+              <button
+                onClick={() => setShowAiGen(!showAiGen)}
+                className={`inline-flex items-center gap-1.5 px-4 py-2 rounded-xl text-sm font-semibold transition-colors ${
+                  showAiGen
+                    ? "bg-secondary text-white"
+                    : "border-2 border-dashed border-secondary/40 text-secondary hover:bg-secondary/5"
+                }`}
+              >
+                <Sparkles className="w-4 h-4" />
+                Generate AI
+              </button>
+            )}
           </div>
 
           {/* Type tabs */}
@@ -237,9 +275,20 @@ export function AssetPickerModal({
           )}
         </div>
 
+        {/* AI Image Generator panel */}
+        {showAiGen && (
+          <div className="px-5 pb-3 border-b border-border">
+            <AiImageGenerator
+              onAccept={handleAiAccept}
+              alwaysOpen
+              label="Generate Gambar AI"
+            />
+          </div>
+        )}
+
         {/* Grid */}
         <div className="flex-1 overflow-y-auto p-4">
-          {loading ? (
+          {showAiGen ? null : loading ? (
             <div className="flex items-center justify-center py-20 text-muted">
               <Loader2 className="w-6 h-6 animate-spin" />
             </div>

@@ -165,7 +165,7 @@ export async function POST(request: NextRequest) {
 
   // Upload binary audio ke storage internal
   const formData = new FormData();
-  const blob = new Blob([audioBuffer], { type: contentType });
+  const blob = new Blob([new Uint8Array(audioBuffer)], { type: contentType });
   formData.append("file", blob, `tts_${Date.now()}.mp3`);
   formData.append("bucket", "audio");
 

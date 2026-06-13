@@ -595,64 +595,62 @@ const ai = useCreatorAi();
 
 ### Fase 0 — Role & Akses (Prasyarat)
 
-- [ ] Tambah nilai `"creator"` ke `UserRole` di `src/lib/types.ts`
-- [ ] Migrasi database: tambah kolom `creator_ai_access BOOLEAN DEFAULT false` dan `ai_subscription_tier TEXT` ke tabel `users`
-- [ ] Update API `/api/ai/config` agar menyertakan flag `user_has_ai_access` berdasarkan role/subscription user yang sedang login
-- [ ] Tambah toggle **Aktifkan Creator-AI** di halaman admin user detail (`/admin/stories` atau user management)
+- [x] Tambah nilai `"creator"` ke `UserRole` di `src/lib/types.ts`
+- [x] Migrasi database: tambah kolom `creator_ai_access BOOLEAN DEFAULT false` dan `ai_subscription_tier TEXT` ke tabel `users`
+- [x] Update API `/api/ai/config` agar menyertakan flag `user_has_ai_access` berdasarkan role/subscription user yang sedang login
+- [x] Tambah toggle **Aktifkan Creator-AI** di halaman admin user detail
 - [ ] Buat halaman `/creator-ai` — landing page upgrade (statis + CTA)
-- [ ] Buat komponen `UpgradeGate` — ditampilkan jika `canAccess === false`
+- [x] Buat komponen `UpgradeGate` — ditampilkan jika `canAccess === false`
 
 ### Fase 1 — Fondasi (Prioritas Tinggi)
 
-- [ ] Tambah entri baru di `SETTINGS_CONFIG` pada `/admin/settings`:
+- [x] Tambah entri baru di `SETTINGS_CONFIG` pada `/admin/settings`:
   - Toggle `creator_ai_enabled`
   - Toggle sub-fitur (text, image, video, kurikulum)
-- [ ] Buat section **Konfigurasi Provider AI** di halaman settings:
-  - Dropdown pilih provider
-  - Input API Key (masked)
-  - Dropdown pilih model teks, gambar, video
-- [ ] Buat route `GET /api/ai/config` — expose config ke client (tanpa API key, sertakan `user_has_ai_access`)
-- [ ] Buat route `POST /api/ai/text` — proxy ke aKlaude `/v1/chat/completions`
-- [ ] Buat komponen `AiPromptButton` + `AiTextGenerator`
-- [ ] Buat hook `useCreatorAi`
+- [x] Buat section **Konfigurasi Provider AI** di halaman settings
+- [x] Buat route `GET /api/ai/config` — expose config ke client (tanpa API key, sertakan `user_has_ai_access`)
+- [x] Buat route `POST /api/ai/text` — proxy ke aKlaude `/v1/chat/completions`
+- [x] Buat komponen `AiTextButton` (`AiPromptButton` + `AiTextGenerator`)
+- [x] Buat hook `useCreatorAi`
 
-### Fase 2 — Text Generation
+### Fase 2 — Text Generation ✅
 
-- [ ] Integrasi di `/stories/create`: Generate judul, deskripsi
-- [ ] Integrasi di `/stories/[id]/edit`: Generate dialog, narasi
-- [ ] Integrasi di `KurikulumMerdekaSection`: Generate CP, TP, pertanyaan pemantik
-- [ ] Integrasi di `CharacterManager`: Generate deskripsi karakter
+- [x] Integrasi di `/stories/create`: Generate judul, deskripsi
+- [x] Integrasi di `/stories/[id]/edit`: Generate dialog, narasi
+- [x] Integrasi di `KurikulumMerdekaSection`: Generate CP, TP, pertanyaan pemantik
+- [x] Integrasi di `CharacterManager`: Generate deskripsi karakter
 
 ### Fase 3 — Image Generation
 
-- [ ] Buat route `POST /api/ai/image` — proxy ke aKlaude `/api/imagegen/generate`
-- [ ] Buat komponen `AiImageGenerator` (modal + preview + simpan ke library)
-- [ ] Integrasi di `CoverImageUploader`: Tombol "Generate dengan AI"
+- [x] Buat route `POST /api/ai/image` — proxy ke aKlaude `/api/imagegen/generate`
+- [x] Buat komponen `AiImageGenerator` (modal + preview + simpan ke library)
+- [x] Integrasi di `CoverImageUploader`: Tombol "Generate dengan AI"
 - [ ] Integrasi di `AssetPickerModal`: Tab "Generate AI"
 - [ ] Integrasi di editor panel: Tombol generate gambar panel
 - [ ] Integrasi di `CharacterManager`: Generate avatar karakter
 - [ ] Auto-tag saat upload aset (via AI vision)
 
-### Fase 4 — Video Generation
+### Fase 4 — Video Generation ✅
 
-- [ ] Buat route `POST /api/ai/video` — proxy ke aKlaude `/api/videogen/generate`
-- [ ] Buat komponen `AiVideoGenerator`
-- [ ] Integrasi di `VideoTrailerUploader`: Tab "Generate dengan AI"
+- [x] Buat route `POST /api/ai/video` — proxy ke aKlaude `/api/videogen/generate`
+- [x] Buat komponen `AiVideoGenerator`
+- [x] Integrasi di `VideoTrailerUploader`: Tab "Generate dengan AI"
 
 ### Fase 5 — Audio / TTS
 
-- [ ] Pilih & konfigurasi provider TTS (lihat **Section 10.2**) — rekomendasi ElevenLabs
-- [ ] Tambah keys `ai_tts_provider` + `ai_tts_voice_id` ke `app_settings`
-- [ ] Tambah kolom `voice_id` opsional ke field `StoryCharacter` di `src/lib/types.ts`
-- [ ] Buat route `POST /api/ai/tts` — proxy ke provider TTS aktif
-- [ ] Buat komponen `AiTtsButton` — tombol "🔊 Generate Suara" di samping tombol Rekam pada narasi & dialog
+- [x] Pilih & konfigurasi provider TTS — TopMediai (lihat **Section 10.2**)
+- [x] Tambah keys `ai_tts_provider` + `ai_tts_voice_id` ke `app_settings`
+- [x] Tambah kolom `voice_id` + `voice_emotion` ke `StoryCharacter` di `src/lib/types.ts`
+- [x] Buat route `POST /api/ai/tts` — multi-provider (TopMediai, ElevenLabs, OpenAI)
+- [x] Buat route `GET /api/ai/tts/voices` — daftar suara dari provider
+- [x] Buat komponen `AiTtsButton` — tombol "🔊 Generate Suara" di narasi & dialog
 - [ ] Integrasi di `AudioRecorder`: tab ketiga "Generate TTS" selain Rekam dan Upload
-- [ ] UI assign voice per karakter di `CharacterManager` (dropdown pilih suara dari provider)
+- [x] UI assign voice per karakter di `CharacterManager` (dropdown pilih suara + ekspresi)
 
-### Fase 6 — Advanced (Future)
+### Fase 6 — Advanced
 
 - [ ] AI Pronunciation Feedback untuk rekaman siswa
-- [ ] AI Story Wizard: isi 1 topik → draft cerita lengkap (judul, CP, TP, 5 panel, karakter)
+- [x] AI Story Wizard: isi 1 topik → draft cerita lengkap (judul, CP, TP, panel, karakter)
 - [ ] AI Tanya Jawab di halaman viewer cerita (untuk siswa)
 - [ ] Log penggunaan AI (`ai_generation_log`) + estimasi biaya di dashboard admin
 - [ ] **AI Backsound Generator** per panel — generate musik instrumental via TopMediai Music Generator (lihat **Section 10.3**)

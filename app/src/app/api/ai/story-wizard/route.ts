@@ -10,6 +10,7 @@ const AKLAUDE_API = "https://api.aklaude.xyz/api/proxy/v1/chat/completions";
 // ────────────────────────────────────────────────────────────────────────────
 
 export interface WizardCharacter {
+  id?: string;
   name: string;
   gender: "male" | "female" | "other";
   color: string;

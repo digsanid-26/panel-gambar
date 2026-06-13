@@ -1471,6 +1471,11 @@ export default function EditStoryPage() {
                           <AudioRecorder
                             onSave={(blob) => uploadAudio(panel.id, blob, "narration")}
                             onCancel={() => setShowNarrationRecorder(null)}
+                            ttsText={panel.narration_text}
+                            onTtsAccept={(url) => {
+                              updatePanelField(panel.id, "narration_audio_url", url);
+                              setShowNarrationRecorder(null);
+                            }}
                           />
                         </div>
                       )}

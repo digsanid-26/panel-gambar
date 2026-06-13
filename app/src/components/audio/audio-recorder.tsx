@@ -1,14 +1,24 @@
 "use client";
 
 import { useState, useRef, useCallback, useEffect } from "react";
-import { Mic, Square, Play, Pause, RotateCcw, Check } from "lucide-react";
+import { Mic, Square, Play, Pause, RotateCcw, Check, Volume2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
+import { useCreatorAi } from "@/hooks/use-creator-ai";
+import { AiTtsButton } from "@/components/ai/ai-tts-button";
 
 interface AudioRecorderProps {
   onSave: (blob: Blob) => void;
   onCancel?: () => void;
   className?: string;
+  /** If provided AND user has TTS access, shows a "Generate TTS" tab */
+  ttsText?: string;
+  /** Voice ID for TTS generation (from character assignment) */
+  ttsVoiceId?: string;
+  /** Emotion for TTS generation */
+  ttsEmotion?: string;
+  /** Called when TTS audio URL is accepted (instead of uploading blob) */
+  onTtsAccept?: (audioUrl: string) => void;
 }
 
 // Audio processing constants
@@ -24,10 +34,14 @@ const WARMUP_DELAY_MS = 300;   // Delay before recording to skip click/buzz tran
 const WAVEFORM_BARS = 16;
 const WAVEFORM_FFT_SIZE = 256;
 
-export function AudioRecorder({ onSave, onCancel, className }: AudioRecorderProps) {
+export function AudioRecorder({ onSave, onCancel, className, ttsText, ttsVoiceId, ttsEmotion, onTtsAccept }: AudioRecorderProps) {
+  const ai = useCreatorAi();
+  const [activeTab, setActiveTab] = useState<"record" | "tts">("record");
   const [state, setState] = useState<"idle" | "preparing" | "recording" | "recorded" | "playing">("idle");
   const [duration, setDuration] = useState(0);
   const [waveform, setWaveform] = useState<number[]>(new Array(WAVEFORM_BARS).fill(0));
+
+  const showTtsTab = ai.user_can_tts && !!ttsText?.trim();
 
   const mediaRecorder = useRef<MediaRecorder | null>(null);
   const audioChunks = useRef<Blob[]>([]);
@@ -257,7 +271,50 @@ export function AudioRecorder({ onSave, onCancel, className }: AudioRecorderProp
   };
 
   return (
-    <div className={cn("flex items-center gap-2 p-3 bg-surface rounded-xl border border-border", className)}>
+    <div className={cn("bg-surface rounded-xl border border-border overflow-hidden", className)}>
+      {/* Tabs — only shown when TTS is available */}
+      {showTtsTab && (
+        <div className="flex border-b border-border">
+          <button
+            type="button"
+            onClick={() => setActiveTab("record")}
+            className={`flex-1 flex items-center justify-center gap-1.5 py-2 text-xs font-medium transition-colors ${
+              activeTab === "record" ? "bg-surface-alt text-foreground" : "text-muted hover:text-foreground"
+            }`}
+          >
+            <Mic className="w-3.5 h-3.5" /> Rekam
+          </button>
+          <button
+            type="button"
+            onClick={() => setActiveTab("tts")}
+            className={`flex-1 flex items-center justify-center gap-1.5 py-2 text-xs font-medium transition-colors ${
+              activeTab === "tts" ? "bg-secondary/10 text-secondary" : "text-muted hover:text-foreground"
+            }`}
+          >
+            <Volume2 className="w-3.5 h-3.5" /> Generate TTS
+          </button>
+        </div>
+      )}
+
+      {/* TTS panel */}
+      {showTtsTab && activeTab === "tts" && (
+        <div className="p-2">
+          <AiTtsButton
+            text={ttsText!}
+            voiceId={ttsVoiceId}
+            emotion={ttsEmotion}
+            onAccept={(url) => {
+              if (onTtsAccept) onTtsAccept(url);
+              else if (onCancel) onCancel();
+            }}
+            label="Generate Audio"
+          />
+        </div>
+      )}
+
+      {/* Record panel */}
+      {(!showTtsTab || activeTab === "record") && (
+      <div className="flex items-center gap-2 p-3">
       {/* Preparing indicator */}
       {state === "preparing" && (
         <div className="flex items-center gap-2">
@@ -330,6 +387,8 @@ export function AudioRecorder({ onSave, onCancel, className }: AudioRecorderProp
           </Button>
         )}
       </div>
+      </div>
+      )}
     </div>
   );
 }

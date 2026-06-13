@@ -220,7 +220,7 @@ export default function CreateStoryPage() {
 
             <VideoTrailerUploader
               currentUrl={videoUrlFromAi ?? (videoFile ? URL.createObjectURL(videoFile) : undefined)}
-              onUpload={(f) => { setVideoUrlFromAi(null); handleVideoUpload(f); }}
+              onUpload={async (f) => { setVideoUrlFromAi(null); await handleVideoUpload(f); }}
               onRemove={() => { setVideoFile(null); setVideoUrlFromAi(null); }}
               uploading={uploadingVideo}
               coverImageUrl={coverUrlFromGallery ?? coverPreview ?? undefined}

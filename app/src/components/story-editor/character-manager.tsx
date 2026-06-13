@@ -7,6 +7,7 @@ import { Input } from "@/components/ui/input";
 import { Select } from "@/components/ui/select";
 import { Plus, Trash2, Upload, Pencil, X, User, Check } from "lucide-react";
 import { AiTextButton } from "@/components/ai/ai-text-button";
+import { AiImageGenerator } from "@/components/ai/ai-image-generator";
 import { useCreatorAi } from "@/hooks/use-creator-ai";
 import type { TtsVoice } from "@/app/api/ai/tts/voices/route";
 
@@ -232,27 +233,36 @@ export function CharacterManager({ characters, onChange, onUploadAvatar, availab
                 {name ? name.charAt(0).toUpperCase() : "?"}
               </div>
             )}
-            <div>
-              <input
-                ref={fileInputRef}
-                type="file"
-                accept="image/*"
-                className="hidden"
-                onChange={(e) => {
-                  const f = e.target.files?.[0];
-                  if (f) handleAvatarUpload(f);
-                }}
-              />
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => fileInputRef.current?.click()}
-                disabled={uploading || !onUploadAvatar}
-              >
-                <Upload className="w-3.5 h-3.5" />
-                {uploading ? "Uploading..." : avatarUrl ? "Ganti Avatar" : "Upload Avatar"}
-              </Button>
-              <p className="text-[10px] text-muted mt-1">Opsional · JPG, PNG</p>
+            <div className="space-y-1.5">
+              <div className="flex items-center gap-2">
+                <input
+                  ref={fileInputRef}
+                  type="file"
+                  accept="image/*"
+                  className="hidden"
+                  onChange={(e) => {
+                    const f = e.target.files?.[0];
+                    if (f) handleAvatarUpload(f);
+                  }}
+                />
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => fileInputRef.current?.click()}
+                  disabled={uploading || !onUploadAvatar}
+                >
+                  <Upload className="w-3.5 h-3.5" />
+                  {uploading ? "Uploading..." : avatarUrl ? "Ganti" : "Upload"}
+                </Button>
+                {ai.user_can_image && (
+                  <AiImageGenerator
+                    label="Generate Avatar AI"
+                    defaultPrompt={name ? `Portrait avatar karakter anak Indonesia bernama ${name}, ${gender === "male" ? "laki-laki" : gender === "female" ? "perempuan" : ""}, ${description || "ramah dan ekspresif"}, cartoon style, flat design, circular frame` : ""}
+                    onAccept={(url) => setAvatarUrl(url)}
+                  />
+                )}
+              </div>
+              <p className="text-[10px] text-muted">Opsional · JPG, PNG</p>
             </div>
           </div>
 
