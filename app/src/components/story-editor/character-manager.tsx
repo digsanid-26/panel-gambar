@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useRef } from "react";
+import { useState, useRef, useEffect } from "react";
 import type { StoryCharacter, CharacterGender, ManagedStudent } from "@/lib/types";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -8,6 +8,7 @@ import { Select } from "@/components/ui/select";
 import { Plus, Trash2, Upload, Pencil, X, User, Check } from "lucide-react";
 import { AiTextButton } from "@/components/ai/ai-text-button";
 import { useCreatorAi } from "@/hooks/use-creator-ai";
+import type { TtsVoice } from "@/app/api/ai/tts/voices/route";
 
 interface CharacterManagerProps {
   characters: StoryCharacter[];
@@ -45,7 +46,19 @@ export function CharacterManager({ characters, onChange, onUploadAvatar, availab
   const [avatarUrl, setAvatarUrl] = useState<string | undefined>();
   const [performedBy, setPerformedBy] = useState<string | undefined>();
   const [performedByName, setPerformedByName] = useState<string | undefined>();
+  const [voiceId, setVoiceId] = useState<string | undefined>();
+  const [voiceEmotion, setVoiceEmotion] = useState<string | undefined>();
   const [uploading, setUploading] = useState(false);
+
+  // TTS voice list
+  const [ttsVoices, setTtsVoices] = useState<TtsVoice[]>([]);
+  useEffect(() => {
+    if (!ai.user_can_tts) return;
+    fetch("/api/ai/tts/voices")
+      .then((r) => r.ok ? r.json() : null)
+      .then((d) => { if (d?.voices) setTtsVoices(d.voices); })
+      .catch(() => {});
+  }, [ai.user_can_tts]);
 
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -57,6 +70,8 @@ export function CharacterManager({ characters, onChange, onUploadAvatar, availab
     setAvatarUrl(undefined);
     setPerformedBy(undefined);
     setPerformedByName(undefined);
+    setVoiceId(undefined);
+    setVoiceEmotion(undefined);
     setEditingId(null);
     setShowAddForm(false);
   }
@@ -70,6 +85,8 @@ export function CharacterManager({ characters, onChange, onUploadAvatar, availab
     setAvatarUrl(char.avatar_url);
     setPerformedBy(char.performed_by);
     setPerformedByName(char.performed_by_name);
+    setVoiceId(char.voice_id);
+    setVoiceEmotion(char.voice_emotion);
     setShowAddForm(true);
   }
 
@@ -85,6 +102,8 @@ export function CharacterManager({ characters, onChange, onUploadAvatar, availab
       description: description.trim() || undefined,
       performed_by: performedBy || undefined,
       performed_by_name: performedByName || undefined,
+      voice_id: voiceId || undefined,
+      voice_emotion: voiceEmotion || undefined,
     };
 
     if (editingId) {
@@ -295,6 +314,46 @@ export function CharacterManager({ characters, onChange, onUploadAvatar, availab
               </div>
             </div>
           </div>
+
+          {/* TTS Voice selector */}
+          {ai.user_can_tts && ttsVoices.length > 0 && (
+            <div className="space-y-2">
+              <div>
+                <label className="block text-xs font-medium mb-1">Suara TTS Karakter</label>
+                <select
+                  value={voiceId || ""}
+                  onChange={(e) => setVoiceId(e.target.value || undefined)}
+                  className="w-full h-9 rounded-lg border border-border bg-surface px-3 text-sm"
+                >
+                  <option value="">-- Pilih suara --</option>
+                  {ttsVoices.map((v) => (
+                    <option key={v.id} value={v.id}>
+                      {v.name}{v.language ? ` (${v.language})` : ""}{v.is_free ? " ✓" : ""}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              {voiceId && (
+                <div>
+                  <label className="block text-xs font-medium mb-1">Ekspresi Suara Default</label>
+                  <select
+                    value={voiceEmotion || ""}
+                    onChange={(e) => setVoiceEmotion(e.target.value || undefined)}
+                    className="w-full h-9 rounded-lg border border-border bg-surface px-3 text-sm"
+                  >
+                    <option value="">Default</option>
+                    <option value="Neutral">Netral</option>
+                    <option value="Cheerful">Ceria 😊</option>
+                    <option value="Friendly">Ramah 🤝</option>
+                    <option value="Sad">Sedih 😢</option>
+                    <option value="Excited">Antusias 🎉</option>
+                    <option value="Whispering">Berbisik 🤫</option>
+                    <option value="Shouting">Berteriak 📢</option>
+                  </select>
+                </div>
+              )}
+            </div>
+          )}
 
           {/* Performed by selector */}
           {availableStudents.length > 0 && (

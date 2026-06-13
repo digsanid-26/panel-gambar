@@ -24,6 +24,7 @@ import { SimplePanelEditor } from "@/components/story-editor/simple-panel-editor
 import { ElementManager } from "@/components/story-editor/element-manager";
 import { KurikulumMerdekaSection } from "@/components/story-editor/kurikulum-merdeka-section";
 import { AiTextButton } from "@/components/ai/ai-text-button";
+import { AiTtsButton } from "@/components/ai/ai-tts-button";
 import { useCreatorAi } from "@/hooks/use-creator-ai";
 import {
   ArrowLeft,
@@ -1391,6 +1392,15 @@ export default function EditStoryPage() {
                         />
                       </div>
                     )}
+                    {ai.user_can_tts && panel.narration_text && (
+                      <div className="mt-1">
+                        <AiTtsButton
+                          text={panel.narration_text}
+                          onAccept={(url) => updatePanelField(panel.id, "narration_audio_url", url)}
+                          label="Generate Suara Narasi"
+                        />
+                      </div>
+                    )}
                     <div className="mt-2">
                       {panel.narration_audio_url ? (
                         <div className="flex items-center gap-2">
@@ -1773,6 +1783,21 @@ export default function EditStoryPage() {
                               onAccept={setDialogText}
                               promptPlaceholder={`Misal: ${dialogCharName} menanyakan di mana perpustakaan`}
                               label="Bantu tulis dialog"
+                            />
+                          </div>
+                        )}
+                        {ai.user_can_tts && dialogText.trim() && (
+                          <div className="mt-1">
+                            <AiTtsButton
+                              text={dialogText}
+                              voiceId={story.characters?.find((c) => c.name === dialogCharName)?.voice_id}
+                              emotion={story.characters?.find((c) => c.name === dialogCharName)?.voice_emotion}
+                              onAccept={(url) => {
+                                const panelDialogs = panels.find((p) => p.id === showDialogForm)?.dialogs;
+                                const dlg = panelDialogs?.find((d) => editingDialogId ? d.id === editingDialogId : false);
+                                if (dlg) patchDialog(dlg.id, { audio_url: url });
+                              }}
+                              label="Generate Suara Dialog"
                             />
                           </div>
                         )}

@@ -34,6 +34,7 @@ export default function CreateStoryPage() {
   const [coverPreview, setCoverPreview] = useState<string | null>(null);
   const [coverUrlFromGallery, setCoverUrlFromGallery] = useState<string | null>(null);
   const [videoFile, setVideoFile] = useState<File | null>(null);
+  const [videoUrlFromAi, setVideoUrlFromAi] = useState<string | null>(null);
   const [uploadingCover, setUploadingCover] = useState(false);
   const [uploadingVideo, setUploadingVideo] = useState(false);
   const [loading, setLoading] = useState(false);
@@ -99,7 +100,9 @@ export default function CreateStoryPage() {
     }
 
     let videoTrailerUrl: string | undefined;
-    if (videoFile) {
+    if (videoUrlFromAi) {
+      videoTrailerUrl = videoUrlFromAi;
+    } else if (videoFile) {
       setUploadingVideo(true);
       const fd = new FormData(); fd.append("file", videoFile);
       const up = await fetch("/api/upload", { method: "POST", body: fd });
@@ -216,10 +219,12 @@ export default function CreateStoryPage() {
             </div>
 
             <VideoTrailerUploader
-              currentUrl={videoFile ? URL.createObjectURL(videoFile) : undefined}
-              onUpload={handleVideoUpload}
-              onRemove={() => setVideoFile(null)}
+              currentUrl={videoUrlFromAi ?? (videoFile ? URL.createObjectURL(videoFile) : undefined)}
+              onUpload={(f) => { setVideoUrlFromAi(null); handleVideoUpload(f); }}
+              onRemove={() => { setVideoFile(null); setVideoUrlFromAi(null); }}
               uploading={uploadingVideo}
+              coverImageUrl={coverUrlFromGallery ?? coverPreview ?? undefined}
+              onAiGenerate={(url) => { setVideoFile(null); setVideoUrlFromAi(url); }}
             />
 
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">

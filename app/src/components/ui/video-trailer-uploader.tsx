@@ -3,12 +3,18 @@
 import { useState, useRef, useCallback } from "react";
 import { Upload, X, Film, Play } from "lucide-react";
 import { Button } from "./button";
+import { AiVideoGenerator } from "@/components/ai/ai-video-generator";
+import { useCreatorAi } from "@/hooks/use-creator-ai";
 
 interface VideoTrailerUploaderProps {
   currentUrl?: string;
   onUpload: (file: File) => Promise<void>;
   onRemove?: () => void;
   uploading?: boolean;
+  /** Optional cover image URL for first-frame reference in AI video generation */
+  coverImageUrl?: string;
+  /** Called when AI generates a video URL (to set directly without file upload) */
+  onAiGenerate?: (url: string) => void;
 }
 
 export function VideoTrailerUploader({
@@ -16,8 +22,12 @@ export function VideoTrailerUploader({
   onUpload,
   onRemove,
   uploading = false,
+  coverImageUrl,
+  onAiGenerate,
 }: VideoTrailerUploaderProps) {
+  const ai = useCreatorAi();
   const [dragOver, setDragOver] = useState(false);
+  const [showAiGenerator, setShowAiGenerator] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
 
   const handleFile = useCallback(
@@ -121,6 +131,29 @@ export function VideoTrailerUploader({
               if (f) handleFile(f);
             }}
           />
+        </div>
+      )}
+      {/* AI Video Generator */}
+      {ai.user_can_video && (
+        <div className="mt-2">
+          {showAiGenerator ? (
+            <AiVideoGenerator
+              label="Generate Video Trailer dengan AI"
+              coverImageUrl={coverImageUrl}
+              onAccept={(url) => {
+                setShowAiGenerator(false);
+                if (onAiGenerate) onAiGenerate(url);
+              }}
+            />
+          ) : (
+            <button
+              type="button"
+              onClick={() => setShowAiGenerator(true)}
+              className="inline-flex items-center gap-1.5 text-xs font-medium rounded-md px-2 py-1 text-muted hover:text-secondary hover:bg-secondary/5 transition-colors"
+            >
+              <span>✨</span> Generate trailer dengan AI
+            </button>
+          )}
         </div>
       )}
     </div>
